@@ -1952,7 +1952,12 @@ INNER to move to inner bound."
            (meep--bounds-at-point-for-comment-inner))
           (t
            (meep--bounds-at-point-for-comment-outer)))))
-    (meep--move-to-bounds-endpoint bounds arg)))
+    (cond
+     (bounds
+      (meep--move-to-bounds-endpoint bounds arg))
+     (t
+      (message "Not found: buonds of comment")
+      nil))))
 ;;;###autoload
 (defun meep-move-to-bounds-of-comment-inner (arg)
   "Move to the comment inner start/end (start when ARG is negative)."
