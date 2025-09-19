@@ -4714,8 +4714,10 @@ Uses the `meep-clipboard-register-map' key-map."
           ;; TODO: check if this can be automatically calculated.
           (char-map
            (list
+            (cons "<backspace>" "BS")
             (cons "<delete>" "DEL")
             (cons "<escape>" "ESC")
+            (cons "<linefeed>" "LFD")
             (cons "<return>" "RET")
             (cons "<space>" "SPC")
             (cons "<tab>" "TAB"))))
