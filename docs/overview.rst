@@ -69,6 +69,10 @@ Composing Commands
    Note that left/right motion does **not** set the mark and therefor may be used for minor adjustments
    before applying the edit. e.g. ``[forward-word, left, change]`` to change all but the last letter of a word.
 
+Extensible States
+   States & state switching (normal/visual/insert/... etc) are part of the user configuration,
+   so you can define new states as you wish.
+
 
 Default Key-map
 ---------------
