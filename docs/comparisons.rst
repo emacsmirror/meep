@@ -99,7 +99,7 @@ In many ways, MEEP is quite similar to Meow.
 
 - Visual Feedback
 
-  MEEP shows overlays after cursor motion,
+  Meow shows overlays after cursor motion,
   to indicate the number that can be used to extend the motion.
 
   MEEP by comparison doesn't use any visual feedback
