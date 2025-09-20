@@ -1864,11 +1864,11 @@ IS-TILL when non-nil, search up until the character."
     (when (< beg end)
       (save-excursion
         (goto-char end)
-        (unless (zerop (skip-chars-backward skip-beg beg))
+        (unless (zerop (skip-chars-backward skip-end beg))
           (setq end (point)))
 
         (goto-char beg)
-        (unless (zerop (skip-chars-forward skip-end end))
+        (unless (zerop (skip-chars-forward skip-beg end))
           (setq beg (point)))))
     (cons beg end)))
 
@@ -1881,7 +1881,7 @@ IS-TILL when non-nil, search up until the character."
     (when (< beg end)
       (save-excursion
         (goto-char end)
-        (unless (zerop (skip-chars-backward skip-beg beg))
+        (unless (zerop (skip-chars-backward skip-end beg))
           (cond
            ((eq beg (point))
             (setq non-empty nil))
@@ -1889,7 +1889,7 @@ IS-TILL when non-nil, search up until the character."
             (setq end (point)))))
         (when non-empty
           (goto-char beg)
-          (unless (zerop (skip-chars-forward skip-end end))
+          (unless (zerop (skip-chars-forward skip-beg end))
             (setq beg (point))))))
     (cons beg end)))
 
