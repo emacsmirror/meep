@@ -45,7 +45,7 @@ Other Variables
 ---------------
 
 ``meep-state-region-elem``: ``nil``
-   Supported values are symbols nil or 'line.
+   Supported values are symbols nil or 'line-wise.
 
    Note that line-wise navigation is not enforced,
    this is a hint that commands may use.
@@ -242,7 +242,7 @@ Motion: S-expressions
    Step ARG times or 1 when default.
 
 ``(meep-move-matching-bracket-outer)``
-   Jump to the matching inner bracket.
+   Jump to the matching outer bracket.
    When not at the bounds, jump the start (when enclosed in brackets).
 
    Return non-nil when the point was moved.
@@ -311,6 +311,13 @@ Motion: Find & Till
 
 Motion: Bounds
 ^^^^^^^^^^^^^^
+
+``(meep-move-to-bounds-of-sentence ARG &optional INNER)``
+   Move to the sentences start/end (start when ARG is negative).
+   INNER to move to inner bound.
+
+``(meep-move-to-bounds-of-sentence-inner ARG)``
+   Move to the inner sentences start/end (start when ARG is negative).
 
 ``(meep-move-to-bounds-of-paragraph ARG &optional INNER)``
    Move to the paragraph start/end (start when ARG is negative).
@@ -404,7 +411,7 @@ Selection/Region: Line Selection
    Expand the region to the line bounds.
    Consecutive
 
-   ``meep-state-region-elem`` is set to \='line which commands may
+   ``meep-state-region-elem`` is set to \='line-wise which commands may
    use to maintain line-based selection.
 
 Selection/Region: Expand/Contract
@@ -543,6 +550,9 @@ Text Editing: Surround Insert/Delete
    When multiple lines are are in the active region,
    surround each line individually.
    When there is no active region, surround the current line.
+
+Text Editing: Join Lines
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``(meep-join-line-end)``
    Join the next line to this one.
