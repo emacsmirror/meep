@@ -1901,6 +1901,24 @@ IS-TILL when non-nil, search up until the character."
         (setq bounds (meep--bounds-contract-by-chars bounds skip skip))))
     bounds))
 
+(defun meep--bounds-of-sentence (inner)
+  "Bounds of sentence (contract to INNER when true)."
+  (let ((bounds (bounds-of-thing-at-point 'sentence)))
+    (when bounds
+      (when inner
+        ;; Since it's unlikely the beginning is blank,
+        ;; it's likely only the end of the bounds changes when `inner' is used.
+        ;; Note that skipping back punctuation is a generalization,
+        ;; using `sentence-end' could work too, but is quite involved and
+        ;; difficult to get working reliably.
+        (save-excursion
+          (goto-char (cdr bounds))
+          (skip-chars-backward "[:blank:]\r\n" (car bounds))
+          ;; Trim punctuation.
+          (skip-syntax-backward "." (car bounds))
+          (setcdr bounds (point)))))
+    bounds))
+
 (defun meep--bounds-of-paragraph (inner)
   "Bounds of paragraph (contract to INNER when true)."
   (let ((bounds (bounds-of-thing-at-point 'paragraph)))
@@ -1928,6 +1946,24 @@ IS-TILL when non-nil, search up until the character."
 
 ;; ---------------------------------------------------------------------------
 ;; Motion: Bounds
+
+;;;###autoload
+(defun meep-move-to-bounds-of-sentence (arg &optional inner)
+  "Move to the sentences start/end (start when ARG is negative).
+INNER to move to inner bound."
+  (interactive "^p")
+  (let ((bounds (meep--bounds-of-sentence inner)))
+    (cond
+     (bounds
+      (meep--move-to-bounds-endpoint bounds arg))
+     (t
+      (message "Not found: bounds of sentence")
+      nil))))
+;;;###autoload
+(defun meep-move-to-bounds-of-sentence-inner (arg)
+  "Move to the inner sentences start/end (start when ARG is negative)."
+  (interactive "^p")
+  (meep-move-to-bounds-of-sentence arg t))
 
 ;;;###autoload
 (defun meep-move-to-bounds-of-paragraph (arg &optional inner)
@@ -2061,6 +2097,9 @@ When INNER is non-nil move to the outer bounds."
 
     (when (< n 0)
       (setq prefix-arg -1))
+
+    (define-key km "." 'meep-move-to-bounds-of-sentence-inner)
+    (define-key km ">" 'meep-move-to-bounds-of-sentence)
 
     (define-key km "p" 'meep-move-to-bounds-of-paragraph-inner)
     (define-key km "P" 'meep-move-to-bounds-of-paragraph)
