@@ -1897,7 +1897,7 @@ IS-TILL when non-nil, search up until the character."
   "Bounds of visual line (contract to INNER when true)."
   (let ((bounds (cons (beginning-of-visual-line) (end-of-visual-line))))
     (when inner
-      (let ((skip "[:blank:]"))
+      (let ((skip "[:blank:]\r\n"))
         (setq bounds (meep--bounds-contract-by-chars bounds skip skip))))
     bounds))
 
@@ -2022,12 +2022,9 @@ INNER to move to inner bound."
   "Move to the visual-line start/end (start when ARG is negative).
 INNER to move to inner bound."
   (interactive "^p")
-  (let ((bounds (meep--bounds-of-visual-line arg)))
-    (when bounds
-      (when inner
-        (let ((skip "[:blank:]\r\n"))
-          (setq bounds (meep--bounds-contract-by-chars bounds skip skip))))
-      (meep--move-to-bounds-endpoint bounds arg))))
+  (let ((bounds (meep--bounds-of-visual-line inner)))
+    ;; No need to check for nil.
+    (meep--move-to-bounds-endpoint bounds arg)))
 ;;;###autoload
 (defun meep-move-to-bounds-of-visual-line-inner (arg)
   "Move to the inner visual-line start/end (start when ARG is negative)."
