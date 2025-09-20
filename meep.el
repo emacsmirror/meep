@@ -1904,9 +1904,10 @@ IS-TILL when non-nil, search up until the character."
 (defun meep--bounds-of-paragraph (inner)
   "Bounds of paragraph (contract to INNER when true)."
   (let ((bounds (bounds-of-thing-at-point 'paragraph)))
-    (when inner
-      (let ((skip "[:blank:]\r\n"))
-        (setq bounds (meep--bounds-contract-by-chars bounds skip skip))))
+    (when bounds
+      (when inner
+        (let ((skip "[:blank:]\r\n"))
+          (setq bounds (meep--bounds-contract-by-chars bounds skip skip)))))
     bounds))
 
 (defun meep--move-to-bounds-endpoint (bounds n)
@@ -1934,7 +1935,12 @@ IS-TILL when non-nil, search up until the character."
 INNER to move to inner bound."
   (interactive "^p")
   (let ((bounds (meep--bounds-of-paragraph inner)))
-    (meep--move-to-bounds-endpoint bounds arg)))
+    (cond
+     (bounds
+      (meep--move-to-bounds-endpoint bounds arg))
+     (t
+      (message "Not found: bounds of paragraph")
+      nil))))
 ;;;###autoload
 (defun meep-move-to-bounds-of-paragraph-inner (arg)
   "Move to the inner paragraph start/end (start when ARG is negative)."
@@ -1956,7 +1962,7 @@ INNER to move to inner bound."
      (bounds
       (meep--move-to-bounds-endpoint bounds arg))
      (t
-      (message "Not found: buonds of comment")
+      (message "Not found: bounds of comment")
       nil))))
 ;;;###autoload
 (defun meep-move-to-bounds-of-comment-inner (arg)
@@ -2006,10 +2012,15 @@ INNER to move to inner bound."
 INNER to move to inner bound."
   (interactive "^p")
   (let ((bounds (bounds-of-thing-at-point 'line)))
-    (when inner
-      (let ((skip "[:blank:]"))
-        (setq bounds (meep--bounds-contract-by-chars bounds skip skip))))
-    (meep--move-to-bounds-endpoint bounds arg)))
+    (cond
+     (bounds
+      (when inner
+        (let ((skip "[:blank:]"))
+          (setq bounds (meep--bounds-contract-by-chars bounds skip skip))))
+      (meep--move-to-bounds-endpoint bounds arg))
+     (t
+      (message "Not found: bounds of line")
+      nil))))
 
 ;;;###autoload
 (defun meep-move-to-bounds-of-line-inner (arg)
