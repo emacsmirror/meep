@@ -82,7 +82,7 @@
     '("r" . meep-char-replace)
     '("R" . meep-insert-overwrite)
 
-    '("J" . meep-join-line-end)
+    '("J" . meep-join-line-next)
 
     '("x" . meep-delete-char-next)
     '("X" . meep-delete-char-prev)

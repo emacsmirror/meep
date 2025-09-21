@@ -260,10 +260,13 @@
     '("[" . meep-move-to-bounds-of-thing-beginning)
     '("]" . meep-move-to-bounds-of-thing-end)
 
-    '("TAB" . meep-indent-rigidly)
-
     '("-" . meep-region-syntax-contract)
     '("=" . meep-region-syntax-expand)
+
+    '("<tab>" . meep-indent-rigidly)
+
+    '("S-<delete>" . meep-join-line-prev)
+    '("S-<backspace>" . meep-join-line-next)
 
     '("<home>" . meep-move-line-beginning)
     '("<end>" . meep-move-line-end))

@@ -3777,6 +3777,35 @@ When there is no active region, surround the current line."
 
 ;; ---------------------------------------------------------------------------
 ;; Text Editing: Join Lines
+;;
+;; Line joining with support for left-trimming code-comments,
+;; so this may be used to conveniently joining lines in code.
+;;
+;; For an example of languages using ``#`` prefixed comments (Python or Shell):
+;;
+;; .. code-block:: python
+;;
+;;    # Example block.
+;;    # Next line.
+;;
+;; Joined at the first line removes the leading ``#``:
+;;
+;; .. code-block:: python
+;;
+;;    # Example block. Next line.
+;;
+;; And for C-family languages:
+;;
+;; .. code-block:: c
+;;
+;;    /* Example block.
+;;     * next line. */
+;;
+;; Joined at the first line removes the leading ``*``:
+;;
+;; .. code-block:: c
+;;
+;;    /* Example. Block. Next line. */
 
 (defun meep--join-maybe-skip-comment-prefix (limit)
   "Skip forward over comment chars and any following white-space.
@@ -3933,7 +3962,7 @@ USE-COMMENT-STRIP, strips comments between lines."
     changed))
 
 ;;;###autoload
-(defun meep-join-line-end ()
+(defun meep-join-line-next ()
   "Join the next line to this one."
   (interactive "*")
 
@@ -3961,8 +3990,8 @@ USE-COMMENT-STRIP, strips comments between lines."
     changed))
 
 ;;;###autoload
-(defun meep-join-line-beginning ()
-  "Join the next line to this one."
+(defun meep-join-line-prev ()
+  "Join the previous line to this one."
   (interactive "*")
 
   ;; TODO: make optional.

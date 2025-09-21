@@ -554,11 +554,40 @@ Text Editing: Surround Insert/Delete
 Text Editing: Join Lines
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-``(meep-join-line-end)``
+Line joining with support for left-trimming code-comments,
+so this may be used to conveniently joining lines in code.
+
+For an example of languages using ``#`` prefixed comments (Python or Shell):
+
+.. code-block:: python
+
+   # Example block.
+   # Next line.
+
+Joined at the first line removes the leading ``#``:
+
+.. code-block:: python
+
+   # Example block. Next line.
+
+And for C-family languages:
+
+.. code-block:: c
+
+   /* Example block.
+    * next line. */
+
+Joined at the first line removes the leading ``*``:
+
+.. code-block:: c
+
+   /* Example. Block. Next line. */
+
+``(meep-join-line-next)``
    Join the next line to this one.
 
-``(meep-join-line-beginning)``
-   Join the next line to this one.
+``(meep-join-line-prev)``
+   Join the previous line to this one.
 
 Text Editing: Tab Wrapper
 ^^^^^^^^^^^^^^^^^^^^^^^^^
