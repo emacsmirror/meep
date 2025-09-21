@@ -105,19 +105,19 @@ commands may have a `meep' property, this is expected to be a P-list of properti
      This command can repeat other commands multiple times.
 
 ``(meep-move-symbol-prev ARG)``
-   Move to the previous symbol ARG times.
+   Move point to the beginning of the previous symbol, ARG times.
 
 ``(meep-move-symbol-prev-end ARG)``
-   Move to the end of the previous symbol ARG times.
+   Move to the end of the previous symbol, ARG times.
 
 ``(meep-move-symbol-next-end ARG)``
-   Move to the end of the next symbol ARG times.
+   Move to the end of the next symbol, ARG times.
 
 ``(meep-move-symbol-next ARG)``
-   Move to the next symbol ARG times.
+   Move point to the beginning next symbol, ARG times.
 
 ``(meep-move-word-prev ARG)``
-   Move back a word ARG times.
+   Move point to the beginning of the previous word, ARG times.
 
 ``(meep-move-word-next-end ARG)``
    Move to the end of the next word ARG times.
@@ -126,7 +126,7 @@ commands may have a `meep' property, this is expected to be a P-list of properti
    Move to the end of the previous word ARG times.
 
 ``(meep-move-word-next ARG)``
-   Move to the next word ARG times.
+   Move point to the beginning of the next word, ARG times.
 
 Motion: Same Syntax
 ^^^^^^^^^^^^^^^^^^^
@@ -156,23 +156,23 @@ where space at the bounds of text is skipped over, matching
 how this is handled for skipping words & symbols.
 
 ``(meep-move-same-syntax-and-space-prev ARG)``
-   Move back a syntax-spans ARG times.
+   Move back a syntax-and-space, ARG times.
 
 ``(meep-move-same-syntax-and-space-next ARG)``
-   Move to the end of the next word ARG times.
+   Move to the end of the next syntax-and-space, ARG times.
 
 ``(meep-move-same-syntax-and-space-next-end ARG)``
-   Move to the end of the next word ARG times.
+   Move to the beginning of the next syntax-and-space, ARG times.
 
 Motion: Line
 ^^^^^^^^^^^^
 
 ``(meep-move-line-beginning ARG)``
-   Cursor motion which doesn't drop selection.
+   Move to the beginning of the current line end.
    Moves to the end when ARG is negative.
 
 ``(meep-move-line-end ARG)``
-   Cursor motion which doesn't drop selection.
+   Move to the end of the current line end.
    Moves to the beginning when ARG is negative.
 
 ``(meep-move-line-non-space-beginning ARG)``
@@ -201,20 +201,20 @@ Motion: Character
 Motion: Paragraph
 ^^^^^^^^^^^^^^^^^
 
-``(meep-move-paragraph-next ARG)``
-   Move forward paragraphs ARG times.
-
 ``(meep-move-paragraph-prev ARG)``
    Move backward paragraphs ARG times.
+
+``(meep-move-paragraph-next ARG)``
+   Move forward paragraphs ARG times.
 
 Motion: Sentence
 ^^^^^^^^^^^^^^^^
 
-``(meep-move-sentence-next ARG)``
-   Move forward sentences ARG times.
-
 ``(meep-move-sentence-prev ARG)``
-   Move backward sentences ARG times.
+   Move backward sentences, ARG times.
+
+``(meep-move-sentence-next ARG)``
+   Move forward sentences, ARG times.
 
 Motion: S-expressions
 ^^^^^^^^^^^^^^^^^^^^^

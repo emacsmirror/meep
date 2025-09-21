@@ -522,14 +522,14 @@ were to be made into the active region."
 
 ;;;###autoload
 (defun meep-move-symbol-prev (arg)
-  "Move to the previous symbol ARG times."
+  "Move point to the beginning of the previous symbol, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (meep--move-thing-prev-next-end-impl 'symbol (- arg))))
 
 ;;;###autoload
 (defun meep-move-symbol-prev-end (arg)
-  "Move to the end of the previous symbol ARG times."
+  "Move to the end of the previous symbol, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (cond
@@ -541,14 +541,14 @@ were to be made into the active region."
 
 ;;;###autoload
 (defun meep-move-symbol-next-end (arg)
-  "Move to the end of the next symbol ARG times."
+  "Move to the end of the next symbol, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (meep--move-thing-prev-next-end-impl 'symbol arg)))
 
 ;;;###autoload
 (defun meep-move-symbol-next (arg)
-  "Move to the next symbol ARG times."
+  "Move point to the beginning next symbol, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (cond
@@ -560,7 +560,7 @@ were to be made into the active region."
 
 ;;;###autoload
 (defun meep-move-word-prev (arg)
-  "Move back a word ARG times."
+  "Move point to the beginning of the previous word, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (meep--move-thing-prev-next-end-impl 'word (- arg))))
@@ -586,7 +586,7 @@ were to be made into the active region."
 
 ;;;###autoload
 (defun meep-move-word-next (arg)
-  "Move to the next word ARG times."
+  "Move point to the beginning of the next word, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (cond
@@ -731,7 +731,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 
 ;;;###autoload
 (defun meep-move-same-syntax-and-space-prev (arg)
-  "Move back a syntax-spans ARG times."
+  "Move back a syntax-and-space, ARG times."
   (interactive "^p")
   (cond
    ((< arg 0)
@@ -742,7 +742,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 
 ;;;###autoload
 (defun meep-move-same-syntax-and-space-next (arg)
-  "Move to the end of the next word ARG times."
+  "Move to the end of the next syntax-and-space, ARG times."
   (interactive "^p")
   (cond
    ((< arg 0)
@@ -753,7 +753,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 
 ;;;###autoload
 (defun meep-move-same-syntax-and-space-next-end (arg)
-  "Move to the end of the next word ARG times."
+  "Move to the beginning of the next syntax-and-space, ARG times."
   (interactive "^p")
   (cond
    ((< arg 0)
@@ -776,7 +776,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 
 ;;;###autoload
 (defun meep-move-line-beginning (arg)
-  "Cursor motion which doesn't drop selection.
+  "Move to the beginning of the current line end.
 Moves to the end when ARG is negative."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
@@ -784,7 +784,7 @@ Moves to the end when ARG is negative."
 
 ;;;###autoload
 (defun meep-move-line-end (arg)
-  "Cursor motion which doesn't drop selection.
+  "Move to the end of the current line end.
 Moves to the beginning when ARG is negative."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
@@ -899,7 +899,7 @@ NOERROR is forwarded to `line-move'."
 
 ;;;###autoload
 (defun meep-move-sentence-prev (arg)
-  "Move backward sentences ARG times."
+  "Move backward sentences, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (meep--with-maintain-line-based-region
@@ -907,7 +907,7 @@ NOERROR is forwarded to `line-move'."
 
 ;;;###autoload
 (defun meep-move-sentence-next (arg)
-  "Move forward sentences ARG times."
+  "Move forward sentences, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (meep--with-maintain-line-based-region
