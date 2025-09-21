@@ -878,14 +878,6 @@ NOERROR is forwarded to `line-move'."
 ;; Motion: Paragraph
 
 ;;;###autoload
-(defun meep-move-paragraph-next (arg)
-  "Move forward paragraphs ARG times."
-  (interactive "^p")
-  (meep--with-mark-on-motion-maybe-set
-    (meep--with-maintain-line-based-region
-      (forward-paragraph arg))))
-
-;;;###autoload
 (defun meep-move-paragraph-prev (arg)
   "Move backward paragraphs ARG times."
   (interactive "^p")
@@ -893,17 +885,17 @@ NOERROR is forwarded to `line-move'."
     (meep--with-maintain-line-based-region
       (backward-paragraph arg))))
 
-
-;; ---------------------------------------------------------------------------
-;; Motion: Sentence
-
 ;;;###autoload
-(defun meep-move-sentence-next (arg)
-  "Move forward sentences ARG times."
+(defun meep-move-paragraph-next (arg)
+  "Move forward paragraphs ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (meep--with-maintain-line-based-region
-      (backward-sentence arg))))
+      (forward-paragraph arg))))
+
+
+;; ---------------------------------------------------------------------------
+;; Motion: Sentence
 
 ;;;###autoload
 (defun meep-move-sentence-prev (arg)
@@ -911,7 +903,15 @@ NOERROR is forwarded to `line-move'."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (meep--with-maintain-line-based-region
-      (backward-sentence arg))))
+      (forward-sentence (- arg)))))
+
+;;;###autoload
+(defun meep-move-sentence-next (arg)
+  "Move forward sentences ARG times."
+  (interactive "^p")
+  (meep--with-mark-on-motion-maybe-set
+    (meep--with-maintain-line-based-region
+      (forward-sentence arg))))
 
 
 ;; ---------------------------------------------------------------------------
