@@ -4029,11 +4029,9 @@ USE-COMMENT-STRIP, strips comments between lines."
 
 ;;;###autoload
 (defun meep-indent-rigidly ()
-  "Always indent the current line when unselected.
-
-A wrapper for `indent-rigidly' which uses the current line
-when there is no active region."
+  "Indent the active region or the current line."
   (interactive "*")
+  ;; A wrapper for `indent-rigidly' which uses the current line when there is no active region.
   (unless (region-active-p)
     ;; Ensure the mark is never the same as point
     ;; (as this causes an error).

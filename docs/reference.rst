@@ -593,10 +593,7 @@ Text Editing: Tab Wrapper
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``(meep-indent-rigidly)``
-   Always indent the current line when unselected.
-
-   A wrapper for ``indent-rigidly`` which uses the current line
-   when there is no active region.
+   Indent the active region or the current line.
 
 State: Insert
 ^^^^^^^^^^^^^
