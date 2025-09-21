@@ -2532,7 +2532,7 @@ only the secondary region needs to be set."
      (meep-region-swap-imply-region
       ;; When there is no active region.
       (let* ((plist (overlay-get mouse-secondary-overlay 'meep))
-             (type (plist-get plist :type)))
+             (type (plist-get plist :region-type)))
         (cond
          ((eq type 'rect-wise)
           ;; This will need to be inferred.
@@ -2562,9 +2562,9 @@ only the secondary region needs to be set."
      mouse-secondary-overlay 'meep
      (cond
       ((bound-and-true-p rectangle-mark-mode)
-       (list :type 'rect-wise))
+       (list :region-type 'rect-wise))
       ((meep--state-region-line-wise-check)
-       (list :type 'line-wise))
+       (list :region-type 'line-wise))
       (t
        nil)))
 
