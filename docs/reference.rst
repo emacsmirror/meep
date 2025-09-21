@@ -654,14 +654,19 @@ without mixing the kill-ring or primary clipboard - for predictable results.
 ``(meep-clipboard-only-yank)``
    Yank from the clipboard-only, replacing the region (as lines).
 
-``(meep-clipboard-only-yank-as-lines)``
-   Yank from the clipboard-only, replacing the region (as lines).
-
 Clipboard: Kill Ring
 ^^^^^^^^^^^^^^^^^^^^
 
-These commands only wrap the kill-ring,
-without mixing the system clipboard.
+These commands wrap the kill-ring, without mixing the system clipboard.
+
+Note that line-wise cut/copy is stored in the kill-ring.
+Yanking (pasting) a line-wise region yanks from the line beginning.
+
+So line-wise kill & yank can be used to operate on lines without the need
+to place the point at the beginning of the line.
+
+If you wish to override this behavior, you may activate the region with an empty range,
+since an active region always defines the range.
 
 ``(meep-clipboard-killring-cut)``
    Kill the current region.
@@ -680,16 +685,8 @@ without mixing the system clipboard.
 ``(meep-clipboard-killring-yank)``
    Yank from the ``kill-ring``, replacing the region.
 
-``(meep-clipboard-killring-yank-as-lines)``
-   Yank from the ``kill-ring``, replacing the region (as lines).
-
 ``(meep-clipboard-killring-yank-no-pop)``
    Yank from the ``kill-ring``, replacing the region.
-
-   Don't modify the ``kill-ring`` to yank the same text multiple times.
-
-``(meep-clipboard-killring-yank-no-pop-as-lines)``
-   Yank from the ``kill-ring``, replacing the region (as lines).
 
    Don't modify the ``kill-ring`` to yank the same text multiple times.
 
