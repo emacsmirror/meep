@@ -3962,21 +3962,35 @@ USE-COMMENT-STRIP, strips comments between lines."
     changed))
 
 ;;;###autoload
-(defun meep-join-line-next ()
-  "Join the next line to this one."
-  (interactive "*")
-
+(defun meep-join-line-next (arg)
+  "Join the next line to this one ARG times."
+  (interactive "*p")
   ;; TODO: make optional.
   (let ((use-comment-strip t)
         (changed nil))
     (cond
+     ((zerop arg)) ; NOP, unlikely, include for correctness.
      ((region-active-p)
       (when (meep--join-region-impl (region-beginning) (region-end) use-comment-strip)
         (setq changed t)))
+     ((< arg 0)
+      (meep-join-line-prev (- arg)))
      (t
       (let ((bol (pos-bol))
-            (eol (pos-eol)))
-        (let ((range (meep--join-range bol eol use-comment-strip)))
+            (eol (pos-eol))
+            (range nil))
+        (while (and (not
+                     (zerop
+                      (prog1 arg
+                        (meep--decf arg))))
+                    (save-excursion
+                      (setq bol (pos-bol))
+                      (cond
+                       ((/= bol (point-min))
+                        (setq eol (pos-eol))
+                        (setq range (meep--join-range bol eol use-comment-strip)))
+                       (t
+                        nil))))
           (let ((add-space (/= bol (car range))))
             (meep--join-delete-region-maybe-space (car range) (cdr range) add-space)
             (let ((pos-new (car range)))
@@ -3990,27 +4004,36 @@ USE-COMMENT-STRIP, strips comments between lines."
     changed))
 
 ;;;###autoload
-(defun meep-join-line-prev ()
-  "Join the previous line to this one."
-  (interactive "*")
-
+(defun meep-join-line-prev (arg)
+  "Join the previous line to this one ARG times."
+  (interactive "*p")
   ;; TODO: make optional.
   (let ((use-comment-strip t)
         (changed nil))
     (cond
+     ((zerop arg)) ; NOP, unlikely, include for correctness.
      ((region-active-p)
       (when (meep--join-region-impl (region-beginning) (region-end) use-comment-strip)
         (setq changed t)))
+     ((< arg 0)
+      (meep-join-line-next (- arg)))
      (t
       (let ((bol nil)
             (eol nil)
             (range nil))
-        (save-excursion
-          (when (zerop (forward-line -1))
-            (setq bol (pos-bol))
-            (setq eol (pos-eol))
-            (setq range (meep--join-range bol eol use-comment-strip))))
-        (when range
+        (while (and (not
+                     (zerop
+                      (prog1 arg
+                        (meep--decf arg))))
+                    (save-excursion
+
+                      (cond
+                       ((zerop (forward-line -1))
+                        (setq bol (pos-bol))
+                        (setq eol (pos-eol))
+                        (setq range (meep--join-range bol eol use-comment-strip)))
+                       (t
+                        nil))))
           (let ((add-space (/= bol (car range))))
             (meep--join-delete-region-maybe-space (car range) (cdr range) add-space)
             (let ((pos-new (car range)))

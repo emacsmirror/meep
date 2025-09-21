@@ -583,11 +583,11 @@ Joined at the first line removes the leading ``*``:
 
    /* Example. Block. Next line. */
 
-``(meep-join-line-next)``
-   Join the next line to this one.
+``(meep-join-line-next ARG)``
+   Join the next line to this one ARG times.
 
-``(meep-join-line-prev)``
-   Join the previous line to this one.
+``(meep-join-line-prev ARG)``
+   Join the previous line to this one ARG times.
 
 Text Editing: Tab Wrapper
 ^^^^^^^^^^^^^^^^^^^^^^^^^
