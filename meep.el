@@ -4460,7 +4460,7 @@ When AS-LINES is non-nil, yank whole lines after the current line."
 
 ;;;###autoload
 (defun meep-clipboard-only-yank-with-indent ()
-  "Paste from the clipboard-only, replacing the region (indenting the content)."
+  "Yank from the clipboard-only, replacing the region (indenting the content)."
   (interactive "*")
   (let ((yank-transform-functions
          (list
@@ -4473,13 +4473,13 @@ When AS-LINES is non-nil, yank whole lines after the current line."
 
 ;;;###autoload
 (defun meep-clipboard-only-yank ()
-  "Paste from the clipboard-only, replacing the region (as lines)."
+  "Yank from the clipboard-only, replacing the region (as lines)."
   (interactive "*")
   (meep--clipboard-only-yank-impl nil))
 
 ;;;###autoload
 (defun meep-clipboard-only-yank-as-lines ()
-  "Paste from the clipboard-only, replacing the region (as lines)."
+  "Yank from the clipboard-only, replacing the region (as lines)."
   (interactive "*")
   (meep--clipboard-only-yank-impl t))
 
@@ -4634,19 +4634,19 @@ The region need not be active."
 
 ;;;###autoload
 (defun meep-clipboard-killring-yank ()
-  "Paste from the `kill-ring', replacing the region."
+  "Yank from the `kill-ring', replacing the region."
   (interactive "*")
   (meep--clipboard-killring-yank-impl nil nil))
 
 ;;;###autoload
 (defun meep-clipboard-killring-yank-as-lines ()
-  "Paste from the `kill-ring', replacing the region (as lines)."
+  "Yank from the `kill-ring', replacing the region (as lines)."
   (interactive "*")
   (meep--clipboard-killring-yank-impl nil t))
 
 ;;;###autoload
 (defun meep-clipboard-killring-yank-no-pop ()
-  "Paste from the `kill-ring', replacing the region.
+  "Yank from the `kill-ring', replacing the region.
 
 Don't modify the `kill-ring' to yank the same text multiple times."
   (interactive "*")
@@ -4654,7 +4654,7 @@ Don't modify the `kill-ring' to yank the same text multiple times."
 
 ;;;###autoload
 (defun meep-clipboard-killring-yank-no-pop-as-lines ()
-  "Paste from the `kill-ring', replacing the region (as lines).
+  "Yank from the `kill-ring', replacing the region (as lines).
 
 Don't modify the `kill-ring' to yank the same text multiple times."
   (interactive "*")
@@ -4677,8 +4677,8 @@ Don't modify the `kill-ring' to yank the same text multiple times."
     (copy-to-register reg beg end nil t)
     (delete-region beg end)))
 
-(defun meep--clipboard-register-paste-impl (reg as-lines)
-  "Paste from register REG.
+(defun meep--clipboard-register-yank-impl (reg as-lines)
+  "Yank from register REG.
 When AS-LINES is non-nil, paste whole lines."
   (when (region-active-p)
     (let ((beg (region-beginning))
@@ -4740,18 +4740,18 @@ Uses the `meep-clipboard-register-map' key-map."
     (message "No region to cut"))))
 
 ;;;###autoload
-(defun meep-clipboard-register-paste ()
-  "Paste from pre-defined register."
+(defun meep-clipboard-register-yank ()
+  "Yank from pre-defined register."
   (interactive "*")
   (let ((reg meep--clipboard-register-current))
-    (meep--clipboard-register-paste-impl reg nil)))
+    (meep--clipboard-register-yank-impl reg nil)))
 
 ;;;###autoload
-(defun meep-clipboard-register-paste-lines ()
-  "Paste from pre-defined register as lines."
+(defun meep-clipboard-register-yank-lines ()
+  "Yank from pre-defined register as lines."
   (interactive "*")
   (let ((reg meep--clipboard-register-current))
-    (meep--clipboard-register-paste-impl reg t)))
+    (meep--clipboard-register-yank-impl reg t)))
 
 
 ;; ---------------------------------------------------------------------------

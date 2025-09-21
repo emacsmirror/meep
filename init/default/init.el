@@ -279,7 +279,7 @@
 
   (my-meep-define-keys meep-clipboard-register-map
     '("e" . meep-clipboard-register-cut)
-    '("r" . meep-clipboard-register-paste)
+    '("r" . meep-clipboard-register-yank)
     '("t" . meep-clipboard-register-copy)))
 
 ;; ---------------------------------------------------------------------------

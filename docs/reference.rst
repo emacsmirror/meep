@@ -649,13 +649,13 @@ without mixing the kill-ring or primary clipboard - for predictable results.
    Cut the whole line using the clipboard-only.
 
 ``(meep-clipboard-only-yank-with-indent)``
-   Paste from the clipboard-only, replacing the region (indenting the content).
+   Yank from the clipboard-only, replacing the region (indenting the content).
 
 ``(meep-clipboard-only-yank)``
-   Paste from the clipboard-only, replacing the region (as lines).
+   Yank from the clipboard-only, replacing the region (as lines).
 
 ``(meep-clipboard-only-yank-as-lines)``
-   Paste from the clipboard-only, replacing the region (as lines).
+   Yank from the clipboard-only, replacing the region (as lines).
 
 Clipboard: Kill Ring
 ^^^^^^^^^^^^^^^^^^^^
@@ -678,18 +678,18 @@ without mixing the system clipboard.
    Copy the whole line to the kill ring.
 
 ``(meep-clipboard-killring-yank)``
-   Paste from the ``kill-ring``, replacing the region.
+   Yank from the ``kill-ring``, replacing the region.
 
 ``(meep-clipboard-killring-yank-as-lines)``
-   Paste from the ``kill-ring``, replacing the region (as lines).
+   Yank from the ``kill-ring``, replacing the region (as lines).
 
 ``(meep-clipboard-killring-yank-no-pop)``
-   Paste from the ``kill-ring``, replacing the region.
+   Yank from the ``kill-ring``, replacing the region.
 
    Don't modify the ``kill-ring`` to yank the same text multiple times.
 
 ``(meep-clipboard-killring-yank-no-pop-as-lines)``
-   Paste from the ``kill-ring``, replacing the region (as lines).
+   Yank from the ``kill-ring``, replacing the region (as lines).
 
    Don't modify the ``kill-ring`` to yank the same text multiple times.
 
@@ -707,11 +707,11 @@ Clipboard: Register
 ``(meep-clipboard-register-cut)``
    Cut to pre-defined register.
 
-``(meep-clipboard-register-paste)``
-   Paste from pre-defined register.
+``(meep-clipboard-register-yank)``
+   Yank from pre-defined register.
 
-``(meep-clipboard-register-paste-lines)``
-   Paste from pre-defined register as lines.
+``(meep-clipboard-register-yank-lines)``
+   Yank from pre-defined register as lines.
 
 Keypad Mode
 ^^^^^^^^^^^
