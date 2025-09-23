@@ -28,11 +28,10 @@ Custom Variables
 
    - When the region on a single line:
      The text after point implies the selection.
-   - When a rectangle region is used:
+   - When a line-wise region is used:
+     The same number of lines after the point is used (ignoring line length).
+   - When a rectangle-wise region is used:
      The text after & lines below are used to create the implied selection.
-
-   Note: currently implying a selection from multiple selected lines
-   is not supported.
 
 ``meep-isearch-activate-mark``: ``t``
    ISearch activates the mark (transient).
