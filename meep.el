@@ -902,16 +902,14 @@ NOERROR is forwarded to `line-move'."
   "Move backward sentences, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (meep--with-maintain-line-based-region
-      (forward-sentence (- arg)))))
+    (forward-sentence (- arg))))
 
 ;;;###autoload
 (defun meep-move-sentence-next (arg)
   "Move forward sentences, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (meep--with-maintain-line-based-region
-      (forward-sentence arg))))
+    (forward-sentence arg)))
 
 
 ;; ---------------------------------------------------------------------------
