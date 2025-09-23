@@ -827,15 +827,30 @@ A negative ARG moves to the beginning."
   "Call `line-move' N, with `last-command' set to respect the goal column.
 Only needed from interactive line move.
 NOERROR is forwarded to `line-move'."
-  (cond
-   ((eq last-command 'meep-move-line-next)
-    (let ((last-command 'next-line))
-      (line-move n noerror)))
-   ((eq last-command 'meep-move-line-prev)
-    (let ((last-command 'previous-line))
-      (line-move n noerror)))
-   (t
-    (line-move n noerror))))
+  ;; With a line-wise region, enforce a zero goal.
+  ;; Needed for line-wise regions when used with packages that use overlays such as
+  ;; `hl-indent-scope' which cause the line beginning not to start at the 0-th column.
+  ;; In this case it's necessary to force the column to be zero.
+  (let ((goal-column
+         (cond
+          ((and (eq meep-state-region-elem 'line-wise)
+                ;; Only makes sense to use line-wise with an active region.
+                (region-active-p)
+                ;; Otherwise this locks to the line beginning,
+                ;; even after horizon motion which feels too constrained.
+                (bolp))
+           0)
+          (t
+           goal-column)))
+        (last-command
+         (cond
+          ((eq last-command 'meep-move-line-next)
+           'next-line)
+          ((eq last-command 'meep-move-line-prev)
+           'previous-line)
+          (t
+           last-command))))
+    (line-move n noerror)))
 
 ;;;###autoload
 (defun meep-move-line-prev (arg)
