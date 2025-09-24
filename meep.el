@@ -2101,6 +2101,7 @@ When INNER is non-nil move to the outer bounds."
         (info-text
          (list
           "p: paragraph"
+          ".: sentence"
           "c: comment"
           "s: string"
           "l: line"
