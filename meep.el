@@ -293,7 +293,6 @@ Return t when the point was moved to the comment start."
      beg end)
     (nreverse result)))
 
-
 (defun meep--columns-from-point-range (beg end)
   "Calculate the column offset between points BEG & END.
 
@@ -308,6 +307,17 @@ Typically these will be on the same line but this isn't a requirement."
              (goto-char end)
              (current-column))))
       (- col-end col-beg))))
+
+(defmacro meep--with-substitute-last-command (command-alist &rest body)
+  "Execute BODY, replacing last-command COMMAND-ALIST."
+  (declare (indent 1))
+  `(let ((last-command
+          (or (and (symbolp last-command)
+                   ;; Replace the `last-command' if possible.
+                   (cdr (assq last-command ,command-alist)))
+              ;; Keep existing binding.
+              last-command)))
+     ,@body))
 
 
 ;; ---------------------------------------------------------------------------
@@ -842,15 +852,10 @@ NOERROR is forwarded to `line-move'."
            0)
           (t
            goal-column)))
-        (last-command
-         (cond
-          ((eq last-command 'meep-move-line-next)
-           'next-line)
-          ((eq last-command 'meep-move-line-prev)
-           'previous-line)
-          (t
-           last-command))))
-    (line-move n noerror)))
+        (command-alist
+         (list (cons 'meep-move-line-next 'next-line) (cons 'meep-move-line-prev 'previous-line))))
+    (meep--with-substitute-last-command command-alist
+      (line-move n noerror))))
 
 ;;;###autoload
 (defun meep-move-line-prev (arg)
