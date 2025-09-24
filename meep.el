@@ -853,7 +853,10 @@ NOERROR is forwarded to `line-move'."
           (t
            goal-column)))
         (command-alist
-         (list (cons 'meep-move-line-next 'next-line) (cons 'meep-move-line-prev 'previous-line))))
+         (list
+          (cons 'meep-move-line-next 'next-line)
+          (cons 'meep-move-line-prev 'previous-line)
+          (cons 'meep-move-line-end 'move-end-of-line))))
     (meep--with-substitute-last-command command-alist
       (line-move n noerror))))
 
