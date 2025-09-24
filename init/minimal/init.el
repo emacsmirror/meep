@@ -19,13 +19,13 @@
 ;; - Visual mode.
 ;; - Insert mode keys.
 
-(defun my-meep-define-keys (map &rest keybinds)
+(defun my-meep-keymap-set-many (map &rest keybinds)
   (declare (indent 1))
   (pcase-dolist (`(,key . ,def) keybinds)
-    (define-key map (kbd key) def)))
+    (keymap-set map key def)))
 
 (defun my-meep-basis-keys ()
-  (my-meep-define-keys meep-state-keymap-motion
+  (my-meep-keymap-set-many meep-state-keymap-motion
 
     ;; Motion.
     '("h" . meep-move-char-prev)
@@ -110,11 +110,11 @@
     '("V" . meep-region-expand-to-line-bounds)
     '("C-v" . rectangle-mark-mode))
 
-  (my-meep-define-keys meep-state-keymap-normal)
+  (my-meep-keymap-set-many meep-state-keymap-normal)
 
-  (my-meep-define-keys meep-state-keymap-visual)
+  (my-meep-keymap-set-many meep-state-keymap-visual)
 
-  (my-meep-define-keys meep-state-keymap-insert '("<escape>" . bray-state-stack-pop)))
+  (my-meep-keymap-set-many meep-state-keymap-insert '("<escape>" . bray-state-stack-pop)))
 
 
 ;; ----------------------------------------------------------------------------
@@ -222,7 +222,7 @@
   (defvar meep-state-keymap-insert (make-keymap))
 
   ;; Optional, a quick way to mask insertion.
-  (define-key meep-state-keymap-motion [remap self-insert-command] 'undefined)
+  (keymap-set meep-state-keymap-motion [remap self-insert-command] 'undefined)
 
   (setq bray-state-definitions
         (list

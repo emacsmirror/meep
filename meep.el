@@ -2113,26 +2113,26 @@ When INNER is non-nil move to the outer bounds."
     (when (< n 0)
       (setq prefix-arg -1))
 
-    (define-key km "." 'meep-move-to-bounds-of-sentence-inner)
-    (define-key km ">" 'meep-move-to-bounds-of-sentence)
+    (keymap-set km "." 'meep-move-to-bounds-of-sentence-inner)
+    (keymap-set km ">" 'meep-move-to-bounds-of-sentence)
 
-    (define-key km "p" 'meep-move-to-bounds-of-paragraph-inner)
-    (define-key km "P" 'meep-move-to-bounds-of-paragraph)
+    (keymap-set km "p" 'meep-move-to-bounds-of-paragraph-inner)
+    (keymap-set km "P" 'meep-move-to-bounds-of-paragraph)
 
-    (define-key km "c" 'meep-move-to-bounds-of-comment-inner)
-    (define-key km "C" 'meep-move-to-bounds-of-comment)
+    (keymap-set km "c" 'meep-move-to-bounds-of-comment-inner)
+    (keymap-set km "C" 'meep-move-to-bounds-of-comment)
 
-    (define-key km "s" 'meep-move-to-bounds-of-string-inner)
-    (define-key km "S" 'meep-move-to-bounds-of-string)
+    (keymap-set km "s" 'meep-move-to-bounds-of-string-inner)
+    (keymap-set km "S" 'meep-move-to-bounds-of-string)
 
-    (define-key km "l" 'meep-move-to-bounds-of-line-inner)
-    (define-key km "L" 'meep-move-to-bounds-of-line)
+    (keymap-set km "l" 'meep-move-to-bounds-of-line-inner)
+    (keymap-set km "L" 'meep-move-to-bounds-of-line)
 
-    (define-key km "v" 'meep-move-to-bounds-of-visual-line)
-    (define-key km "V" 'meep-move-to-bounds-of-visual-line-inner)
+    (keymap-set km "v" 'meep-move-to-bounds-of-visual-line)
+    (keymap-set km "V" 'meep-move-to-bounds-of-visual-line-inner)
 
-    (define-key km "d" 'meep-move-to-bounds-of-defun-inner)
-    (define-key km "D" 'meep-move-to-bounds-of-defun)
+    (keymap-set km "d" 'meep-move-to-bounds-of-defun-inner)
+    (keymap-set km "D" 'meep-move-to-bounds-of-defun)
 
     (set-transient-map km
                        nil ; Don't keep the keymap it active.
