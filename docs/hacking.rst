@@ -20,8 +20,8 @@ Dependencies
 - No use of ``cl-lib``.
 
 
-Conventions
-===========
+User Facing Conventions
+=======================
 
 - Interactive functions should accept a numeric arguments where applicable.
 - Interactive functions that are directional should be reversed when passing in a negative number.
@@ -30,6 +30,24 @@ Conventions
   Use ``message`` for commands that need to communicate no changes were performed.
 
   *So as not to interfere with recording macros or repeating actions.*
+
+
+Internal Conventions
+====================
+
+- For customizing behavior for certain commands, symbol properties are used.
+
+  Properties are stored in a P-list stored in the ``'meep``'s symbol property.
+
+  So instead of checking ``last-command`` (for example), against literal values,
+  interactive commands must declare a property which provides hints about the commands intended use.
+
+  This has various advantages:
+
+  - The check is a direct lookup.
+  - This may be extended by users,
+    commands from 3rd party packages may also get/set these properties.
+  - It avoids command hints being scattered about as hard coded literals within a commands logic.
 
 
 Make Targets
