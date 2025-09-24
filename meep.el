@@ -308,13 +308,11 @@ Typically these will be on the same line but this isn't a requirement."
              (current-column))))
       (- col-end col-beg))))
 
-(defmacro meep--with-substitute-last-command (command-alist &rest body)
-  "Execute BODY, replacing last-command COMMAND-ALIST."
-  (declare (indent 1))
+(defmacro meep--with-substitute-last-command (&rest body)
+  "Execute BODY, replacing `last-command' with it's :substitute if defined."
+  (declare (indent 0))
   `(let ((last-command
-          (or (and (symbolp last-command)
-                   ;; Replace the `last-command' if possible.
-                   (cdr (assq last-command ,command-alist)))
+          (or (and (symbolp last-command) (meep-command-prop-get last-command :substitute))
               ;; Keep existing binding.
               last-command)))
      ,@body))
@@ -851,13 +849,9 @@ NOERROR is forwarded to `line-move'."
                 (bolp))
            0)
           (t
-           goal-column)))
-        (command-alist
-         (list
-          (cons 'meep-move-line-next 'next-line)
-          (cons 'meep-move-line-prev 'previous-line)
-          (cons 'meep-move-line-end 'move-end-of-line))))
-    (meep--with-substitute-last-command command-alist
+           goal-column))))
+    ;; Needed for line motion.
+    (meep--with-substitute-last-command
       (line-move n noerror))))
 
 ;;;###autoload
@@ -5142,6 +5136,14 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
           'meep-move-to-bounds-of-visual-line
           'meep-move-to-bounds-of-defun))
   (meep-command-prop-set cmd :mark-on-motion t))
+
+(dolist (cmd-pair
+         (list
+          (cons 'meep-move-line-next 'next-line)
+          (cons 'meep-move-line-prev 'previous-line)
+          (cons 'meep-move-line-end 'move-end-of-line)
+          (cons 'meep-move-line-beginning 'move-beginning-of-line)))
+  (meep-command-prop-set (car cmd-pair) :substitute (cdr cmd-pair)))
 
 
 ;; ---------------------------------------------------------------------------
