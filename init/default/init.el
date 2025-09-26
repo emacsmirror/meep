@@ -113,7 +113,7 @@
     '("e" . meep-clipboard-killring-cut)
     '("E" . meep-clipboard-only-cut)
 
-    '("r" . meep-clipboard-killring-yank)
+    '("r" . meep-clipboard-killring-yank-pop-stack)
     '("R" . meep-clipboard-only-yank)
 
     '("t" . meep-clipboard-killring-copy)

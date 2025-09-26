@@ -667,6 +667,8 @@ to place the point at the beginning of the line.
 If you wish to override this behavior, you may activate the region with an empty range,
 since an active region always defines the range.
 
+Note that rect-wise regions are also stored in the kill-ring and paste from the top-left.
+
 ``(meep-clipboard-killring-cut)``
    Kill the current region.
    The region need not be active.
@@ -681,13 +683,15 @@ since an active region always defines the range.
 ``(meep-clipboard-killring-copy-line)``
    Copy the whole line to the kill ring.
 
-``(meep-clipboard-killring-yank)``
-   Yank from the ``kill-ring``, replacing the region.
+``(meep-clipboard-killring-yank-pop-stack ARG)``
+   Yank from the ARG'th item from the ``kill-ring`` which is rotated.
 
-``(meep-clipboard-killring-yank-no-pop)``
-   Yank from the ``kill-ring``, replacing the region.
+   Rotating the kill ring means that you may kill multiple items,
+   then conveniently yank those items afterwards.
 
-   Don't modify the ``kill-ring`` to yank the same text multiple times.
+``(meep-clipboard-killring-yank ARG)``
+   Yank from the ARG'th item from the ``kill-ring``.
+   The region is replaced (when active).
 
 Clipboard: Register
 ^^^^^^^^^^^^^^^^^^^

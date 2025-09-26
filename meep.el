@@ -4508,97 +4508,128 @@ When DO-CUT is non-nil, cut instead of copying."
 ;;
 ;; If you wish to override this behavior, you may activate the region with an empty range,
 ;; since an active region always defines the range.
+;;
+;; Note that rect-wise regions are also stored in the kill-ring and paste from the top-left.
 
-;; TODO: replace this is something much more sophisticated
-;; such as support for rectangles *in* the kill ring.
-;; For now simply allow rectangles to be copy/pasted,
-;; without supporting the kill-ring.
-(defvar meep--clipboard-killring-is-rectangle nil)
+;; Currently only used to differentiate each kind regions (line-wise & rect-wise).
+(defun meep--yank-handler-line-wise (&rest args)
+  "Line wise wrapper for ARGS."
+  (apply #'insert args))
+(defun meep--yank-handler-rect-wise (&rest args)
+  "Rectangle wise wrapper for ARGS."
+  (apply #'insert args))
+(defconst meep--yank-handler-from-region-type-alist
+  (list
+   (cons 'line-wise 'meep--yank-handler-line-wise)
+   (cons 'rect-wise 'meep--yank-handler-rect-wise)))
 
-;; Needed so it's possible to store hints in the kill-ring.
-(defun meep--clipboard-killring-yank-without-meep-props (text)
-  "Remove MEEP properties from TEXT."
-  (remove-text-properties 0 (length text) (list 'meep nil) text)
-  text)
+(defun meep--yank-handler-from-region-type (region-type)
+  "Return the yank-handler from the REGION-TYPE or ni."
+  (cdr (assq region-type meep--yank-handler-from-region-type-alist)))
 
-(defun meep--clipboard-killring-yank-impl (keep)
-  "Yank-replace from kill ring.
-When KEEP is non-nil, don't modify the kill ring."
-  (cond
-   ;; Rectangle paste.
-   (meep--clipboard-killring-is-rectangle
-    (when (region-active-p)
-      (cond
-       ((bound-and-true-p rectangle-mark-mode)
-        (deactivate-mark t)
-        (delete-rectangle (region-beginning) (region-end)))
-       (t
-        (let ((bounds (cons (region-beginning) (region-end))))
-          ;; Important for the point to be at the start.
-          ;; So pasting replaces this region.
-          (when (< (mark) (point))
-            (let ((pos-orig (point)))
-              (goto-char (mark))
-              (set-marker (mark-marker) pos-orig)))
+(defun meep--yank-handler-to-region-type (yank-handler)
+  "Return region type from the YANK-HANDLER or nil."
+  (car (rassq yank-handler meep--yank-handler-from-region-type-alist)))
 
+(defun meep--wrap-current-kill (n &optional do-not-move)
+  "Wrap `current-kill', only ever use the kill ring.
+Forward N & DO-NOT-MOVE."
+  (let ((interprogram-paste-function nil))
+    (current-kill n do-not-move)))
+
+(defun meep--clipboard-killring-yank-impl (n do-not-move rotate-as-stack)
+  "Yank-replace the N'th element from kill ring.
+When DO-NOT-MOVE is non-nil, don't modify the kill ring.
+When ROTATE-AS-STACK is non-nil, step to the next item in the kill ring."
+  (let* ((text (meep--wrap-current-kill n do-not-move))
+         (yank-handler (get-text-property 0 'yank-handler text))
+         ;; A NOP if yank-handler is nil (harmless).
+         (region-type (meep--yank-handler-to-region-type (car yank-handler))))
+
+    (unless do-not-move
+      ;; Step onto the next item (behave like a stack).
+      (when rotate-as-stack
+        ;; (meep--wrap-current-kill (1+ n))
+        (cond
+         (kill-ring-yank-pointer
+          (setq kill-ring-yank-pointer (cdr kill-ring-yank-pointer)))
+         (t
+          (setq kill-ring-yank-pointer kill-ring)))))
+
+    (cond
+     ;; Rectangle paste.
+     ((eq region-type 'rect-wise)
+      (when (region-active-p)
+        (cond
+         ((bound-and-true-p rectangle-mark-mode)
           (deactivate-mark t)
-          ;; Deleting the region doesn't work so nicely with block pasting.
-          ;; Instead, make each line blank, then the block paste replaces
-          ;; the empty lines
-          (save-restriction
-            (save-excursion
-              (narrow-to-region (car bounds) (cdr bounds))
-              (goto-char (point-min))
-              (let ((keep-searching t))
-                (while keep-searching
-                  (delete-region (pos-bol) (pos-eol))
-                  (unless (zerop (forward-line 1))
-                    (setq keep-searching nil))))))))))
+          (delete-rectangle (region-beginning) (region-end)))
+         (t
+          (let ((bounds (cons (region-beginning) (region-end))))
+            ;; Important for the point to be at the start.
+            ;; So pasting replaces this region.
+            (when (< (mark) (point))
+              (let ((pos-orig (point)))
+                (goto-char (mark))
+                (set-marker (mark-marker) pos-orig)))
 
-    (call-interactively #'yank-rectangle)
+            (deactivate-mark t)
+            ;; Deleting the region doesn't work so nicely with block pasting.
+            ;; Instead, make each line blank, then the block paste replaces
+            ;; the empty lines
+            (save-restriction
+              (save-excursion
+                (narrow-to-region (car bounds) (cdr bounds))
+                (goto-char (point-min))
+                (let ((keep-searching t))
+                  (while keep-searching
+                    (delete-region (pos-bol) (pos-eol))
+                    (unless (zerop (forward-line 1))
+                      (setq keep-searching nil))))))))))
 
-    (unless keep
-      ;; Behave as if this has been popped.
-      (setq meep--clipboard-killring-is-rectangle nil)))
+      ;; Note, no need to set the marker.
+      (let ((lines (string-split text "\n")))
+        (insert-rectangle lines)))
 
-   ;; Regular kill ring paste.
-   ((null kill-ring)
-    ;; Simplifies logic below if this is caught early.
-    (message "Kill ring is empty"))
-   (t
-    ;; Ignore the text's region type if we already have an active region.
-    ;; Because an active region implies the region is replaced,
-    ;; there is no need for line-wise logic as pasting into a line-wise
-    ;; region is implicitly line-wise.
-    (let ((line-wise nil))
+     ((or (null region-type) (eq region-type 'line-wise))
+      ;; Ignore the text's region type if we already have an active region.
+      ;; Because an active region implies the region is replaced,
+      ;; there is no need for line-wise logic as pasting into a line-wise
+      ;; region is implicitly line-wise.
       (cond
        ((region-active-p)
         (let ((bounds (cons (region-beginning) (region-end))))
           (deactivate-mark t)
           (delete-region (car bounds) (cdr bounds))))
-       (t
-        (let* ((text (car kill-ring))
-               (plist (get-text-property 0 'meep text))
-               (region-type (plist-get plist :region-type)))
-          (when (eq region-type 'line-wise)
-            (setq line-wise t)))))
-
-      (when line-wise
-        (goto-char (pos-bol)))
+       ;; Only use line-wise when there is no active-region.
+       ((eq region-type 'line-wise)
+        (goto-char (pos-bol))))
 
       (let ((pos-init (point)))
-        (let ((select-enable-clipboard nil))
-          ;; Remove MEEP properties from yanked text.
-          (let ((yank-transform-functions
-                 (cons
-                  #'meep--clipboard-killring-yank-without-meep-props yank-transform-functions)))
-            (yank))
+        ;; TODO: there may be aspects of `yank' we want to copy.
+        (insert-for-yank text)
+        (set-marker (mark-marker) pos-init)))
+     (t
+      ;; Internal error.
+      (error "Unexpected region type %S (this is a bug)" region-type)))))
 
-          (unless keep
-            (pop kill-ring)
-            (setq kill-ring-yank-pointer kill-ring)))
-
-        (set-marker (mark-marker) pos-init))))))
+(defun meep--clipboard-killring-yank-impl-interactive (arg do-not-move rotate-as-stack)
+  "Handle interactive part of yanking, interpret raw ARG.
+Forward DO-NOT-MOVE & ROTATE-AS-STACK."
+  (cond
+   ;; Simplifies logic below if this is caught early.
+   ((null kill-ring)
+    (message "Kill ring is empty"))
+   (t
+    (setq arg
+          (cond
+           ((listp arg)
+            0)
+           ((eq arg '-)
+            -2)
+           (t
+            (1- arg))))
+    (meep--clipboard-killring-yank-impl arg do-not-move rotate-as-stack))))
 
 (defun meep--clipboard-killring-cut-or-copy (beg end region-type do-cut)
   "An equivalent to `kill-region' that respects MEEP clipboard settings.
@@ -4617,52 +4648,46 @@ this may be used when yanking."
                "Copy"))))
    (t
     (let ((select-enable-clipboard nil)
-          (text (buffer-substring-no-properties beg end)))
+          (text
+           (cond
+            ((eq region-type 'rect-wise)
+             ;; NOTE: `copy-rectangle-as-kill' does some other things we may want to do.
+             ;; Nothing essential though.
+             (mapconcat #'identity (extract-rectangle beg end) "\n"))
+            (t
+             (buffer-substring-no-properties beg end)))))
 
       (when region-type
-        (add-text-properties 0 (length text) (list 'meep (list :region-type region-type)) text))
+        (let ((yank-handler (list (meep--yank-handler-from-region-type region-type) nil)))
+          (meep--assert yank-handler) ; Otherwise the region-type is invalid.
+          (add-text-properties 0 (length text) (list 'yank-handler yank-handler) text)))
 
       (kill-new text)
-      (setq kill-ring-yank-pointer nil)
       (when do-cut
-        (delete-region beg end))
-      ;; Match behavior for copying the clipboard.
-      (setq deactivate-mark t))))
-  (setq meep--clipboard-killring-is-rectangle nil))
+        (cond
+         ((eq region-type 'rect-wise)
+          (delete-rectangle beg end))
+         (t
+          (delete-region beg end))))
 
-(defun meep--clipboard-killring-cut-or-copy-rectangle (do-cut)
-  "Kill or copy the rectangle region.
-When DO-CUT is non-nil, delete the region."
-  (cond
-   (do-cut
-    (call-interactively #'kill-rectangle))
-   (t
-    (call-interactively #'copy-rectangle-as-kill)))
-  (setq meep--clipboard-killring-is-rectangle t))
+      ;; Match behavior for copying the clipboard.
+      (setq deactivate-mark t)))))
 
 ;;;###autoload
 (defun meep-clipboard-killring-cut ()
   "Kill the current region.
 The region need not be active."
   (interactive "*")
-  (cond
-   ((bound-and-true-p rectangle-mark-mode)
-    (meep--clipboard-killring-cut-or-copy-rectangle t))
-   (t
-    (let ((region-type (meep--state-region-type)))
-      (meep--clipboard-killring-cut-or-copy (region-beginning) (region-end) region-type t)))))
+  (let ((region-type (meep--state-region-type)))
+    (meep--clipboard-killring-cut-or-copy (region-beginning) (region-end) region-type t)))
 
 ;;;###autoload
 (defun meep-clipboard-killring-copy ()
   "Add the current region to the `kill-ring'.
 The region need not be active."
   (interactive)
-  (cond
-   ((bound-and-true-p rectangle-mark-mode)
-    (meep--clipboard-killring-cut-or-copy-rectangle nil))
-   (t
-    (let ((region-type (meep--state-region-type)))
-      (meep--clipboard-killring-cut-or-copy (region-beginning) (region-end) region-type nil)))))
+  (let ((region-type (meep--state-region-type)))
+    (meep--clipboard-killring-cut-or-copy (region-beginning) (region-end) region-type nil)))
 
 ;;;###autoload
 (defun meep-clipboard-killring-cut-line ()
@@ -4690,19 +4715,22 @@ The region need not be active."
     (meep--with-respect-goal-column
      (meep--clipboard-killring-cut-or-copy beg end region-type do-cut))))
 
+;; TODO: a pop like emacs which cycles.
 ;;;###autoload
-(defun meep-clipboard-killring-yank ()
-  "Yank from the `kill-ring', replacing the region."
-  (interactive "*")
-  (meep--clipboard-killring-yank-impl nil))
+(defun meep-clipboard-killring-yank-pop-stack (arg)
+  "Yank from the ARG'th item from the `kill-ring' which is rotated.
+
+Rotating the kill ring means that you may kill multiple items,
+then conveniently yank those items afterwards."
+  (interactive "*P")
+  (meep--clipboard-killring-yank-impl-interactive arg nil t))
 
 ;;;###autoload
-(defun meep-clipboard-killring-yank-no-pop ()
-  "Yank from the `kill-ring', replacing the region.
-
-Don't modify the `kill-ring' to yank the same text multiple times."
-  (interactive "*")
-  (meep--clipboard-killring-yank-impl t))
+(defun meep-clipboard-killring-yank (arg)
+  "Yank from the ARG'th item from the `kill-ring'.
+The region is replaced (when active)."
+  (interactive "*P")
+  (meep--clipboard-killring-yank-impl-interactive arg t nil))
 
 
 ;; ---------------------------------------------------------------------------
