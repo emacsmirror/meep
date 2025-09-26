@@ -2218,36 +2218,52 @@ this operation makes it stay active, running again clears it."
   (let ((local-last-command (meep--last-command))
         (local-last-prefix-arg (meep--last-prefix-arg))
         (local-mrk (mark))
-        (new-mrk nil))
+        (new-mrk nil)
+        (prefix "exchange-point-and-mark-motion"))
+    (cond
+     ((null local-mrk)
+      (message "%s: failed, no mark found, the mark is expected to be set by: %S"
+               prefix
+               local-last-command)
+      nil)
+     ((null local-last-command)
+      (message "%s: failed, no last-command found" prefix)
+      nil)
+     ((not (symbolp local-last-command))
+      (message "%s: failed, the last-command must be a symbol, not %S"
+               prefix
+               (type-of local-last-command))
+      nil)
+     ((eq local-last-command 'meep-exchange-point-and-mark-motion)
+      ;; This could be made to do something different/useful.
+      (message "%s: failed, cannot reverse ourselves" prefix)
+      nil)
 
-    (unless local-mrk
-      (user-error "No mark found, the mark is expected to be set by: %S" local-last-command))
+     (t
+      (let ((current-prefix-arg
+             (cond
+              ((and (integerp local-last-prefix-arg) (< local-last-prefix-arg 0))
+               1)
+              (t
+               -1))))
+        (save-excursion
+          (goto-char local-mrk)
+          ;; Not totally elegant, this is needed so the mark is correctly
+          ;; placed when on a word boundary.
+          ;; Otherwise this would step over the boundary which isn't desirable.
+          (let ((current-prefix-arg (- current-prefix-arg)))
+            (call-interactively local-last-command))
+          ;; Calling twice is intentional as the previous call reverses the motion.
+          (call-interactively local-last-command)
 
-    (when (eq local-last-command 'meep-exchange-point-and-mark-motion)
-      ;; This could be made to do something useful.
-      (user-error "Cannot reverse ourselves"))
+          (setq new-mrk (point))))
+      (setq deactivate-mark nil)
+      (set-marker (mark-marker) new-mrk)
 
-    (let ((current-prefix-arg
-           (cond
-            ((and (integerp local-last-prefix-arg) (< local-last-prefix-arg 0))
-             1)
-            (t
-             -1))))
-      (save-excursion
-        (goto-char local-mrk)
-        ;; Not totally elegant, this is needed so the mark is correctly
-        ;; placed when on a word boundary.
-        ;; Otherwise this would step over the boundary which isn't desirable.
-        (let ((current-prefix-arg (- current-prefix-arg)))
-          (call-interactively local-last-command))
-        ;; Calling twice is intentional as the previous call reverses the motion.
-        (call-interactively local-last-command)
+      (exchange-point-and-mark)
 
-        (setq new-mrk (point))))
-    (setq deactivate-mark nil)
-    (set-marker (mark-marker) new-mrk))
-
-  (exchange-point-and-mark))
+      ;; Success.
+      t))))
 
 
 ;; ---------------------------------------------------------------------------
