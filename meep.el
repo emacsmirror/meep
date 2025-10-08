@@ -4019,17 +4019,17 @@ USE-COMMENT-STRIP, strips comments between lines."
       (meep-join-line-prev (- arg)))
      (t
       (let ((bol (pos-bol))
-            (eol (pos-eol))
+            (eol nil)
             (range nil))
         (while (and (not
                      (zerop
                       (prog1 arg
                         (meep--decf arg))))
                     (save-excursion
-                      (setq bol (pos-bol))
+                      (setq eol (pos-eol))
                       (cond
-                       ((/= bol (point-min))
-                        (setq eol (pos-eol))
+                       ((/= eol (point-max))
+                        ;; No need to update `bol' as it doesn't change.
                         (setq range (meep--join-range bol eol use-comment-strip)))
                        (t
                         nil))))
