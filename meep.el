@@ -952,20 +952,45 @@ NOERROR is forwarded to `line-move'."
 (defun meep--goto-comment-or-string-bounds (dir)
   "Move point to the beginning/end of the comment or string.
 
-When DIR is -1, the beginning, 1 th the end."
+When DIR is -1, the beginning, 1 the end.
+Return t when stepping out of string or comment bounds."
   ;; When in a comment or string, skip out of it.
-  (let ((state (syntax-ppss)))
+  (let ((state (syntax-ppss))
+        (changed nil))
     (cond
      ((nth 3 state) ; String.
       (when-let* ((beg (nth 8 state)))
-        (goto-char beg)
-        (when (eq dir 1)
-          (forward-sexp))))
+        (cond
+         ((eq dir -1)
+          (goto-char beg)
+          (setq changed t))
+         (t
+          (let ((pos-init (point))
+                (pos-next nil))
+            (save-excursion
+              (goto-char beg)
+              (forward-sexp)
+              (unless (eq pos-init (point))
+                (setq pos-next (point))))
+            (when pos-next
+              (goto-char pos-next)
+              (setq changed t)))))))
      ((nth 4 state) ; Comment.
       (when-let* ((beg (nth 8 state)))
-        (goto-char beg)
-        (when (eq dir 1)
-          (forward-comment 1)))))))
+        (cond
+         ((eq dir -1)
+          (goto-char beg)
+          (setq changed t))
+         (t
+          (let ((pos-next nil))
+            (save-excursion
+              (goto-char beg)
+              (when (forward-comment 1)
+                (setq pos-next (point))))
+            (when pos-next
+              (goto-char pos-next)
+              (setq changed t))))))))
+    changed))
 
 (defun meep--jump-brackets-from-mode ()
   "Return a cons cell of brackets to use for navigation based on the major mode."
