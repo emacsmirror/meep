@@ -97,6 +97,13 @@ this is a hint that commands may use.")
          (prog1 ,j
            (setq ,j ,i))))
 
+;; Include a version of this function that checks the input,
+;; because if the value of `pos' is *ever* null, it's difficult
+;; to troubleshoot as the errors only show up later on.
+(defun meep--set-marker (pos)
+  "Set the current marker to POS."
+  (meep--assert (integerp pos))
+  (set-marker (mark-marker) pos))
 
 ;; ---------------------------------------------------------------------------
 ;; Internal Functions: Algorithms
@@ -366,7 +373,7 @@ Used so a motion can be repeated without setting the mark.")
              ;; without moving the mark.
              (null meep-mark-set-on-motion-override))
     (setq deactivate-mark t)
-    (set-marker (mark-marker) pos)))
+    (meep--set-marker pos)))
 (defmacro meep--with-mark-on-motion-maybe-set (&rest body)
   "Run the given BODY, motion will set the mark."
   (declare (indent 0))
@@ -395,7 +402,7 @@ POS-ORIG & MRK-ORIG define the original region."
           (goto-char mrk-orig)
           (beginning-of-line)
           (forward-line -1)
-          (set-marker (mark-marker) (point)))))
+          (meep--set-marker (point)))))
      ((> pos-orig mrk-orig)
       (when (<= (point) (mark))
         (beginning-of-line)
@@ -404,7 +411,7 @@ POS-ORIG & MRK-ORIG define the original region."
           (goto-char mrk-orig)
           (beginning-of-line)
           (forward-line 1)
-          (set-marker (mark-marker) (point))))))))
+          (meep--set-marker (point))))))))
 (defmacro meep--with-maintain-line-based-region (&rest body)
   "Run the given BODY, motion will set the mark."
   (declare (indent 0))
@@ -2258,7 +2265,7 @@ this operation makes it stay active, running again clears it."
 
           (setq new-mrk (point))))
       (setq deactivate-mark nil)
-      (set-marker (mark-marker) new-mrk)
+      (meep--set-marker new-mrk)
 
       (exchange-point-and-mark)
 
@@ -2410,10 +2417,10 @@ to line boundaries."
             (end (cdr range-region)))
         (cond
          (is-forward
-          (set-marker (mark-marker) beg)
+          (meep--set-marker beg)
           (goto-char end))
          (t
-          (set-marker (mark-marker) end)
+          (meep--set-marker end)
           (goto-char beg)))))))
 
 (defun meep--region-swap-rectangle-impl ()
@@ -2539,7 +2546,7 @@ to line boundaries."
      (is-forward
       (goto-char region-end-next))
      (t
-      (set-marker (mark-marker) region-end-next)))
+      (meep--set-marker region-end-next)))
 
     (move-overlay
      mouse-secondary-overlay (overlay-start mouse-secondary-overlay) secondary-end-next)))
@@ -2735,16 +2742,16 @@ use to maintain line-based selection."
           ;; Extend the selection.
           (cond
            (is-forward
-            (set-marker (mark-marker) beg-next)
+            (meep--set-marker beg-next)
             (goto-char end-next))
            (t
             (goto-char beg-next)
-            (set-marker (mark-marker) end-next))))))))
+            (meep--set-marker end-next))))))))
    (t
     ;; Select line, this setting "requests" future operations use line selection.
     (setq meep-state-region-elem 'line-wise)
 
-    (set-marker (mark-marker) (pos-bol))
+    (meep--set-marker (pos-bol))
     (goto-char (1+ (pos-eol)))
     (activate-mark t))))
 
@@ -2840,14 +2847,14 @@ use to maintain line-based selection."
           (cond
            ((eq beg (point))
             (goto-char beg-next)
-            (set-marker (mark-marker) end-next)
+            (meep--set-marker end-next)
             (progn
               (activate-mark t)
               (setq deactivate-mark nil)))
 
            (t
             (goto-char end-next)
-            (set-marker (mark-marker) beg-next)
+            (meep--set-marker beg-next)
             (progn
               (activate-mark t)
               (setq deactivate-mark nil)))))
@@ -2877,7 +2884,7 @@ use to maintain line-based selection."
                    (save-excursion
                      (skip-syntax-forward syn-str)
                      (point))))
-              (set-marker (mark-marker) beg-next)
+              (meep--set-marker beg-next)
               (goto-char end-next)
               (progn
                 (activate-mark t)
@@ -2967,14 +2974,14 @@ use to maintain line-based selection."
 
          ((eq beg (point))
           (goto-char beg-next)
-          (set-marker (mark-marker) end-next)
+          (meep--set-marker end-next)
           (progn
             (activate-mark t)
             (setq deactivate-mark nil)))
 
          (t
           (goto-char end-next)
-          (set-marker (mark-marker) beg-next)
+          (meep--set-marker beg-next)
           (progn
             (activate-mark t)
             (setq deactivate-mark nil)))))
@@ -3131,7 +3138,7 @@ This is only to be called from within ISEARCH functions.
 When HAD-REGION is non-nil, mark the region."
   (when isearch-success
     ;; Select.
-    (set-marker (mark-marker) isearch-other-end)
+    (meep--set-marker isearch-other-end)
     (cond
      ((or had-region meep-isearch-activate-mark)
       (activate-mark)
@@ -3565,10 +3572,10 @@ Leave the char-ring unmodified afterwards."
         ;; Restore the region (without activating it).
         (cond
          (is-forward
-          (set-marker (mark-marker) beg)
+          (meep--set-marker beg)
           (goto-char end))
          (t
-          (set-marker (mark-marker) end)
+          (meep--set-marker end)
           (goto-char beg)))))
      (t
       (cond
@@ -3600,7 +3607,7 @@ Leave the char-ring unmodified afterwards."
            (is-forward
             (goto-char end))
            (t
-            (set-marker (mark-marker) end)))))
+            (meep--set-marker end)))))
        (t
         (funcall replace-in-range-fn (point) (1+ (point)))))))))
 
@@ -4106,9 +4113,9 @@ USE-COMMENT-STRIP, strips comments between lines."
        ((eq bol eol)
         (user-error "The line is empty"))
        ((eq (point) bol)
-        (set-marker (mark-marker) eol))
+        (meep--set-marker eol))
        (t
-        (set-marker (mark-marker) bol))))
+        (meep--set-marker bol))))
     (setq deactivate-mark t))
   (call-interactively #'indent-rigidly))
 
@@ -4120,7 +4127,7 @@ USE-COMMENT-STRIP, strips comments between lines."
   "Enter insert mode."
   (when (region-active-p)
     (deactivate-mark t))
-  (set-marker (mark-marker) (point))
+  (meep--set-marker (point))
   (bray-state-stack-push meep-state-insert))
 
 ;;;###autoload
@@ -4268,10 +4275,10 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
       ;; Restore the region (without activating it).
       (cond
        (is-forward
-        (set-marker (mark-marker) beg)
+        (meep--set-marker beg)
         (goto-char end))
        (t
-        (set-marker (mark-marker) end)
+        (meep--set-marker end)
         (goto-char beg)))
 
       ;; Not essential but displays a little strangely otherwise.
@@ -4433,7 +4440,7 @@ When DO-CUT is non-nil, cut instead of copying."
 
       (insert text)
 
-      (set-marker (mark-marker) pos-init))))
+      (meep--set-marker pos-init))))
 
 ;; Used by paste-and-indent.
 (defun meep--region-strip-indentation (beg end)
@@ -4587,7 +4594,7 @@ When ROTATE-AS-STACK is non-nil, step to the next item in the kill ring."
             (when (< (mark) (point))
               (let ((pos-orig (point)))
                 (goto-char (mark))
-                (set-marker (mark-marker) pos-orig)))
+                (meep--set-marker pos-orig)))
 
             (deactivate-mark t)
             ;; Deleting the region doesn't work so nicely with block pasting.
@@ -4624,7 +4631,7 @@ When ROTATE-AS-STACK is non-nil, step to the next item in the kill ring."
       (let ((pos-init (point)))
         ;; TODO: there may be aspects of `yank' we want to copy.
         (insert-for-yank text)
-        (set-marker (mark-marker) pos-init)))
+        (meep--set-marker pos-init)))
      (t
       ;; Internal error.
       (error "Unexpected region type %S (this is a bug)" region-type)))))
@@ -4775,7 +4782,7 @@ The region is replaced (when active)."
 
   (let ((pos-init (point)))
     (insert-register reg t)
-    (set-marker (mark-marker) pos-init)))
+    (meep--set-marker pos-init)))
 
 
 ;; ---------------------------------------------------------------------------
