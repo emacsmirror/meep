@@ -1748,12 +1748,14 @@ Return nil if no matching syntax was found."
           (goto-char (car bounds))))
       result)))
 
+;;;###autoload
 (defun meep-move-matching-contextual-outer ()
   "Move to the matching character.
 When not at the bounds, jump the start."
   (interactive "^")
   (or (meep-move-matching-syntax-outer) (meep-move-matching-bracket-outer)))
 
+;;;###autoload
 (defun meep-move-matching-contextual-inner ()
   "Move to the matching character.
 When not at the bounds, jump the start."
@@ -3817,6 +3819,7 @@ When there is no active region, surround the current point."
   (interactive "*cSurround Char:\np")
   (meep--char-surround-insert-impl ch arg nil))
 
+;;;###autoload
 (defun meep-char-surround-insert-lines (ch arg)
   "Read a character CH and surround the selected lines with it.
 Inset ARG times.
