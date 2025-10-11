@@ -270,8 +270,9 @@ Return t when the point was moved to the comment start."
                      ((nth 4 state-test)
                       ;; Very likely, just check the initial position
                       ;; is in the bounds of the parsed syntax.
-                      (when (<= pos-init (nth 8 state-test))
-                        (setq pos-found pos-test))
+                      (when-let* ((beg-test (nth 8 state-test)))
+                        (when (<= pos-init beg-test)
+                          (setq pos-found pos-test)))
                       (setq pos-test end))
                      (t
                       (meep--incf pos-test)))))))))))
@@ -956,13 +957,13 @@ When DIR is -1, the beginning, 1 th the end."
   (let ((state (syntax-ppss)))
     (cond
      ((nth 3 state) ; String.
-      (let ((start (nth 8 state)))
-        (goto-char start)
+      (when-let* ((beg (nth 8 state)))
+        (goto-char beg)
         (when (eq dir 1)
           (forward-sexp))))
      ((nth 4 state) ; Comment.
-      (let ((start (nth 8 state)))
-        (goto-char start)
+      (when-let* ((beg (nth 8 state)))
+        (goto-char beg)
         (when (eq dir 1)
           (forward-comment 1)))))))
 
@@ -1486,18 +1487,18 @@ Return non-nil when the point was moved."
 
     (when (nth 4 state)
       (let ((pos-orig (point))
-            (start (nth 8 state)))
-        (when (<= start pos-orig)
+            (beg (nth 8 state)))
+        (when (and beg (<= beg pos-orig))
           (save-excursion
-            (goto-char start)
+            (goto-char beg)
             (forward-comment 1)
             (skip-syntax-backward ">" pos-orig)
             ;; It's possible a comment range is *before* the point.
             ;; Typically when the point is on the next line.
             ;; Ensure the original point is in the range.
-            ;; Checking the start is more of an extra precaution.
+            ;; Checking the `beg' is more of an extra precaution.
             (when (<= pos-orig (point))
-              (cons start (point)))))))))
+              (cons beg (point)))))))))
 
 (defun meep--syntax-state-is-string (state)
   "Return non-nil if STATE is a string."
@@ -3872,8 +3873,10 @@ Don't skip past LIMIT."
       (save-excursion
         (skip-syntax-forward "^-")
         (let ((state-test (syntax-ppss)))
-          (when (and (nth 4 state-test) (<= point-init (nth 8 state-test)))
-            (setq state state-test)))))
+          (when (nth 4 state-test)
+            (when-let* ((beg-test (nth 8 state-test)))
+              (when (<= point-init beg-test)
+                (setq state state-test)))))))
 
     (when (nth 4 state) ; Comment.
       (when (and ok (<= (point) limit) (looking-at-p comment-start-quote))
@@ -3924,10 +3927,10 @@ Don't skip past LIMIT."
              (save-excursion
                (when-let* ((state (syntax-ppss pos)))
                  (when (nth 4 state)
-                   (when-let* ((start (nth 8 state)))
-                     (goto-char start)
+                   (when-let* ((beg (nth 8 state)))
+                     (goto-char beg)
                      (when (forward-comment 1)
-                       (setq range (cons start (point))))))))
+                       (setq range (cons beg (point))))))))
              range))))
 
     (when-let* ((range-a (funcall comment-range-fn eol-ws)))
