@@ -3136,7 +3136,10 @@ Useful for pasting while stepping over search results."
 This is only to be called from within ISEARCH functions.
 
 When HAD-REGION is non-nil, mark the region."
-  (when isearch-success
+  ;; When repeating a search with no previous search data,
+  ;; it's possible for `isearch-success' to be set without the other end.
+  ;; Use the other-end to detect success as well.
+  (when (and isearch-success isearch-other-end)
     ;; Select.
     (meep--set-marker isearch-other-end)
     (cond
