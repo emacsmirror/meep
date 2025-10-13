@@ -103,7 +103,8 @@ this is a hint that commands may use.")
 (defun meep--set-marker (pos)
   "Set the current marker to POS."
   (meep--assert (integerp pos))
-  (set-marker (mark-marker) pos))
+  (set-marker (mark-marker) pos)
+  nil)
 
 ;; ---------------------------------------------------------------------------
 ;; Internal Functions: Algorithms
@@ -412,7 +413,8 @@ POS-ORIG & MRK-ORIG define the original region."
           (goto-char mrk-orig)
           (beginning-of-line)
           (forward-line 1)
-          (meep--set-marker (point))))))))
+          (meep--set-marker (point)))))))
+  nil)
 (defmacro meep--with-maintain-line-based-region (&rest body)
   "Run the given BODY, motion will set the mark."
   (declare (indent 0))
@@ -436,7 +438,8 @@ POS-ORIG & MRK-ORIG define the original region."
       (when (and (symbolp local-last-command)
                  (meep-command-is-mark-set-on-motion-any local-last-command))
         (setq deactivate-mark nil)
-        (activate-mark t)))))
+        (activate-mark t))))
+  nil)
 
 (defun meep--mark-on-motion-maybe-activate-as-bounds ()
   "A version of `meep--mark-on-motion-maybe-activate' returning bounds or nil.
@@ -534,7 +537,8 @@ were to be made into the active region."
 
 (defun meep--move-thing-prev-next-end-impl (thing n)
   "Implementation for next/previous THING, move N times."
-  (forward-thing thing n))
+  (forward-thing thing n)
+  nil)
 
 ;;;###autoload
 (defun meep-move-symbol-prev (arg)
@@ -553,7 +557,8 @@ were to be made into the active region."
       (meep--move-thing-prev-next-end-impl 'symbol (- arg)))
      (t
       (when-let* ((pos (meep--calc-end-of-prev-thing 'symbol arg)))
-        (goto-char pos))))))
+        (goto-char pos))
+      nil))))
 
 ;;;###autoload
 (defun meep-move-symbol-next-end (arg)
@@ -598,7 +603,8 @@ were to be made into the active region."
       (meep--move-thing-prev-next-end-impl 'word (- arg)))
      (t
       (when-let* ((pos (meep--calc-end-of-prev-thing 'word arg)))
-        (goto-char pos))))))
+        (goto-char pos))
+      nil))))
 
 ;;;###autoload
 (defun meep-move-word-next (arg)
@@ -610,7 +616,8 @@ were to be made into the active region."
       (meep--move-thing-prev-next-end-impl 'word arg))
      (t
       (when-let* ((pos (meep--calc-beginning-of-next-thing 'word arg)))
-        (goto-char pos))))))
+        (goto-char pos))
+      nil))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -685,7 +692,8 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
             (meep--incf n))))
 
       (when skip-space-end
-        (skip-chars-forward "[:blank:]" (point-max)))))))
+        (skip-chars-forward "[:blank:]" (point-max))))))
+  nil)
 
 ;;;###autoload
 (defun meep-move-same-syntax-prev (arg)
@@ -821,7 +829,8 @@ Moves to the beginning when ARG is negative."
       ;; Otherwise going to the "end" would move the point to a location before the beginning
       ;; which isn't logical.
       (when (eq bol (point))
-        (goto-char eol))))))
+        (goto-char eol)))))
+  nil)
 
 ;;;###autoload
 (defun meep-move-line-non-space-beginning (arg)
