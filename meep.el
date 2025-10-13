@@ -3243,26 +3243,28 @@ When HAD-REGION is non-nil, mark the region."
   "Extract regex from a TEXT-BOUNDS purpose of searching."
 
   (let ((text (buffer-substring-no-properties (car text-bounds) (cdr text-bounds)))
-        (beg "")
-        (end ""))
+        (beg nil)
+        (end nil)
+        (beg-test-list (list "\\_<" "\\<" "\\b"))
+        (end-test-list (list "\\_>" "\\>" "\\b")))
 
     ;; NOTE: exactly how to do this isn't clear, looking-at commands work well-enough.
     (save-excursion
       (goto-char (car text-bounds))
-      (cond
-       ((looking-at-p "\\_<")
-        (setq beg "\\_<"))
-       ((looking-at-p "\\b")
-        (setq beg "\\b")))
+      (while beg-test-list
+        (let ((beg-test (pop beg-test-list)))
+          (when (looking-at-p beg-test)
+            (setq beg-test-list nil) ; Break.
+            (setq beg beg-test))))
 
       (goto-char (cdr text-bounds))
-      (cond
-       ((looking-at-p "\\_>")
-        (setq end "\\_>"))
-       ((looking-at-p "\\b")
-        (setq end "\\b"))))
+      (while end-test-list
+        (let ((end-test (pop end-test-list)))
+          (when (looking-at-p end-test)
+            (setq end-test-list nil) ; Break.
+            (setq end end-test)))))
 
-    (concat beg (regexp-quote text) end)))
+    (concat (or beg "") (regexp-quote text) (or end ""))))
 
 (defun meep--isearch-at-point-impl (dir)
   "Perform ISEARCH at point along DIR."
