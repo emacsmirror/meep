@@ -3200,11 +3200,8 @@ When HAD-REGION is non-nil, mark the region."
   (add-hook 'isearch-mode-end-hook #'meep--isearch-done-hook 0 t)
   (call-interactively #'isearch-backward-regexp))
 
-
-;;;###autoload
-(defun meep-isearch-repeat-next ()
-  "Repeat ISEARCH forwards."
-  (interactive)
+(defun meep--isearch-repeat-impl (dir)
+  "Repeat search in direction DIR."
   ;; Re-display can flicker.
   (let ((inhibit-redisplay t)
         ;; Opinionated, but ISEARCH is not that usable without these.
@@ -3212,24 +3209,25 @@ When HAD-REGION is non-nil, mark the region."
         (isearch-repeat-on-direction-change t)
         (had-region (region-active-p)))
 
-    (isearch-repeat-forward)
+    (cond
+     ((< dir 0)
+      (isearch-repeat-backward (- dir)))
+     (t
+      (isearch-repeat-forward dir)))
 
     (meep--isearch-handle-done had-region)))
 
 ;;;###autoload
-(defun meep-isearch-repeat-prev ()
-  "Repeat ISEARCH backwards."
-  (interactive)
-  ;; Re-display can flicker.
-  (let ((inhibit-redisplay t)
-        ;; Opinionated, but ISEARCH is not that usable without these.
-        (isearch-wrap-pause 'no-ding)
-        (isearch-repeat-on-direction-change t)
-        (had-region (region-active-p)))
+(defun meep-isearch-repeat-next (arg)
+  "Repeat ISEARCH forwards ARG times."
+  (interactive "p")
+  (meep--isearch-repeat-impl arg))
 
-    (isearch-repeat-backward)
-
-    (meep--isearch-handle-done had-region)))
+;;;###autoload
+(defun meep-isearch-repeat-prev (arg)
+  "Repeat ISEARCH backwards ARG times."
+  (interactive "p")
+  (meep--isearch-repeat-impl (- arg)))
 
 (defun meep--isearch-bounds-at-point-impl ()
   "Return the region for `meep-isearch-next-at-point' to use."
@@ -3266,10 +3264,8 @@ When HAD-REGION is non-nil, mark the region."
 
     (concat beg (regexp-quote text) end)))
 
-;;;###autoload
-(defun meep-isearch-at-point-next ()
-  "Search forwards for the symbol or region at the current point."
-  (interactive)
+(defun meep--isearch-at-point-impl (dir)
+  "Perform ISEARCH at point along DIR."
   (let ((had-region (region-active-p))
         (text-bounds (meep--isearch-bounds-at-point-impl))
         ;; Re-display can flicker.
@@ -3284,9 +3280,15 @@ When HAD-REGION is non-nil, mark the region."
     ;;         (cdr text-bounds)))
     ;;       regexp-search-ring)
 
-    ;; Skip past this instance.
-    (goto-char (cdr text-bounds))
-    (call-interactively #'isearch-forward-regexp)
+    (cond
+     ((< dir 0)
+      ;; Skip before this instance.
+      (goto-char (car text-bounds))
+      (call-interactively #'isearch-backward-regexp))
+     (t
+      ;; Skip past this instance.
+      (goto-char (cdr text-bounds))
+      (call-interactively #'isearch-forward-regexp)))
 
     (let ((text
            (cond
@@ -3305,39 +3307,18 @@ When HAD-REGION is non-nil, mark the region."
     (meep--isearch-handle-done had-region)))
 
 ;;;###autoload
-(defun meep-isearch-at-point-prev ()
-  "Search backwards for the symbol or region at the current point."
-  (interactive)
-  (let ((had-region (region-active-p))
-        (text-bounds (meep--isearch-bounds-at-point-impl))
-        ;; Re-display can flicker.
-        (inhibit-redisplay t)
+(defun meep-isearch-at-point-next (arg)
+  "Search forwards for the symbol or region at the current point.
+Repeat the search ARG times."
+  (interactive "p")
+  (meep--isearch-at-point-impl arg))
 
-        ;; Always wrap.
-        (isearch-wrap-pause 'no-ding))
-    (unless text-bounds
-      (user-error "No symbol at cursor"))
-
-    ;; Skip before this instance.
-    (goto-char (car text-bounds))
-    (call-interactively #'isearch-backward-regexp)
-
-    (let ((text
-           (cond
-            (had-region
-             (meep--isearch-extract-regex-from-bounds text-bounds))
-            (t
-             (regexp-quote
-              (buffer-substring-no-properties (car text-bounds) (cdr text-bounds)))))))
-
-      (push text regexp-search-ring)
-
-      ;; Already quoted, don't regex quote twice.
-      (let ((isearch-regexp nil))
-        (isearch-yank-string text)))
-    (isearch-exit)
-
-    (meep--isearch-handle-done had-region)))
+;;;###autoload
+(defun meep-isearch-at-point-prev (arg)
+  "Search backwards for the symbol or region at the current point.
+Repeat the search ARG times."
+  (interactive "p")
+  (meep--isearch-at-point-impl (- arg)))
 
 
 ;; ---------------------------------------------------------------------------

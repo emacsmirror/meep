@@ -460,17 +460,19 @@ searching based on the active region.
 ``(meep-isearch-regexp-prev)``
    Search backward a REGEXP.
 
-``(meep-isearch-repeat-next)``
-   Repeat ISEARCH forwards.
+``(meep-isearch-repeat-next ARG)``
+   Repeat ISEARCH forwards ARG times.
 
-``(meep-isearch-repeat-prev)``
-   Repeat ISEARCH backwards.
+``(meep-isearch-repeat-prev ARG)``
+   Repeat ISEARCH backwards ARG times.
 
-``(meep-isearch-at-point-next)``
+``(meep-isearch-at-point-next ARG)``
    Search forwards for the symbol or region at the current point.
+   Repeat the search ARG times.
 
-``(meep-isearch-at-point-prev)``
+``(meep-isearch-at-point-prev ARG)``
    Search backwards for the symbol or region at the current point.
+   Repeat the search ARG times.
 
 Text Editing: Delete
 ^^^^^^^^^^^^^^^^^^^^
