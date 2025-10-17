@@ -171,8 +171,8 @@
     '("f >" . meep-move-find-char-on-line-repeat-till-next)
     '("f N" . meep-move-find-char-on-line-repeat-till-prev)
 
-    '("f m" . meep-isearch-at-point-prev)
-    '("f ," . meep-isearch-at-point-next)
+    '("f m" . meep-isearch-at-point-next)
+    '("f ," . meep-isearch-at-point-prev)
 
     '("f u" . avy-goto-symbol-1-below)
     '("f i" . avy-goto-symbol-1-above)
