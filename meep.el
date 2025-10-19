@@ -3284,8 +3284,14 @@ When HAD-REGION is non-nil, mark the region."
 
     (cond
      ((< dir 0)
-      ;; Skip before this instance.
-      (goto-char (car text-bounds))
+      ;; Unlike searching forward the point needs to be moved *before* the symbol.
+      ;; Skip before this instance, -1 or wrap.
+      (goto-char
+       (cond
+        ((eq (point-min) (car text-bounds))
+         (point-max))
+        (t
+         (1- (car text-bounds)))))
       (call-interactively #'isearch-backward-regexp))
      (t
       ;; Skip past this instance.
