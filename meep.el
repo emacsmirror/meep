@@ -3128,16 +3128,17 @@ This must be bound to keys 0..9 or the minus key."
     (kmacro-start-macro nil))))
 
 ;;;###autoload
-(defun meep-register-jump-to ()
-  "Jump to the register, this may call a macro or jump to a location."
-  (interactive)
+(defun meep-register-jump-to (arg)
+  "Jump to the register, may jump to a location or call a macro ARG times."
+  (interactive "p")
   (let* ((reg (register-read-with-preview "Use register: "))
          (val (get-register reg)))
     (cond
      ;; Keyboard macro.
      ((or (vectorp val) (functionp val))
       (with-undo-amalgamate
-        (register-val-jump-to val nil)))
+        (dotimes (_ (abs arg))
+          (register-val-jump-to val nil))))
      ;; Anything else.
      (t
       (register-val-jump-to val nil)))))
