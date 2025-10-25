@@ -3135,9 +3135,9 @@ This must be bound to keys 0..9 or the minus key."
          (val (get-register reg)))
     (cond
      ;; Keyboard macro.
-     ((vectorp val)
+     ((or (vectorp val) (functionp val))
       (with-undo-amalgamate
-        (register-val-jump-to reg nil)))
+        (register-val-jump-to val nil)))
      ;; Anything else.
      (t
       (register-val-jump-to val nil)))))
