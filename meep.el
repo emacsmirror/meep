@@ -5135,7 +5135,8 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
           'meep-delete-char-next
           'meep-delete-char-prev
           'meep-delete-char-ring-next
-          'meep-delete-char-ring-prev))
+          'meep-delete-char-ring-prev
+          'meep-delete-char-ring-yank))
   (meep-command-prop-set cmd :mark-on-motion-exclude t))
 
 ;; The inactive mark should be used, but the action should not be repeated.
