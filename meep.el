@@ -2137,55 +2137,48 @@ INNER to move to inner bound."
   (interactive "^p")
   (meep-move-to-bounds-of-visual-line arg t))
 
+(defcustom meep-bounds-commands
+  '((?p meep-move-to-bounds-of-paragraph-inner "paragraph inner")
+    (?P meep-move-to-bounds-of-paragraph "paragraphs")
+    (?c meep-move-to-bounds-of-comment-inner "comment inner")
+    (?C meep-move-to-bounds-of-comment "comment")
+    (?s meep-move-to-bounds-of-string-inner "string inner")
+    (?S meep-move-to-bounds-of-string "string")
+    (?l meep-move-to-bounds-of-line-inner "line inner")
+    (?L meep-move-to-bounds-of-line "line")
+    (?V meep-move-to-bounds-of-visual-line-inner "visual line inner")
+    (?v meep-move-to-bounds-of-visual-line "visual line")
+    (?d meep-move-to-bounds-of-defun-inner "defun inner")
+    (?D meep-move-to-bounds-of-defun "defun")
+    (?\. meep-move-to-bounds-of-sentence-inner "sentence inner")
+    (?> meep-move-to-bounds-of-sentence "sentence"))
+  "List of commands for bounds movement. Each element is (key function description)."
+  :type
+  '(repeat
+    (list
+     :tag
+     "Command"
+     (character :tag "Key")
+     (function :tag "Function")
+     (string :tag "Description"))))
+
 (defun meep--move-bounds-of-thing-impl (n)
   "Initiate a bounds motion, forward when N is positive.
 When INNER is non-nil move to the outer bounds."
-  ;; TODO: implement a way to customize the kinds of bounds.
   (let ((km nil)
         (info-text
-         (list
-          "p: paragraph"
-          ".: sentence"
-          "c: comment"
-          "s: string"
-          "l: line"
-          "v: visual-line"
-          "d: defun"
-          "\n(upper case for \"outer\" bounds)")))
-
+         (mapcar
+          (lambda (cmd) (format "%s: %s" (string (nth 0 cmd)) (nth 2 cmd))) meep-bounds-commands)))
     (setq km (make-sparse-keymap))
-
     (when (< n 0)
       (setq prefix-arg -1))
-
-    (keymap-set km "." 'meep-move-to-bounds-of-sentence-inner)
-    (keymap-set km ">" 'meep-move-to-bounds-of-sentence)
-
-    (keymap-set km "p" 'meep-move-to-bounds-of-paragraph-inner)
-    (keymap-set km "P" 'meep-move-to-bounds-of-paragraph)
-
-    (keymap-set km "c" 'meep-move-to-bounds-of-comment-inner)
-    (keymap-set km "C" 'meep-move-to-bounds-of-comment)
-
-    (keymap-set km "s" 'meep-move-to-bounds-of-string-inner)
-    (keymap-set km "S" 'meep-move-to-bounds-of-string)
-
-    (keymap-set km "l" 'meep-move-to-bounds-of-line-inner)
-    (keymap-set km "L" 'meep-move-to-bounds-of-line)
-
-    (keymap-set km "v" 'meep-move-to-bounds-of-visual-line)
-    (keymap-set km "V" 'meep-move-to-bounds-of-visual-line-inner)
-
-    (keymap-set km "d" 'meep-move-to-bounds-of-defun-inner)
-    (keymap-set km "D" 'meep-move-to-bounds-of-defun)
-
+    (dolist (cmd (reverse meep-bounds-commands))
+      (keymap-set km (string (nth 0 cmd)) (nth 1 cmd)))
     (set-transient-map km
-                       nil ; Don't keep the keymap it active.
-                       nil ; Don't run anything when exiting.
+                       nil nil
                        (concat
                         (format "Jump to the %s, of" (or (and (< n 0) "beginning") "end"))
                         ": %k or any other to exit\n"
-                        ;; Useful help text.
                         (mapconcat #'identity info-text ", ")))))
 
 ;;;###autoload
