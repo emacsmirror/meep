@@ -3277,12 +3277,6 @@ When HAD-REGION is non-nil, mark the region."
         (isearch-wrap-pause 'no-ding))
     (unless text-bounds
       (user-error "No symbol at cursor"))
-    ;; (push (regexp-quote
-    ;;        (buffer-substring-no-properties
-    ;;         (car text-bounds)
-    ;;         (cdr text-bounds)))
-    ;;       regexp-search-ring)
-
     (cond
      ((< dir 0)
       ;; Unlike searching forward the point needs to be moved *before* the symbol.
