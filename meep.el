@@ -3293,18 +3293,14 @@ When HAD-REGION is non-nil, mark the region."
       (goto-char (cdr text-bounds))
       (call-interactively #'isearch-forward-regexp)))
 
-    (let ((text
-           (cond
-            (had-region
-             (meep--isearch-extract-regex-from-bounds text-bounds))
-            (t
-             (regexp-quote
-              (buffer-substring-no-properties (car text-bounds) (cdr text-bounds)))))))
-
+    (let ((text (meep--isearch-extract-regex-from-bounds text-bounds)))
       (push text regexp-search-ring)
-      ;; Already quoted, don't regex quote twice.
-      (let ((isearch-regexp nil))
-        (isearch-yank-string text)))
+      ;; Inline `isearch-yank-string' because it expects non regex text,
+      ;; however this text is already quoted.
+      (progn
+        (setq isearch-yank-flag t)
+        (isearch-process-search-string text (mapconcat 'isearch-text-char-description text ""))))
+
     (isearch-exit)
 
     (meep--isearch-handle-done had-region)))
