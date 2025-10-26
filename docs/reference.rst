@@ -445,8 +445,8 @@ conveniently assigned to macros (VIM style).
 ``(meep-register-kmacro-start-or-end)``
    Begin defining a macro.
 
-``(meep-register-jump-to)``
-   Jump to the register, this may call a macro or jump to a location.
+``(meep-register-jump-to ARG)``
+   Jump to the register, may jump to a location or call a macro ARG times.
 
 ISearch Wrapper
 ^^^^^^^^^^^^^^^
