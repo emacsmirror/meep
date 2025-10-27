@@ -364,11 +364,12 @@ Used so a motion can be repeated without setting the mark.")
 ;;
 ;;      This command can repeat other commands multiple times.
 
-(defun meep--mark-on-motion-maybe-set (pos)
-  "Set the mark to POS the region is not active."
+(defun meep--mark-on-motion-set (pos always)
+  "Set the mark to POS the region is not active.
+When ALWAYS is non-nil, mark-on-motion even if the cursor didn't move."
   (when (and meep-mark-set-on-motion
-             ;; Has motion.
-             (/= pos (point))
+             ;; Has motion, or always.
+             (or always (/= pos (point)))
              ;; Has no region.
              (not (region-active-p))
              ;; Allow numeric commands to adjust the motion,
@@ -376,6 +377,7 @@ Used so a motion can be repeated without setting the mark.")
              (null meep-mark-set-on-motion-override))
     (setq deactivate-mark t)
     (meep--set-marker pos)))
+
 (defmacro meep--with-mark-on-motion-maybe-set (&rest body)
   "Run the given BODY, motion will set the mark."
   (declare (indent 0))
@@ -385,7 +387,18 @@ Used so a motion can be repeated without setting the mark.")
                 ,@body)
          ;; Some extra checks could be added here,
          ;; reserve for the function call to prevent code-bloat.
-         (meep--mark-on-motion-maybe-set ,pos-orig)))))
+         (meep--mark-on-motion-set ,pos-orig nil)))))
+
+(defmacro meep--with-mark-on-motion-always-set (&rest body)
+  "Run the given BODY, motion will always set the mark."
+  (declare (indent 0))
+  (let ((pos-orig (make-symbol "pos-orig")))
+    `(let ((,pos-orig (point)))
+       (prog1 (progn
+                ,@body)
+         ;; Some extra checks could be added here,
+         ;; reserve for the function call to prevent code-bloat.
+         (meep--mark-on-motion-set ,pos-orig t)))))
 
 (defun meep--maintain-line-based-region (pos-orig mrk-orig)
   "Internal utility to maintain line based selection.
@@ -1996,7 +2009,10 @@ IS-TILL when non-nil, search up until the character."
 
 (defun meep--move-to-bounds-endpoint (bounds n)
   "Move to the start/end of BOUNDS (start when N is negative)."
-  (meep--with-mark-on-motion-maybe-set
+  ;; Note that it's important to always set the mark because unlike a typical motion,
+  ;; we want to be able to use `meep-exchange-point-and-mark-motion' even if this
+  ;; move-to-bounds action happens not to move the point, see: #8.
+  (meep--with-mark-on-motion-always-set
     (cond
      ((< n 0)
       (goto-char (car bounds)))
