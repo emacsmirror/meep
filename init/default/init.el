@@ -50,7 +50,7 @@
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;; | Undo        | Insert      | DelChar     | PasteChar   | Change      |  | SymBack     | FindNext    | FindPrev    | SymNext     |SymNextEnd   |
 ;; | Redo:S      | InsOver:S   | BkSpace:S   | DelLine:S   | ChangLine:S |  |SameSynPrev:S| ParaDown:S  | ParaUp:S    |SameSynNext:S|SameNextEnd:S|
-;; |             |             |             |             |             |  | FindRpt</f  |             |             | FindRpt>/f  |             |
+;; |             |             |ShrinkSpace/s|             |             |  | FindRpt</f  |             |             | FindRpt>/f  |             |
 ;; |             |             |             |             |             |  | TillRpt<:S/f| Downcase/s  | Upcase/s    | TillRpt>:S/f|             |
 ;; |             |             |             |             |             |  |             | WordNext/f  | WordPrev/f  |             |             |
 ;; |            z|            x|            c|            v|            b|  |            n|            m|            ,|            .|            /|
@@ -125,6 +125,8 @@
     ;; This is only character level surround insertion.
     '("a" . meep-char-surround-insert)
     '("A" . meep-char-surround-insert-lines)
+
+    '("s c" . meep-space-shrink-contextual)
 
     '("s s" . meep-insert-at-last)
     '("s d" . rectangle-mark-mode)
