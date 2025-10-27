@@ -3315,7 +3315,7 @@ When HAD-REGION is non-nil, mark the region."
       ;; however this text is already quoted.
       (progn
         (setq isearch-yank-flag t)
-        (isearch-process-search-string text (mapconcat 'isearch-text-char-description text ""))))
+        (isearch-process-search-string text (mapconcat #'isearch-text-char-description text ""))))
 
     (isearch-exit)
 
