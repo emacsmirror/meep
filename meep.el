@@ -1954,7 +1954,14 @@ IS-TILL when non-nil, search up until the character."
 
 (defun meep--bounds-of-visual-line (inner)
   "Bounds of visual line (contract to INNER when true)."
-  (let ((bounds (cons (beginning-of-visual-line) (end-of-visual-line))))
+  (let ((bounds
+         (cons
+          (save-excursion
+            (beginning-of-visual-line)
+            (point))
+          (save-excursion
+            (end-of-visual-line)
+            (point)))))
     (when inner
       (let ((skip "[:blank:]\r\n"))
         (setq bounds (meep--bounds-contract-by-chars bounds skip skip))))
