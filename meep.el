@@ -2175,7 +2175,7 @@ INNER to move to inner bound."
     (?D meep-move-to-bounds-of-defun "defun")
     (?\. meep-move-to-bounds-of-sentence-inner "sentence inner")
     (?> meep-move-to-bounds-of-sentence "sentence"))
-  "List of commands for bounds movement. Each element is (key function description)."
+  "List of commands for bounds movement.  Each element is (key function description)."
   :type
   '(repeat
     (list
