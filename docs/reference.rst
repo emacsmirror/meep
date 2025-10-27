@@ -593,6 +593,16 @@ Joined at the first line removes the leading ``*``:
 ``(meep-join-line-prev ARG)``
    Join the previous line to this one ARG times.
 
+Text Editing: Transpose
+^^^^^^^^^^^^^^^^^^^^^^^
+
+``(meep-transpose ARG)``
+   Transpose the previous motion.
+   This can be used to transpose words if the previous motion was over words.
+   Transposing lines and characters is also supported.
+
+   Note using ARG to declare the number of times has not yet been implemented.
+
 Text Editing: Tab Wrapper
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 

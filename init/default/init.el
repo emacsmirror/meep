@@ -36,7 +36,7 @@
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;; | Repeat      | Register    | CutKillRing | YankKillRing| CopyKillRing|  | HomeNoWs    | SwapPtMark  | SwapPtMotion| EndNoWs     | KeyPad...   | JumpToReg   |
 ;; | Free:S      | Free:S      | CutClip:S   | PasteClip:S | CopyClip:S  |  | SexpNext:S  | SexpNxtOvr:S| SexpPrvOvr:S| SexpPrev:S  | PointToReg:S| MacroRec:S  |
-;; |             |             |             |             |             |  |             |             |             |             |             |             |
+;; |             |             |             |YankKillCh/s |             |  |             |             |             |             |             |             |
 ;; |             |             |             |             |             |  |             | AvyNext/f   | AvyPrev/f   |             |             | Fill&Move/s |
 ;; |             |             |             |             |             |  |             |             |             |             |             |             |
 ;; |            q|            w|            e|            r|            t|  |            y|            u|            i|            o|            p|            \|
@@ -48,7 +48,7 @@
 ;; |             |             |             |             |             |  | Till<Ch:S/f |             |             | Till>Ch:S/f | GotoChar/f:S|             |
 ;; |            a|            s|            d|            f|            g|  |            h|            j|            k|            l|            ;|            '|
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
-;; | Undo        | Insert      | DelChar     | PasteChar   | Change      |  | SymBack     | FindNext    | FindPrev    | SymNext     |SymNextEnd   |
+;; | Undo        | Insert      | DelChar     | Transpose   | Change      |  | SymBack     | FindNext    | FindPrev    | SymNext     |SymNextEnd   |
 ;; | Redo:S      | InsOver:S   | BkSpace:S   | DelLine:S   | ChangLine:S |  |SameSynPrev:S| ParaDown:S  | ParaUp:S    |SameSynNext:S|SameNextEnd:S|
 ;; |             |             |ShrinkSpace/s|             |             |  | FindRpt</f  |             |             | FindRpt>/f  |             |
 ;; |             |             |             |             |             |  | TillRpt<:S/f| Downcase/s  | Upcase/s    | TillRpt>:S/f|             |
@@ -126,6 +126,7 @@
     '("a" . meep-char-surround-insert)
     '("A" . meep-char-surround-insert-lines)
 
+    '("s r" . meep-delete-char-ring-yank)
     '("s c" . meep-space-shrink-contextual)
 
     '("s s" . meep-insert-at-last)
@@ -198,7 +199,7 @@
     '("c" . meep-delete-char-ring-next)
     '("C" . meep-delete-char-ring-prev)
 
-    '("v" . meep-delete-char-ring-yank)
+    '("v" . meep-transpose)
     '("V" . meep-clipboard-killring-cut-line) ; Odd-one out, locate for convenience.
 
     '("b" . meep-insert-change)

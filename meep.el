@@ -4141,6 +4141,169 @@ USE-COMMENT-STRIP, strips comments between lines."
 
 
 ;; ---------------------------------------------------------------------------
+;; Text Editing: Transpose
+
+;; NOTE(@ideasman42): there are quite a few TODO's here,
+;; typically I'd like to complete the feature fully before adding it
+;; however I can't work on this full-time, and the basic functionality
+;; (transposing symbols/lines mainly) is useful enough that I feel it better
+;; to include the functionality in it's current state.
+;; While it's nice to support transposing N times AND to support repeating the action.
+;; These can be supported later.
+
+(defun meep--transpose-char-wise (n last-motion-info)
+  "Character-wise transpose N times, treated as a special case.
+General last motion info: LAST-MOTION-INFO."
+  ;; TODO: support multiple times.
+  (ignore n)
+  ;; TODO: implement this directly without `transpose-chars',
+  ;; since we may meet buffer limits when moving the cursor
+  ;; and it makes transposing multiple times more difficult.
+  (let ((result nil)
+        (local-last-command (car (cdr last-motion-info))))
+    (cond
+     ((eq local-last-command 'meep-move-char-next)
+      (transpose-chars 1)
+      (setq result t))
+     ((eq local-last-command 'meep-move-char-prev)
+      (forward-char 2)
+      (transpose-chars -1)
+      (forward-char -1)
+      (setq result t)))
+    result))
+
+(defun meep--transpose-line-wise (n last-motion-info)
+  "Line-wise transpose N times, treated as a special case.
+General last motion info: LAST-MOTION-INFO."
+  ;; TODO: support multiple times.
+  (ignore n)
+  ;; TODO: implement this directly without `transpose-lines',
+  ;; since we may meet buffer limits when moving the cursor
+  ;; and it makes transposing multiple times more difficult.
+  (let ((result nil)
+        (local-last-command (car (cdr last-motion-info)))
+        (offset nil))
+    (cond
+     ((eq local-last-command 'meep-move-line-next)
+      (save-excursion
+        (goto-char (mark))
+        (setq offset (- (point) (pos-bol))))
+      (goto-char (pos-bol))
+      (transpose-lines 1)
+      (forward-line -1)
+      (goto-char (+ (pos-bol) offset))
+
+      (setq result t))
+     ((eq local-last-command 'meep-move-line-prev)
+      (save-excursion
+        (goto-char (mark))
+        (setq offset (- (point) (pos-bol))))
+      (goto-char (pos-bol))
+      (forward-line 1)
+      (transpose-lines 1)
+      (forward-line -2)
+      (goto-char (+ (pos-bol) offset))
+
+      (setq result t)))
+
+    result))
+
+(defun meep--transpose-any-motion (n last-motion-info)
+  "Any-motion wise transpose N times.
+General last motion info: LAST-MOTION-INFO."
+  ;; TODO: support multiple times.
+  (ignore n)
+  (let* ((range-a (cons (car last-motion-info) (point)))
+         (range-b (cons nil nil))
+         (local-last-command (car (cdr last-motion-info)))
+         (local-last-prefix-arg (cdr (cdr last-motion-info)))
+         (mark-dir
+          (cond
+           ((< (car last-motion-info) (point))
+            1)
+           (t
+            -1)))
+         (last-dir
+          (cond
+           ((and (integerp local-last-prefix-arg) (< local-last-prefix-arg 0))
+            -1)
+           (t
+            1)))
+         (dir (* mark-dir last-dir)))
+
+    (cond
+     ((and (integerp local-last-prefix-arg))))
+    ;; TODO: backwards logic.
+    (let ((current-prefix-arg last-dir))
+      (call-interactively local-last-command))
+    (setcdr range-b (point))
+    (let ((current-prefix-arg (- last-dir)))
+      (call-interactively local-last-command))
+
+    (cond
+     ((eq dir 1)
+      ;; Unlikely but it's not impossible for reversing to go back too far.
+      ;; So clamp it by the previous bounds.
+      (setcar range-b (max (point) (cdr range-a)))
+
+      (let ((str-a (buffer-substring-no-properties (car range-a) (cdr range-a)))
+            (str-b (buffer-substring-no-properties (car range-b) (cdr range-b))))
+        (meep--replace-in-region str-a (car range-b) (cdr range-b))
+        (meep--replace-in-region str-b (car range-a) (cdr range-a)))
+
+      (goto-char (cdr range-b))
+      (setq deactivate-mark nil)
+      (meep--set-marker (- (point) (- (cdr range-a) (car range-a)))))
+
+     (t
+      ;; Unlikely but it's not impossible for reversing to go back too far.
+      ;; So clamp it by the previous bounds.
+      (setcar range-b (min (point) (cdr range-a)))
+
+      (setq range-a (cons (cdr range-a) (car range-a)))
+      (setq range-b (cons (cdr range-b) (car range-b)))
+
+      (let ((str-a (buffer-substring-no-properties (car range-a) (cdr range-a)))
+            (str-b (buffer-substring-no-properties (car range-b) (cdr range-b))))
+        (meep--replace-in-region str-b (car range-a) (cdr range-a))
+        (meep--replace-in-region str-a (car range-b) (cdr range-b)))
+
+      (goto-char (car range-b))
+      (setq deactivate-mark nil)
+      (meep--set-marker (+ (point) (- (cdr range-a) (car range-a))))))))
+
+;;;###autoload
+(defun meep-transpose (arg)
+  "Transpose the previous motion.
+This can be used to transpose words if the previous motion was over words.
+Transposing lines and characters is also supported.
+
+Note using ARG to declare the number of times has not yet been implemented."
+  (interactive "*p")
+  ;; TODO: support repeating this command N times as well as `repeat-fu'.
+  (let ((last-motion-info (meep--last-motion-calc-whole-mark-pos)))
+    (cond
+     ((null last-motion-info)
+      (message "Transpose could not find a last-motion")
+      nil)
+     ;; Use an alternative code-path for char-wise transpose.
+     ;; Do this because char motions dont' set the mark,
+     ;; so using the "motion" doesn't work usefully in this case.
+     ((meep--transpose-char-wise arg last-motion-info)
+      t)
+     ;; Use an alternative code-path for line-wise transpose.
+     ;; Do this because repeating the motion doesn't work all that well,
+     ;; especially if the motion isn't at line bounds.
+     ;; In this case prefer a straightforward line-flip.
+     ((meep--transpose-line-wise arg last-motion-info)
+      t)
+     ((meep--transpose-any-motion arg last-motion-info)
+      t)
+     (t
+      nil))))
+
+
+;; ---------------------------------------------------------------------------
 ;; Text Editing: Tab Wrapper
 
 ;;;###autoload
