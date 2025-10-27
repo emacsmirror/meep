@@ -36,8 +36,8 @@
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;; | Repeat      | Register    | CutKillRing | YankKillRing| CopyKillRing|  | HomeNoWs    | SwapPtMark  | SwapPtMotion| EndNoWs     | KeyPad...   | JumpToReg   |
 ;; | Free:S      | Free:S      | CutClip:S   | PasteClip:S | CopyClip:S  |  | SexpNext:S  | SexpNxtOvr:S| SexpPrvOvr:S| SexpPrev:S  | PointToReg:S| MacroRec:S  |
-;; |             |             |             |YankKillLn/s |             |  |             |             |             |             |             |             |
-;; |             |             |             |PasteClipLn/s|             |  |             | AvyNext/f   | AvyPrev/f   |             |             | Fill&Move/s |
+;; |             |             |             |             |             |  |             |             |             |             |             |             |
+;; |             |             |             |             |             |  |             | AvyNext/f   | AvyPrev/f   |             |             | Fill&Move/s |
 ;; |             |             |             |             |             |  |             |             |             |             |             |             |
 ;; |            q|            w|            e|            r|            t|  |            y|            u|            i|            o|            p|            \|
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
