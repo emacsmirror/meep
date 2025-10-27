@@ -2269,12 +2269,8 @@ this operation makes it stay active, running again clears it."
   ;; it allows re-selecting pasted text for example.
   (exchange-point-and-mark))
 
-;;;###autoload
-(defun meep-exchange-point-and-mark-motion ()
-  "Exchange the point and mark, activating the region."
-  (interactive)
-  ;; This will activate the selection if it's not already selected,
-  ;; it allows re-selecting pasted text for example.
+(defun meep--last-motion-calc-whole-mark-pos ()
+  "When a partial motion command has been made."
   (let ((local-last-command (meep--last-command))
         (local-last-prefix-arg (meep--last-prefix-arg))
         (local-mrk (mark))
@@ -2317,14 +2313,23 @@ this operation makes it stay active, running again clears it."
           (call-interactively local-last-command)
 
           (setq new-mrk (point))))
-      (setq deactivate-mark nil)
-      (meep--set-marker new-mrk)
-
-      (exchange-point-and-mark)
 
       ;; Success.
-      t))))
+      (cons new-mrk (cons local-last-command local-last-prefix-arg))))))
 
+;;;###autoload
+(defun meep-exchange-point-and-mark-motion ()
+  "Exchange the point and mark, activating the region."
+  (interactive)
+  (let ((last-motion-info (meep--last-motion-calc-whole-mark-pos)))
+    (cond
+     (last-motion-info
+      (setq deactivate-mark nil)
+      (meep--set-marker (car last-motion-info))
+      (exchange-point-and-mark)
+      t)
+     (t
+      nil))))
 
 ;; ---------------------------------------------------------------------------
 ;; Selection/Region: Secondary Selection
