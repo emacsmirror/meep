@@ -2106,7 +2106,7 @@ INNER to move to inner bound."
   "Move to the line start/end (start when ARG is negative).
 INNER to move to inner bound."
   (interactive "^p")
-  (let ((bounds (bounds-of-thing-at-point 'line)))
+  (let ((bounds (cons (pos-bol) (pos-eol))))
     (cond
      (bounds
       (when inner
