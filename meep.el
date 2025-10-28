@@ -4184,19 +4184,26 @@ USE-COMMENT-STRIP, strips comments between lines."
 General last motion info: LAST-MOTION-INFO."
   ;; TODO: support multiple times.
   (ignore n)
-  ;; TODO: implement this directly without `transpose-chars',
-  ;; since we may meet buffer limits when moving the cursor
-  ;; and it makes transposing multiple times more difficult.
   (let ((result nil)
-        (local-last-command (car (cdr last-motion-info))))
+        (local-last-command (car (cdr last-motion-info)))
+        (local-last-pos (car last-motion-info)))
     (cond
      ((eq local-last-command 'meep-move-char-next)
-      (transpose-chars 1)
+      (let* ((offset (- local-last-pos (point))) ; Negative.
+             (region (cons (+ (point) offset) (+ (point) offset 1)))
+             (ch-prev (buffer-substring-no-properties (car region) (cdr region))))
+        (delete-region (car region) (cdr region))
+        (forward-char 1)
+        (insert-before-markers ch-prev)
+        (forward-char -1))
       (setq result t))
      ((eq local-last-command 'meep-move-char-prev)
-      (forward-char 2)
-      (transpose-chars -1)
-      (forward-char -1)
+      (let* ((offset (- local-last-pos (point))) ; Positive.
+             (region (cons (+ (point) offset) (+ (point) offset 1)))
+             (ch-next (buffer-substring-no-properties (car region) (cdr region))))
+        (delete-region (car region) (cdr region))
+        (insert-before-markers ch-next)
+        (forward-char -1))
       (setq result t)))
     result))
 
