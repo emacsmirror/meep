@@ -62,6 +62,21 @@ Used by `meep-insert-last' which will enter insert mode at this location."
 Note that line-wise navigation is not enforced,
 this is a hint that commands may use.")
 
+;; ---------------------------------------------------------------------------
+;; Public Variables
+
+
+;; In some cases it's necessary to know the previous point in a motion.
+;; In most cases "mark-on-motion" commands set the mark, however in the case
+;; of commands that adjust the motion, they don't set the mark.
+;; This is needed so it's possible to use `meep-move-char-prev' & `meep-move-char-next'
+;; as motions which transpose characters.
+(defvar-local meep-mark-adjust nil
+  "The previous for commands that don't mark on motion.
+
+This must be set by commands that pass the:
+`meep-command-is-mark-set-on-motion-adjust' test.")
+
 
 ;; ---------------------------------------------------------------------------
 ;; Compatibility
@@ -910,6 +925,7 @@ NOERROR is forwarded to `line-move'."
   (interactive "^p")
   ;; Intentionally don't include in "mark-on-motion",
   ;; allow adjustments after motion.
+  (setq meep-mark-adjust (point))
   (left-char arg))
 
 ;;;###autoload
@@ -918,6 +934,7 @@ NOERROR is forwarded to `line-move'."
   (interactive "^p")
   ;; Intentionally don't include in "mark-on-motion",
   ;; allow adjustments after motion.
+  (setq meep-mark-adjust (point))
   (right-char arg))
 
 
@@ -2267,15 +2284,25 @@ this operation makes it stay active, running again clears it."
   (interactive)
   ;; This will activate the selection if it's not already selected,
   ;; it allows re-selecting pasted text for example.
+  (setq meep-mark-adjust (point))
   (exchange-point-and-mark))
 
-(defun meep--last-motion-calc-whole-mark-pos ()
-  "When a partial motion command has been made."
+(defun meep--last-motion-calc-whole-mark-pos (use-adjust-mark)
+  "When a partial motion command has been made.
+
+When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
   (let ((local-last-command (meep--last-command))
         (local-last-prefix-arg (meep--last-prefix-arg))
         (local-mrk (mark))
         (new-mrk nil)
         (prefix "exchange-point-and-mark-motion"))
+
+    (when (and use-adjust-mark
+               meep-mark-adjust
+               (symbolp local-last-command)
+               (meep-command-is-mark-set-on-motion-adjust local-last-command))
+      (setq local-mrk meep-mark-adjust))
+
     (cond
      ((null local-mrk)
       (message "%s: failed, no mark found, the mark is expected to be set by: %S"
@@ -2321,9 +2348,10 @@ this operation makes it stay active, running again clears it."
 (defun meep-exchange-point-and-mark-motion ()
   "Exchange the point and mark, activating the region."
   (interactive)
-  (let ((last-motion-info (meep--last-motion-calc-whole-mark-pos)))
+  (let ((last-motion-info (meep--last-motion-calc-whole-mark-pos nil)))
     (cond
      (last-motion-info
+      (setq meep-mark-adjust (point))
       (setq deactivate-mark nil)
       (meep--set-marker (car last-motion-info))
       (exchange-point-and-mark)
@@ -4281,7 +4309,7 @@ Transposing lines and characters is also supported.
 Note using ARG to declare the number of times has not yet been implemented."
   (interactive "*p")
   ;; TODO: support repeating this command N times as well as `repeat-fu'.
-  (let ((last-motion-info (meep--last-motion-calc-whole-mark-pos)))
+  (let ((last-motion-info (meep--last-motion-calc-whole-mark-pos t)))
     (cond
      ((null last-motion-info)
       (message "Transpose could not find a last-motion")
