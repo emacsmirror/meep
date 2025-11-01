@@ -2068,7 +2068,7 @@ Used for `meep-region-mark-bounds-of-char-inner' and
 ;; Since ORG mode and similar should use `*' and `='.
 ;;
 ;; NOTE: order from least to most likely.
-(defcustom meep-region-match-chars-contextual
+(defcustom meep-match-bounds-of-char-contextual-chars
   (list
    (cons "\"" "\"")
    (cons "'" "'")
@@ -2190,7 +2190,7 @@ When INNER is non-nil, mark the inner bounds."
           (t
            nil))))
     (let ((bounds nil))
-      (dolist (ch-str-pair meep-region-match-chars-contextual)
+      (dolist (ch-str-pair meep-match-bounds-of-char-contextual-chars)
         (let ((bounds-test
                (meep--region-mark-bounds-of-char-calc bounds-init bounds-limit n ch-str-pair)))
           ;; Only update the clamp beginning, since the end may increase and that's OK.
@@ -2214,7 +2214,7 @@ When INNER is non-nil, mark the inner bounds."
 A negative ARG positions the POINT at the end of the region.
 
 Note that pressing Return instead of a character performs a contextual mark,
-finding the closest pair, see: `meep-region-match-chars-contextual'."
+finding the closest pair, see: `meep-match-bounds-of-char-contextual-chars'."
   (interactive "*cMark inner char:\np")
   ;; NOTE: we could add useful features with other characters.
   (cond
@@ -2230,7 +2230,7 @@ finding the closest pair, see: `meep-region-match-chars-contextual'."
 A negative ARG positions the POINT at the end of the region.
 
 Note that pressing Return instead of a character performs a contextual mark,
-finding the closest pair, see: `meep-region-match-chars-contextual'."
+finding the closest pair, see: `meep-match-bounds-of-char-contextual-chars'."
   (interactive "*cMark outer char:\np")
   ;; NOTE: we could add useful features with other characters.
   (cond
@@ -2245,7 +2245,7 @@ finding the closest pair, see: `meep-region-match-chars-contextual'."
   "Mark in bounds of of the nearest character pairs over ARG steps.
 A negative ARG positions the POINT at the end of the region.
 
-Character pairs are detected using: `meep-region-match-chars-contextual'."
+Character pairs are detected using: `meep-match-bounds-of-char-contextual-chars'."
   (interactive "p")
   (meep-region-mark-bounds-of-char-contextual-impl arg t))
 
@@ -2254,7 +2254,7 @@ Character pairs are detected using: `meep-region-match-chars-contextual'."
   "Mark in bounds of of the nearest character pairs over ARG steps.
 A negative ARG positions the POINT at the end of the region.
 
-Character pairs are detected using: `meep-region-match-chars-contextual'."
+Character pairs are detected using: `meep-match-bounds-of-char-contextual-chars'."
   (interactive "p")
   (meep-region-mark-bounds-of-char-contextual-impl arg nil))
 

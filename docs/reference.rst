@@ -29,7 +29,7 @@ Custom Variables
    Used for ``meep-region-mark-bounds-of-char-inner`` and
    ``meep-region-mark-bounds-of-char-outer``.
 
-``meep-region-match-chars-contextual``: ``(("\"" . "\"") ("'" . "'") ("`" . "`") ("(" . ")") ("[" . "]") ("{" . "}") ("<" . ">") ("“" . "”") ("‘" . "’"))``
+``meep-match-bounds-of-char-contextual-chars``: ``(("\"" . "\"") ("'" . "'") ("`" . "`") ("(" . ")") ("[" . "]") ("{" . "}") ("<" . ">") ("“" . "”") ("‘" . "’"))``
    List of character matches used for automatically marking bounds.
 
    Used for ``meep-region-mark-bounds-of-char-inner-contextual`` and
@@ -334,26 +334,26 @@ Motion: Find & Till
    A negative ARG positions the POINT at the end of the region.
 
    Note that pressing Return instead of a character performs a contextual mark,
-   finding the closest pair, see: ``meep-region-match-chars-contextual``.
+   finding the closest pair, see: ``meep-match-bounds-of-char-contextual-chars``.
 
 ``(meep-region-mark-bounds-of-char-outer CH ARG)``
    Mark in bounds of CH over ARG steps.
    A negative ARG positions the POINT at the end of the region.
 
    Note that pressing Return instead of a character performs a contextual mark,
-   finding the closest pair, see: ``meep-region-match-chars-contextual``.
+   finding the closest pair, see: ``meep-match-bounds-of-char-contextual-chars``.
 
 ``(meep-region-mark-bounds-of-char-contextual-inner ARG)``
    Mark in bounds of of the nearest character pairs over ARG steps.
    A negative ARG positions the POINT at the end of the region.
 
-   Character pairs are detected using: ``meep-region-match-chars-contextual``.
+   Character pairs are detected using: ``meep-match-bounds-of-char-contextual-chars``.
 
 ``(meep-region-mark-bounds-of-char-contextual-outer ARG)``
    Mark in bounds of of the nearest character pairs over ARG steps.
    A negative ARG positions the POINT at the end of the region.
 
-   Character pairs are detected using: ``meep-region-match-chars-contextual``.
+   Character pairs are detected using: ``meep-match-bounds-of-char-contextual-chars``.
 
 Motion: Bounds
 ^^^^^^^^^^^^^^
