@@ -23,6 +23,18 @@ Custom Variables
 ``meep-move-comment-skip-repeated``: ``t``
    When navigating comment bounds, skip repeated characters.
 
+``meep-symmetrical-chars``: ``(("(" . ")") ("[" . "]") ("{" . "}") ("<" . ">"))``
+   List of character matches.
+
+   Used for ``meep-region-mark-bounds-of-char-inner`` and
+   ``meep-region-mark-bounds-of-char-outer``.
+
+``meep-region-match-chars-contextual``: ``(("\"" . "\"") ("'" . "'") ("`" . "`") ("(" . ")") ("[" . "]") ("{" . "}") ("<" . ">") ("“" . "”") ("‘" . "’"))``
+   List of character matches used for automatically marking bounds.
+
+   Used for ``meep-region-mark-bounds-of-char-inner-contextual`` and
+   ``meep-region-mark-bounds-of-char-outer-contextual``.
+
 ``meep-bounds-commands``: ``((112 meep-move-to-bounds-of-paragraph-inner "paragraph inner") (80 meep-move-to-bounds-of-paragraph "paragraphs") (99 meep-move-to-bounds-of-comment-inner "comment inner") (67 meep-move-to-bounds-of-comment "comment") (115 meep-move-to-bounds-of-string-inner "string inner") (83 meep-move-to-bounds-of-string "string") (108 meep-move-to-bounds-of-line-inner "line inner") (76 meep-move-to-bounds-of-line "line") (86 meep-move-to-bounds-of-visual-line-inner "visual line inner") (118 meep-move-to-bounds-of-visual-line "visual line") (100 meep-move-to-bounds-of-defun-inner "defun inner") (68 meep-move-to-bounds-of-defun "defun") (46 meep-move-to-bounds-of-sentence-inner "sentence inner") (62 meep-move-to-bounds-of-sentence "sentence"))``
    List of commands for bounds movement.  Each element is (key function description).
 
@@ -316,6 +328,32 @@ Motion: Find & Till
 
 ``(meep-move-find-char-on-line-repeat-till-prev ARG)``
    Repeat find ARG chars backwards.
+
+``(meep-region-mark-bounds-of-char-inner CH ARG)``
+   Mark in bounds of CH over ARG steps.
+   A negative ARG positions the POINT at the end of the region.
+
+   Note that pressing Return instead of a character performs a contextual mark,
+   finding the closest pair, see: ``meep-region-match-chars-contextual``.
+
+``(meep-region-mark-bounds-of-char-outer CH ARG)``
+   Mark in bounds of CH over ARG steps.
+   A negative ARG positions the POINT at the end of the region.
+
+   Note that pressing Return instead of a character performs a contextual mark,
+   finding the closest pair, see: ``meep-region-match-chars-contextual``.
+
+``(meep-region-mark-bounds-of-char-contextual-inner ARG)``
+   Mark in bounds of of the nearest character pairs over ARG steps.
+   A negative ARG positions the POINT at the end of the region.
+
+   Character pairs are detected using: ``meep-region-match-chars-contextual``.
+
+``(meep-region-mark-bounds-of-char-contextual-outer ARG)``
+   Mark in bounds of of the nearest character pairs over ARG steps.
+   A negative ARG positions the POINT at the end of the region.
+
+   Character pairs are detected using: ``meep-region-match-chars-contextual``.
 
 Motion: Bounds
 ^^^^^^^^^^^^^^

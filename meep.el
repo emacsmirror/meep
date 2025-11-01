@@ -2041,6 +2041,222 @@ IS-TILL when non-nil, search up until the character."
     (when bounds
       (meep--move-to-bounds-endpoint bounds n))))
 
+;; ---------------------------------------------------------------------------
+;; Mark: Bounds
+;;
+;; Note that MEEP's design is typically to mark after a motion,
+;; however in there are some down sides to this:
+;; - A motion only sets the point, not the opposite mark.
+;; - Activating the region is an extra step.
+;;
+;; A common operation such as [change, in, quotes] is 3 keys,
+;; without a way to mark he region in bounds this would take
+;; an additional key-stroke to activate.
+;;
+;; While it's arguably acceptable, it's a useful enough functionality
+;; to support for convenience.
+
+(defcustom meep-symmetrical-chars
+  (list (cons "(" ")") (cons "[" "]") (cons "{" "}") (cons "<" ">"))
+  "List of character matches.
+
+Used for `meep-region-mark-bounds-of-char-inner' and
+`meep-region-mark-bounds-of-char-outer'."
+  :type '(repeat (cons string string)))
+
+;; NOTE: this would benefit from per-major-mode presets,
+;; Since ORG mode and similar should use `*' and `='.
+;;
+;; NOTE: order from least to most likely.
+(defcustom meep-region-match-chars-contextual
+  (list
+   (cons "\"" "\"")
+   (cons "'" "'")
+   (cons "`" "`")
+   (cons "(" ")")
+   (cons "[" "]")
+   (cons "{" "}")
+   (cons "<" ">")
+   ;; Non ASCII characters.
+   (cons "“" "”")
+   (cons "‘" "’"))
+  "List of character matches used for automatically marking bounds.
+
+Used for `meep-region-mark-bounds-of-char-inner-contextual' and
+`meep-region-mark-bounds-of-char-outer-contextual'."
+  :type '(repeat (cons string string)))
+
+(defun meep--symmetrical-char-other-any (ch-str)
+  "Return the symmetrical character of CH-STR or nil."
+  (let ((chars meep-symmetrical-chars)
+        (result nil))
+    (while chars
+      (let ((item (pop chars)))
+        (cond
+         ((string-equal ch-str (car item))
+          (setq result (cdr item))
+          (setq chars nil))
+         ((string-equal ch-str (cdr item))
+          (setq result (car item))
+          (setq chars nil)))))
+    result))
+
+(defun meep--region-mark-bounds-of-char-calc (bounds-init bounds-limit n ch-pair)
+  "Calculate the bounds around CH-PAIR from BOUNDS-INIT N times.
+BOUNDS-LIMIT constrains the search bounds."
+  (let ((beg nil)
+        (end nil)
+        (bounds nil)
+        (case-fold-search nil))
+    (save-match-data
+      (save-excursion
+        (goto-char (cdr bounds-init))
+        (when (search-forward (cdr ch-pair) (cdr bounds-limit) t n)
+          (setq end (point))
+          (goto-char (car bounds-init))
+          (when (search-backward (car ch-pair) (car bounds-limit) t n)
+            (setq beg (point))
+            (setq bounds (cons beg end))))))
+    bounds))
+
+(defun meep--region-mark-bounds-init ()
+  "Return the initial bounds."
+  (cond
+   ((region-active-p)
+    (cons (region-beginning) (region-end)))
+   (t
+    (cons (point) (point)))))
+
+(defun meep--region-mark-bounds-to-region (bounds is-forward inner)
+  "Once BOUNDS is calculated, mark it as a region.
+When IS-FORWARD is t, the point is after the mark.
+
+When INNER is non-nil, mark the inner bounds."
+  (unless (region-active-p)
+    (meep-region-enable))
+  (when inner
+    (setcar bounds (1+ (car bounds)))
+    (setcdr bounds (1- (cdr bounds))))
+  (cond
+   (is-forward
+    (meep--set-marker (car bounds))
+    (goto-char (cdr bounds)))
+   (t
+    (meep--set-marker (cdr bounds))
+    (goto-char (car bounds)))))
+
+(defun meep--region-mark-ch-pair-from-char (ch)
+  "Return a cons cell of CH converted to a string."
+  (let ((ch-str (make-string 1 ch)))
+    (cons ch-str (or (meep--symmetrical-char-other-any ch-str) ch-str))))
+
+(defun meep--region-mark-bounds-of-char-impl (ch n inner)
+  "Implement mark region bounds in CH, N times.
+
+When INNER is non-nil, mark the inner bounds."
+  (let ((bounds-limit (cons (point-min) (point-max)))
+        (bounds-init (meep--region-mark-bounds-init))
+        (ch-str-pair (meep--region-mark-ch-pair-from-char ch))
+        (is-negative
+         (cond
+          ((< n 0)
+           (setq n (- n))
+           t)
+          (t
+           nil))))
+    (let ((bounds (meep--region-mark-bounds-of-char-calc bounds-init bounds-limit n ch-str-pair)))
+      (cond
+       ((null bounds)
+        (message "Unable to find bounds!")
+        nil)
+       (t
+        (let ((is-forward (/= (point) (car bounds-init))))
+          (when is-negative
+            (setq is-forward (not is-forward)))
+          (meep--region-mark-bounds-to-region bounds is-forward inner))
+        t)))))
+
+(defun meep-region-mark-bounds-of-char-contextual-impl (n inner)
+  "Implement mark region bounds (contextual), N times.
+
+When INNER is non-nil, mark the inner bounds."
+  (let ((bounds-limit (cons (point-min) (point-max)))
+        (bounds-init (meep--region-mark-bounds-init))
+        (is-negative
+         (cond
+          ((< n 0)
+           (setq n (- n))
+           t)
+          (t
+           nil))))
+    (let ((bounds nil))
+      (dolist (ch-str-pair meep-region-match-chars-contextual)
+        (let ((bounds-test
+               (meep--region-mark-bounds-of-char-calc bounds-init bounds-limit n ch-str-pair)))
+          ;; Only update the clamp beginning, since the end may increase and that's OK.
+          (when bounds-test
+            (setq bounds bounds-test)
+            (setcar bounds-limit (car bounds-test)))))
+      (cond
+       ((null bounds)
+        (message "Unable to find bounds!")
+        nil)
+       (t
+        (let ((is-forward (/= (point) (car bounds-init))))
+          (when is-negative
+            (setq is-forward (not is-forward)))
+          (meep--region-mark-bounds-to-region bounds is-forward inner))
+        t)))))
+
+;;;###autoload
+(defun meep-region-mark-bounds-of-char-inner (ch arg)
+  "Mark in bounds of CH over ARG steps.
+A negative ARG positions the POINT at the end of the region.
+
+Note that pressing Return instead of a character performs a contextual mark,
+finding the closest pair, see: `meep-region-match-chars-contextual'."
+  (interactive "*cMark inner char:\np")
+  ;; NOTE: we could add useful features with other characters.
+  (cond
+   ((eq ch 13) ; RET.
+    (meep-region-mark-bounds-of-char-contextual-inner arg))
+   (t
+    (meep--char-is-ok-or-error "Mark inner" ch)
+    (meep--region-mark-bounds-of-char-impl ch arg t))))
+
+;;;###autoload
+(defun meep-region-mark-bounds-of-char-outer (ch arg)
+  "Mark in bounds of CH over ARG steps.
+A negative ARG positions the POINT at the end of the region.
+
+Note that pressing Return instead of a character performs a contextual mark,
+finding the closest pair, see: `meep-region-match-chars-contextual'."
+  (interactive "*cMark outer char:\np")
+  ;; NOTE: we could add useful features with other characters.
+  (cond
+   ((eq ch 13) ; RET.
+    (meep-region-mark-bounds-of-char-contextual-outer arg))
+   (t
+    (meep--char-is-ok-or-error "Mark outer" ch)
+    (meep--region-mark-bounds-of-char-impl ch arg nil))))
+
+;;;###autoload
+(defun meep-region-mark-bounds-of-char-contextual-inner (arg)
+  "Mark in bounds of of the nearest character pairs over ARG steps.
+A negative ARG positions the POINT at the end of the region.
+
+Character pairs are detected using: `meep-region-match-chars-contextual'."
+  (interactive "p")
+  (meep-region-mark-bounds-of-char-contextual-impl arg t))
+
+;;;###autoload
+(defun meep-region-mark-bounds-of-char-contextual-outer (arg)
+  "Mark in bounds of of the nearest character pairs over ARG steps.
+A negative ARG positions the POINT at the end of the region.
+
+Character pairs are detected using: `meep-region-match-chars-contextual'."
+  (interactive "p")
+  (meep-region-mark-bounds-of-char-contextual-impl arg nil))
 
 ;; ---------------------------------------------------------------------------
 ;; Motion: Bounds
@@ -5329,7 +5545,14 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
           'meep-exchange-point-and-mark 'meep-exchange-point-and-mark-motion))
   (meep-command-prop-set cmd :mark-on-motion 'adjust))
 
-(dolist (cmd (list 'meep-exchange-point-and-mark 'meep-exchange-point-and-mark-motion))
+(dolist (cmd
+         (list
+          'meep-exchange-point-and-mark
+          'meep-exchange-point-and-mark-motion
+          'meep-region-mark-bounds-of-char-inner
+          'meep-region-mark-bounds-of-char-outer
+          'meep-region-mark-bounds-of-char-contextual-inner
+          'meep-region-mark-bounds-of-char-contextual-outer))
   (meep-command-prop-set cmd :mark-activate t))
 
 (dolist (cmd (list 'meep-digit-argument-repeat))

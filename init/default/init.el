@@ -34,22 +34,22 @@
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;;
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
-;; | Repeat      | Register    | CutKillRing | YankKillRing| CopyKillRing|  | HomeNoWs    | SwapPtMark  | SwapPtMotion| EndNoWs     | KeyPad...   | JumpToReg   |
-;; | Free:S      | Free:S      | CutClip:S   | PasteClip:S | CopyClip:S  |  | SexpNext:S  | SexpNxtOvr:S| SexpPrvOvr:S| SexpPrev:S  | PointToReg:S| MacroRec:S  |
+;; | Repeat      | Register    | CutKillRing | YankKillRing| CopyKillRing|  | MarkBoundsIn| SwapPtMark  | SwapPtMotion| Free        | KeyPad...   | JumpToReg   |
+;; | Free:S      | Free:S      | CutClip:S   | PasteClip:S | CopyClip:S  |  | MarkBounds:S|             |             | Free:S      | PointToReg:S| MacroRec:S  |
 ;; |             |             |             |YankKillCh/s |             |  |             |             |             |             |             |             |
 ;; |             |             |             |             |             |  |             | AvyNext/f   | AvyPrev/f   |             |             | Fill&Move/s |
 ;; |             |             |             |             |             |  |             |             |             |             |             |             |
 ;; |            q|            w|            e|            r|            t|  |            y|            u|            i|            o|            p|            \|
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;; | Surround... | Ex/Ins...   | Select      | Find...     | ReplaceCh   |  | Left        | Down        | Up          | Right       | JumpSexpIn  | JumpStrCmtIn|
-;; | Free:S      | Free:S      | SelLn:S     | Free:S      | InsChar:S   |  |SameSynPrev:S| SexpNxtOut:S| SexpPrvOut:S|SameSynNext:S| JumpSexp:S  | JumpStrCmt:S|
+;; | Free:S      | Free:S      | SelLn:S     | Free:S      | InsChar:S   |  | HomeNoWs:S  | ParaDown:S  | ParaUp:S    | EndNoWs:S   | JumpSexp:S  | JumpStrCmt:S|
 ;; |             | InsPrev/s   | SelBlock/s  |             |             |  | InsBOL/s    | InsBelow/s  | InsAbove/s  | InsEOL/s    |             |             |
 ;; |             |             |             |             |             |  | Find<Ch/f   |FindRegxNxt/f|FindRegxPrv/f| Find>Ch/f   | GotoLine/f  |             |
 ;; |             |             |             |             |             |  | Till<Ch:S/f |             |             | Till>Ch:S/f | GotoChar/f:S|             |
 ;; |            a|            s|            d|            f|            g|  |            h|            j|            k|            l|            ;|            '|
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;; | Undo        | Insert      | DelChar     | Transpose   | Change      |  | SymBack     | FindNext    | FindPrev    | SymNext     |SymNextEnd   |
-;; | Redo:S      | InsOver:S   | BkSpace:S   | DelLine:S   | ChangLine:S |  |SameSynPrev:S| ParaDown:S  | ParaUp:S    |SameSynNext:S|SameNextEnd:S|
+;; | Redo:S      | InsOver:S   | BkSpace:S   | DelLine:S   | ChangLine:S |  |SameSynPrev:S|             |             |SameSynNext:S|SameNextEnd:S|
 ;; |             |             |ShrinkSpace/s|             |             |  | FindRpt</f  |             |             | FindRpt>/f  |             |
 ;; |             |             |             |             |             |  | TillRpt<:S/f| Downcase/s  | Upcase/s    | TillRpt>:S/f|             |
 ;; |             |             |             |             |             |  |             | WordNext/f  | WordPrev/f  |             |             |
@@ -206,33 +206,34 @@
     '("B" . meep-insert-change-lines)
 
     ;; Right Hand: Row 1.
-    '("y" . meep-move-line-non-space-beginning)
-    '("Y" . meep-move-by-sexp-any-prev)
+    '("y" . meep-region-mark-bounds-of-char-inner)
+    '("Y" . meep-region-mark-bounds-of-char-outer)
 
     '("u" . meep-exchange-point-and-mark)
-    '("U" . meep-move-by-sexp-over-next)
+    '("U" . my-key-free)
 
     '("i" . meep-exchange-point-and-mark-motion)
-    '("I" . meep-move-by-sexp-over-prev)
+    '("I" . my-key-free)
 
-    '("o" . meep-move-line-non-space-end)
-    '("O" . meep-move-by-sexp-any-next)
+    '("o" . my-key-free)
+    '("O" . my-key-free)
 
     '("p" . meep-keypad)
     '("P" . my-key-free)
 
     ;; Right Hand: Row 2.
     '("h" . meep-move-char-prev)
-    '("H" . meep-move-same-syntax-or-symbol-prev)
+    '("H" . meep-move-line-non-space-beginning)
+
 
     '("j" . meep-move-line-next)
-    '("J" . meep-move-by-sexp-out-next)
+    '("J" . meep-move-paragraph-next)
 
     '("k" . meep-move-line-prev)
-    '("K" . meep-move-by-sexp-out-prev)
+    '("K" . meep-move-paragraph-prev)
 
     '("l" . meep-move-char-next)
-    '("L" . meep-move-same-syntax-or-symbol-next)
+    '("L" . meep-move-line-non-space-end)
 
     '(";" . meep-move-matching-bracket-inner)
     '(":" . meep-move-matching-bracket-outer)
@@ -245,10 +246,10 @@
     '("N" . meep-move-same-syntax-and-space-prev)
 
     '("m" . meep-isearch-repeat-next)
-    '("M" . meep-move-paragraph-next)
+    '("M" . my-key-free)
 
     '("," . meep-isearch-repeat-prev)
-    '("<" . meep-move-paragraph-prev)
+    '("<" . my-key-free)
 
     '("." . meep-move-symbol-next)
     '(">" . meep-move-same-syntax-and-space-next)
