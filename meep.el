@@ -2101,23 +2101,109 @@ Used for `meep-region-mark-bounds-of-char-inner-contextual' and
           (setq chars nil)))))
     result))
 
-(defun meep--region-mark-bounds-of-char-calc (bounds-init bounds-limit n ch-pair)
-  "Calculate the bounds around CH-PAIR from BOUNDS-INIT N times.
-BOUNDS-LIMIT constrains the search bounds."
-  (let ((beg nil)
-        (end nil)
-        (bounds nil)
-        (case-fold-search nil))
-    (save-match-data
+(defun meep--region-mark-bounds-find-matching-brackets (bounds-init bounds-limit ch-str-pair)
+  "Find the pair of matching brackets around BOUNDS-INIT.
+BOUNDS-LIMIT constrains the search bounds.
+Using characters from CH-STR-PAIR.
+or nil if no matching brackets are found."
+  (let* ((has-region (/= (car bounds-init) (cdr bounds-init)))
+         (open-char (car ch-str-pair))
+         (close-char (cdr ch-str-pair))
+         (open-char-code (string-to-char open-char))
+         (close-char-code (string-to-char close-char))
+         (limit-min (car bounds-limit))
+         (limit-max (cdr bounds-limit)))
+    (let ((find-open-bracket
+           (lambda ()
+             (save-excursion
+               (let ((depth 0)
+                     (found nil))
+                 ;; Search backward character by character.
+                 (while (and (not found) (> (point) limit-min))
+                   (backward-char 1)
+                   (let ((char (char-after)))
+                     (cond
+                      ;; Found a closing bracket of our type - increase depth.
+                      ((eq char close-char-code)
+                       (meep--incf depth))
+                      ;; Found an opening bracket of our type.
+                      ((eq char open-char-code)
+                       (cond
+                        ((zerop depth)
+                         ;; This is our match!
+                         (setq found (point)))
+                        (t
+                         ;; Decrease depth and continue.
+                         (meep--decf depth)))))))
+                 found))))
+          (find-close-bracket
+           (lambda ()
+             (save-excursion
+               ;; Move past the opening bracket.
+               (forward-char 1)
+               (let ((depth 0)
+                     (found nil))
+                 ;; Search forward character by character.
+                 (while (and (not found) (< (point) limit-max))
+                   (let ((char (char-after)))
+                     (cond
+                      ;; Found an opening bracket of our type - increase depth.
+                      ((eq char open-char-code)
+                       (meep--incf depth))
+                      ;; Found a closing bracket of our type.
+                      ((eq char close-char-code)
+                       (cond
+                        ((zerop depth)
+                         ;; This is our match!
+                         (setq found (1+ (point))))
+                        (t
+                         ;; Decrease depth and continue.
+                         (meep--decf depth))))))
+                   (unless found
+                     (forward-char 1)))
+                 found)))))
+
       (save-excursion
-        (goto-char (cdr bounds-init))
-        (when (search-forward (cdr ch-pair) (cdr bounds-limit) t n)
-          (setq end (point))
-          (goto-char (car bounds-init))
-          (when (search-backward (car ch-pair) (car bounds-limit) t n)
-            (setq beg (point))
-            (setq bounds (cons beg end))))))
-    bounds))
+        ;; Search from the beginning of the region.
+        (goto-char (car bounds-init))
+        (let* ((open-pos (funcall find-open-bracket))
+               (result nil))
+          (when open-pos
+            ;; Now find the matching closing bracket.
+            (goto-char open-pos)
+            (let ((close-pos (funcall find-close-bracket)))
+              (when (and close-pos
+                         (cond
+                          (has-region
+                           ;; When region is active, ensure brackets contain the region.
+                           (and (<= open-pos (car bounds-init)) (>= close-pos (car bounds-init))))
+                          (t
+                           ;; When no region, ensure point is between brackets.
+                           (>= close-pos (car bounds-init)))))
+                (setq result (cons open-pos close-pos)))))
+          result)))))
+
+(defun meep--region-mark-bounds-of-char-calc (bounds-init bounds-limit n ch-str-pair)
+  "Calculate the bounds around CH-STR-PAIR from BOUNDS-INIT N times.
+BOUNDS-LIMIT constrains the search bounds."
+  (cond
+   ((string-equal (car ch-str-pair) (cdr ch-str-pair))
+    (let ((beg nil)
+          (end nil)
+          (bounds nil)
+          (case-fold-search nil))
+      (save-match-data
+        (save-excursion
+          (goto-char (cdr bounds-init))
+          (when (search-forward (cdr ch-str-pair) (cdr bounds-limit) t n)
+            (setq end (point))
+            (goto-char (car bounds-init))
+            (when (search-backward (car ch-str-pair) (car bounds-limit) t n)
+              (setq beg (point))
+              (setq bounds (cons beg end))))))
+      bounds))
+   (t
+    (meep--region-mark-bounds-find-matching-brackets bounds-init bounds-limit ch-str-pair))))
 
 (defun meep--region-mark-bounds-init ()
   "Return the initial bounds."
