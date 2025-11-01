@@ -329,6 +329,24 @@ Motion: Find & Till
 ``(meep-move-find-char-on-line-repeat-till-prev ARG)``
    Repeat find ARG chars backwards.
 
+Region Mark: Bounds in Character
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Support's convenient marking of a region in character bounds.
+This works by prompting for a character which is is then scanned in both direction,
+marking the region in the bounds when it is found.
+
+Notes:
+
+- Both inner/outer commands are available,
+  in case you wish to manipulate the region including/excluding the characters.
+- Entering bracket characters uses matching brackets,
+  customizable with the ``meep-symmetrical-chars`` variable.
+- Entering an opening ``(`` bracket marks the region inside: ``( ... )``.
+- Entering a closing ``)`` bracket marks the region inside: ``) ... (``.
+- A "contextual" version of this function has been implemented which marts the nearest region.
+  customizable with the ``meep-match-bounds-of-char-contextual-chars`` variable.
+
 ``(meep-region-mark-bounds-of-char-inner CH ARG)``
    Mark in bounds of CH over ARG steps.
    A negative ARG positions the POINT at the end of the region.
