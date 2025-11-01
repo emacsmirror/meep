@@ -34,8 +34,8 @@
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;;
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
-;; | Repeat      | Register    | CutKillRing | YankKillRing| CopyKillRing|  | MarkBoundsIn| SwapPtMark  | SwapPtMotion| Free        | KeyPad...   | JumpToReg   |
-;; | Free:S      | Free:S      | CutClip:S   | PasteClip:S | CopyClip:S  |  | MarkBounds:S|             |             | Free:S      | PointToReg:S| MacroRec:S  |
+;; | Repeat      | Register    | CutKillRing | YankKillRing| CopyKillRing|  | Free        | SwapPtMark  | SwapPtMotion| MarkBoundsIn| KeyPad...   | JumpToReg   |
+;; | Free:S      | Free:S      | CutClip:S   | PasteClip:S | CopyClip:S  |  | Free:S      |             |             | MarkBounds:S| PointToReg:S| MacroRec:S  |
 ;; |             |             |             |YankKillCh/s |             |  |             |             |             |             |             |             |
 ;; |             |             |             |             |             |  |             | AvyNext/f   | AvyPrev/f   |             |             | Fill&Move/s |
 ;; |             |             |             |             |             |  |             |             |             |             |             |             |
@@ -206,8 +206,8 @@
     '("B" . meep-insert-change-lines)
 
     ;; Right Hand: Row 1.
-    '("y" . meep-region-mark-bounds-of-char-inner)
-    '("Y" . meep-region-mark-bounds-of-char-outer)
+    '("y" . my-key-free)
+    '("Y" . my-key-free)
 
     '("u" . meep-exchange-point-and-mark)
     '("U" . my-key-free)
@@ -215,8 +215,8 @@
     '("i" . meep-exchange-point-and-mark-motion)
     '("I" . my-key-free)
 
-    '("o" . my-key-free)
-    '("O" . my-key-free)
+    '("o" . meep-region-mark-bounds-of-char-inner)
+    '("O" . meep-region-mark-bounds-of-char-outer)
 
     '("p" . meep-keypad)
     '("P" . my-key-free)
