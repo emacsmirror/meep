@@ -65,14 +65,13 @@ this is a hint that commands may use.")
 ;; ---------------------------------------------------------------------------
 ;; Public Variables
 
-
 ;; In some cases it's necessary to know the previous point in a motion.
 ;; In most cases "mark-on-motion" commands set the mark, however in the case
 ;; of commands that adjust the motion, they don't set the mark.
 ;; This is needed so it's possible to use `meep-move-char-prev' & `meep-move-char-next'
 ;; as motions which transpose characters.
 (defvar-local meep-mark-adjust nil
-  "The previous for commands that don't mark on motion.
+  "The previous position for commands that don't mark on motion.
 
 This must be set by commands that pass the:
 `meep-command-is-mark-set-on-motion-adjust' test.")

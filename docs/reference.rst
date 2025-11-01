@@ -52,6 +52,12 @@ Other Variables
    Note that line-wise navigation is not enforced,
    this is a hint that commands may use.
 
+``meep-mark-adjust``: ``nil``
+   The previous position for commands that don’t mark on motion.
+
+   This must be set by commands that pass the:
+   ``meep-command-is-mark-set-on-motion-adjust`` test.
+
 ``meep-mark-set-on-motion-override``: ``nil``
    This constant exists so it’s possible to let-bind the value to t.
 
