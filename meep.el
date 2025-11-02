@@ -5480,24 +5480,34 @@ Uses the `meep-clipboard-register-map' key-map."
       (while (not found)
         (let ((maybe-complete nil))
           (let ((ch
-                 (read-event
-                  (concat
-                   "Keypad [" (funcall string-from-keyseq-default keyseq)
-                   (cond
-                    (was-space
-                     (concat " " ellipsis-str))
-                    ((string-suffix-p "-" (car (car keyseq)))
-                     ellipsis-str)
-                    (t
-                     (concat " C-" ellipsis-str)))
-                   "]"
-                   (cond
-                    (is-first
-                     (propertize (concat ", m for M-" ellipsis-str ", g for C-M-" ellipsis-str)
-                                 'face
-                                 'font-lock-comment-face))
-                    (t
-                     "")))))
+                 ;; Which key needs `this-command' to be nil, else it wont show.
+                 ;; Also bind the command to return the keys for which-key to show.
+                 ;; This is harmless if which-key isn't in use.
+                 (let ((this-command nil)
+                       (which-key-this-command-keys-function
+                        (lambda ()
+                          (let ((keyseq-str-list (funcall string-from-keyseq-all keyseq)))
+                            (apply #'vconcat
+                                   (mapcar
+                                    (lambda (keyseq-str) (kbd keyseq-str)) keyseq-str-list))))))
+                   (read-event
+                    (concat
+                     "Keypad [" (funcall string-from-keyseq-default keyseq)
+                     (cond
+                      (was-space
+                       (concat " " ellipsis-str))
+                      ((string-suffix-p "-" (car (car keyseq)))
+                       ellipsis-str)
+                      (t
+                       (concat " C-" ellipsis-str)))
+                     "]"
+                     (cond
+                      (is-first
+                       (propertize (concat ", m for M-" ellipsis-str ", g for C-M-" ellipsis-str)
+                                   'face
+                                   'font-lock-comment-face))
+                      (t
+                       ""))))))
 
                 (ch-str-list nil))
 
