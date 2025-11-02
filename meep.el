@@ -5459,6 +5459,7 @@ Uses the `meep-clipboard-register-map' key-map."
 
     ;; https://github.com/meow-edit/meow/blob/master/TUTORIAL.org#keypad
     (let ((found nil)
+          (is-first t)
           ;; Build a sequence of keys, note that this is stored in reverse order
           ;; for conveniently adding to the start.
           ;; Each element may contain multiple keys - to ensure both
@@ -5489,7 +5490,14 @@ Uses the `meep-clipboard-register-map' key-map."
                      ellipsis-str)
                     (t
                      (concat " C-" ellipsis-str)))
-                   (concat "]"))))
+                   "]"
+                   (cond
+                    (is-first
+                     (propertize (concat ", m for M-" ellipsis-str ", g for C-M-" ellipsis-str)
+                                 'face
+                                 'font-lock-comment-face))
+                    (t
+                     "")))))
 
                 (ch-str-list nil))
 
@@ -5508,6 +5516,14 @@ Uses the `meep-clipboard-register-map' key-map."
               (push ch-str ch-str-list))
 
             (cond
+             ;; Special case: keypad -> m replaces the initial: `C-' with `M-'.
+             ;; Without this, `M-' shortcuts aren't possible.
+             ((and is-first (eq ch ?m))
+              (setcar keyseq (list "M-")))
+             ;; Special case: keypad -> g replaces the initial: `C-' with `C-M-'.
+             ;; Without this, `C-M-' shortcuts aren't possible.
+             ((and is-first (eq ch ?g))
+              (setcar keyseq (list "C-M-")))
              ((string-suffix-p "-" (car (car keyseq)))
               (push ch-str-list keyseq)
               (setq maybe-complete t))
@@ -5573,7 +5589,8 @@ Uses the `meep-clipboard-register-map' key-map."
                 ;; Should never happen, but this is early development so it might.
                 (user-error "Keypad [%s] unknown type: %S !"
                             keyseq-str-default
-                            (type-of bind)))))))))))
+                            (type-of bind)))))))
+        (setq is-first nil)))))
 
 
 ;; ---------------------------------------------------------------------------
