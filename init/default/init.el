@@ -34,14 +34,14 @@
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;;
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
-;; | Repeat      | Register    | CutKillRing | YankKillRing| CopyKillRing|  | Free        | SwapPtMark  | SwapPtMotion| MarkBoundsIn| KeyPad...   | JumpToReg   |
-;; | Free:S      | Free:S      | CutClip:S   | PasteClip:S | CopyClip:S  |  | Free:S      |             |             | MarkBounds:S| PointToReg:S| MacroRec:S  |
+;; | Repeat      | CopyKillRing| CutKillRing | YankKillRing| Surround... |  | Free        | SwapPtMark  | SwapPtMotion| MarkBoundsIn| ClipToReg   | JumpToReg   |
+;; | Free:S      | CopyClip:S  | CutClip:S   | PasteClip:S | SurrLine:S..|  | Free:S      |             |             | MarkBounds:S| PointToReg:S| MacroRec:S  |
 ;; |             |             |             |YankKillCh/s |             |  |             |             |             |             |             |             |
 ;; |             |             |             |             |             |  |             | AvyNext/f   | AvyPrev/f   |             |             | Fill&Move/s |
 ;; |             |             |             |             |             |  |             |             |             |             |             |             |
 ;; |            q|            w|            e|            r|            t|  |            y|            u|            i|            o|            p|            \|
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
-;; | Surround... | Ex/Ins...   | Select      | Find...     | ReplaceCh   |  | Left        | Down        | Up          | Right       | JumpSexpIn  | JumpStrCmtIn|
+;; | KeyPad...   | Ex/Ins...   | Select      | Find...     | ReplaceCh   |  | Left        | Down        | Up          | Right       | JumpSexpIn  | JumpStrCmtIn|
 ;; | Free:S      | Free:S      | SelLn:S     | Free:S      | InsChar:S   |  | HomeNoWs:S  | ParaDown:S  | ParaUp:S    | EndNoWs:S   | JumpSexp:S  | JumpStrCmt:S|
 ;; |             | InsPrev/s   | SelBlock/s  |             |             |  | InsBOL/s    | InsBelow/s  | InsAbove/s  | InsEOL/s    |             |             |
 ;; |             |             |             |             |             |  | Find<Ch/f   |FindRegxNxt/f|FindRegxPrv/f| Find>Ch/f   | GotoLine/f  |             |
@@ -107,8 +107,8 @@
     '("q" . repeat-fu-execute)
     '("Q" . my-key-free)
 
-    '("w" . meep-clipboard-register-actions)
-    '("W" . my-key-free)
+    '("w" . meep-clipboard-killring-copy)
+    '("W" . meep-clipboard-only-copy)
 
     '("e" . meep-clipboard-killring-cut)
     '("E" . meep-clipboard-only-cut)
@@ -116,15 +116,15 @@
     '("r" . meep-clipboard-killring-yank-pop-stack)
     '("R" . meep-clipboard-only-yank)
 
-    '("t" . meep-clipboard-killring-copy)
-    '("T" . meep-clipboard-only-copy)
+    '("t" . meep-char-surround-insert)
+    '("T" . meep-char-surround-insert-lines)
 
     ;; Left Hand: Row 2.
 
     ;; NOTE: a more comprehensive surround map is really needed.
     ;; This is only character level surround insertion.
-    '("a" . meep-char-surround-insert)
-    '("A" . meep-char-surround-insert-lines)
+    '("a" . meep-keypad)
+    '("A" . my-key-free)
 
     '("s r" . meep-delete-char-ring-yank)
     '("s c" . meep-space-shrink-contextual)
@@ -218,8 +218,8 @@
     '("o" . meep-region-mark-bounds-of-char-inner)
     '("O" . meep-region-mark-bounds-of-char-outer)
 
-    '("p" . meep-keypad)
-    '("P" . my-key-free)
+    '("p" . meep-clipboard-register-actions)
+    '("P" . point-to-register)
 
     ;; Right Hand: Row 2.
     '("h" . meep-move-char-prev)
