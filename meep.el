@@ -5629,7 +5629,10 @@ Uses the `meep-clipboard-register-map' key-map."
 
               ;; (printf "RESULT: '%S' | %S | %S\n" keyseq bind (type-of bind))
               (cond
-               ((or (and bind (symbolp bind)) (interpreted-function-p bind))
+               ((or (and bind (symbolp bind) (commandp bind))
+                    (and bind (not (symbolp bind)) (interpreted-function-p bind)))
+
+                ;; Don't look any further.
                 (setq found t)
 
                 ;; Don't log, just show the message...
@@ -5642,8 +5645,20 @@ Uses the `meep-clipboard-register-map' key-map."
                             (t
                              "<interpreted function ...>"))))
 
-                (execute-kbd-macro kbd-keyseq))
-               ((consp bind)
+                ;; For some reason using `execute-kbd-macro' doesn't activate the command in
+                ;; quite the same way, for example, C-x C-f doesn't show the same file finder,
+                ;; fortunately it's possible to call `bind' so it's not an issue here.
+                ;; Ideally executing the macro could work in all cases though.
+                (cond
+                 ((and (symbolp bind) (commandp bind))
+                  (setq this-command bind)
+                  (call-interactively bind))
+                 (t
+                  (execute-kbd-macro kbd-keyseq))))
+
+               ((or (consp bind)
+                    ;; A symbol may reference a key-map.
+                    (and bind (symbolp bind) (keymapp bind)))
                 ;; A key-map, keep looking.
                 nil)
                ((null bind)
