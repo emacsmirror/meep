@@ -5518,6 +5518,7 @@ Uses the `meep-clipboard-register-map' key-map."
                             (apply #'vconcat
                                    (mapcar
                                     (lambda (keyseq-str) (kbd keyseq-str)) keyseq-str-list))))))
+                   (ignore which-key-this-command-keys-function)
                    (read-event
                     (concat
                      "Keypad [" (funcall string-from-keyseq-default keyseq)
