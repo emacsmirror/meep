@@ -4987,10 +4987,8 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
         (delete-region bol eol)))
     (bray-state-set meep-state-insert))))
 
-;;;###autoload
-(defun meep-insert-into-last ()
-  "Insert text into last insert point."
-  (interactive "*")
+(defun meep--insert-into-last-impl (move)
+  "Insert text into the last insert point, MOVE deletes the original."
   (let ((beg nil)
         (end nil)
         (pos-last-insert
@@ -5012,11 +5010,28 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
           (setq end (cdr bounds))))))
 
     (let ((text (and beg end (buffer-substring-no-properties beg end))))
+      (when (and beg end move)
+        (delete-region beg end))
       (goto-char pos-last-insert)
       (meep-insert)
       (when text
         (insert text)))))
 
+;;;###autoload
+(defun meep-insert-into-last-copy ()
+  "Insert text into last insert point (copying it).
+
+When there is no active region, the symbol at the point is used."
+  (interactive "*")
+  (meep--insert-into-last-impl nil))
+
+;;;###autoload
+(defun meep-insert-into-last-move ()
+  "Insert text into last insert point (moving it).
+
+When there is no active region, the symbol at the point is used."
+  (interactive "*")
+  (meep--insert-into-last-impl t))
 
 ;;;###autoload
 (defun meep-insert-open-above ()

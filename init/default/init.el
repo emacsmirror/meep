@@ -36,7 +36,7 @@
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;; | Repeat      | CopyKillRing| CutKillRing | YankKillRing| Surround... |  | MarkExpand  | SwapPtMark  | SwapPtMotion| MarkBoundsIn| ClipToReg   | JumpToReg   |
 ;; | Free:S      | CopyClip:S  | CutClip:S   | PasteClip:S | SurrLine:S..|  | MarkShrink:S|             |             | MarkBounds:S| PointToReg:S| MacroRec:S  |
-;; |             |             |             |YankKillCh/s |             |  |             |             |             |             |             |             |
+;; |             | CopyToIns/s | CutToIns/s  |YankKillCh/s |             |  |             |             |             |             |             |             |
 ;; |             |             |             |             |             |  |             | AvyNext/f   | AvyPrev/f   |             |             | Fill&Move/s |
 ;; |             |             |             |             |             |  |             |             |             |             |             |             |
 ;; |            q|            w|            e|            r|            t|  |            y|            u|            i|            o|            p|            \|
@@ -122,6 +122,9 @@
     ;; This is only character level surround insertion.
     '("a" . meep-keypad)
     '("A" . my-key-free)
+
+    '("s w" . meep-insert-into-last-copy)
+    '("s e" . meep-insert-into-last-move)
 
     '("s r" . meep-delete-char-ring-yank)
     '("s c" . meep-space-shrink-contextual)

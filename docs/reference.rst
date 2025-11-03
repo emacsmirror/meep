@@ -705,8 +705,15 @@ State: Insert
    Change the region, entering insert mode.
    The region may be implied, see ``meep-command-is-mark-set-on-motion-any``.
 
-``(meep-insert-into-last)``
-   Insert text into last insert point.
+``(meep-insert-into-last-copy)``
+   Insert text into last insert point (copying it).
+
+   When there is no active region, the symbol at the point is used.
+
+``(meep-insert-into-last-move)``
+   Insert text into last insert point (moving it).
+
+   When there is no active region, the symbol at the point is used.
 
 ``(meep-insert-open-above)``
    Open a newline above and switch to INSERT state.
