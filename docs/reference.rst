@@ -487,11 +487,11 @@ a syntax mismatch is encountered, then expanding is only performed at the point.
 
 This allows for expanding across surrounding symmetrical characters which can be useful.
 
-``(meep-region-syntax-expand)``
-   Expand on matching syntax table elements.
+``(meep-region-syntax-expand ARG)``
+   Expand on matching syntax table elements ARG times.
 
-``(meep-region-syntax-contract)``
-   Contract matching syntax table.
+``(meep-region-syntax-contract ARG)``
+   Contract matching syntax table ARG times.
 
 Command: Repeat N
 ^^^^^^^^^^^^^^^^^
