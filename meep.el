@@ -3330,7 +3330,7 @@ Also skip any symbol bounds."
   "Contract matching syntax table."
   (interactive)
   (unless (region-active-p)
-    (user-error "No region to expand"))
+    (user-error "No region to contract"))
 
   (when meep--region-syntax-asym
     (let ((local-last-command (meep--last-command)))
