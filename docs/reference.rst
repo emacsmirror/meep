@@ -655,6 +655,17 @@ Joined at the first line removes the leading ``*``:
 ``(meep-join-line-prev ARG)``
    Join the previous line to this one ARG times.
 
+Text Editing: Shrink Space
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``(meep-space-shrink-contextual)``
+   Blank space removal.
+   - When on a blank line, remove surrounding blank lines.
+   - When on a blank character remove multiple blank characters.
+   - Otherwise, when over a paragraph, trim the bounds to a single blank line.
+
+   Return non-nil when a change was made.
+
 Text Editing: Transpose
 ^^^^^^^^^^^^^^^^^^^^^^^
 

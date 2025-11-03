@@ -4541,6 +4541,80 @@ USE-COMMENT-STRIP, strips comments between lines."
 
 
 ;; ---------------------------------------------------------------------------
+;; Text Editing: Shrink Space
+
+;;;###autoload
+(defun meep-space-shrink-contextual ()
+  "Blank space removal.
+- When on a blank line, remove surrounding blank lines.
+- When on a blank character remove multiple blank characters.
+- Otherwise, when over a paragraph, trim the bounds to a single blank line.
+
+Return non-nil when a change was made."
+  (interactive "*")
+  (let* ((bol (pos-bol))
+         (eol (pos-eol))
+         (line-bounds
+          (cons
+           (save-excursion
+             (skip-chars-backward "[:blank:]" bol)
+             (point))
+           (save-excursion
+             (skip-chars-forward "[:blank:]" eol)
+             (point)))))
+    (cond
+     ;; An empty line.
+     ((and (eq bol (car line-bounds)) (eq eol (cdr line-bounds)))
+      ;; Find the buffer bounds.
+      (let* ((vert-bounds
+              (cons
+               (save-excursion
+                 (skip-chars-backward "[:blank:]\n" (point-min))
+                 (beginning-of-line)
+                 (unless (looking-at-p "[[:blank:]]*$")
+                   (forward-line 1))
+                 (point))
+               (save-excursion
+                 (skip-chars-forward "[:blank:]\n" (point-max))
+                 (beginning-of-line)
+                 (unless (looking-at-p "[[:blank:]]*$")
+                   (forward-line -1)
+                   (end-of-line))
+                 (point)))))
+        (cond
+         ((< (car vert-bounds) (cdr vert-bounds))
+          (meep--replace-in-region "" (car vert-bounds) (cdr vert-bounds))
+          t)
+         (t
+          nil))))
+
+     ;; No space or single space single space.
+     ((or (eq (cdr line-bounds) (car line-bounds))
+          (and (eq 1 (- (cdr line-bounds) (car line-bounds)))
+               (eq ?\s (char-after (car line-bounds)))))
+      (let ((changed-prev nil)
+
+            (changed-next nil))
+        (save-match-data
+          (save-excursion
+            (beginning-of-line)
+            (when (search-backward-regexp "^[[:blank:]]*$" (point-min) t)
+              (setq changed-prev (meep-space-shrink-contextual))))
+          (save-excursion
+            (end-of-line)
+            (when (search-forward-regexp "^[[:blank:]]*$" (point-max) t)
+              (setq changed-next (meep-space-shrink-contextual)))))
+        (or changed-prev changed-next)))
+
+     ;; Some space.
+     ((< 0 (- (cdr line-bounds) (car line-bounds)))
+      (meep--replace-in-region " " (car line-bounds) (cdr line-bounds))
+      t)
+     (t
+      nil))))
+
+
+;; ---------------------------------------------------------------------------
 ;; Text Editing: Transpose
 
 ;; NOTE(@ideasman42): there are quite a few TODO's here,
