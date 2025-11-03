@@ -34,8 +34,8 @@
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;;
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
-;; | Repeat      | CopyKillRing| CutKillRing | YankKillRing| Surround... |  | Free        | SwapPtMark  | SwapPtMotion| MarkBoundsIn| ClipToReg   | JumpToReg   |
-;; | Free:S      | CopyClip:S  | CutClip:S   | PasteClip:S | SurrLine:S..|  | Free:S      |             |             | MarkBounds:S| PointToReg:S| MacroRec:S  |
+;; | Repeat      | CopyKillRing| CutKillRing | YankKillRing| Surround... |  | MarkExpand  | SwapPtMark  | SwapPtMotion| MarkBoundsIn| ClipToReg   | JumpToReg   |
+;; | Free:S      | CopyClip:S  | CutClip:S   | PasteClip:S | SurrLine:S..|  | MarkShrink:S|             |             | MarkBounds:S| PointToReg:S| MacroRec:S  |
 ;; |             |             |             |YankKillCh/s |             |  |             |             |             |             |             |             |
 ;; |             |             |             |             |             |  |             | AvyNext/f   | AvyPrev/f   |             |             | Fill&Move/s |
 ;; |             |             |             |             |             |  |             |             |             |             |             |             |
@@ -62,9 +62,6 @@
 ;;
 ;; - Shift-Delete:    JoinLineEnd.
 ;; - Shift-BackSpace: JoinLineBeginning.
-;;
-;; - -: Contract Region.
-;; - =: Expand Region.
 ;;
 ;; - [: BegOfThing.
 ;; - ]: EndOfThing.
@@ -206,8 +203,8 @@
     '("B" . meep-insert-change-lines)
 
     ;; Right Hand: Row 1.
-    '("y" . my-key-free)
-    '("Y" . my-key-free)
+    '("y" . meep-region-syntax-expand)
+    '("Y" . meep-region-syntax-contract)
 
     '("u" . meep-exchange-point-and-mark)
     '("U" . my-key-free)
@@ -263,9 +260,6 @@
 
     '("[" . meep-move-to-bounds-of-thing-beginning)
     '("]" . meep-move-to-bounds-of-thing-end)
-
-    '("-" . meep-region-syntax-contract)
-    '("=" . meep-region-syntax-expand)
 
     '("<tab>" . meep-indent-rigidly)
 
