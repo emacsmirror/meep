@@ -3176,6 +3176,29 @@ use to maintain line-based selection."
 ;; but stop symmetrical extending once the first syntax mismatch if found.
 (defvar-local meep--region-syntax-asym nil)
 
+
+(defun meep--region-syntax-or-symbol-forward (syntax &optional lim)
+  "Wrap `skip-syntax-forward' skipping SYNTAX in LIM.
+Also skip any symbol bounds."
+  (let ((bounds-end (cdr (bounds-of-thing-at-point 'symbol))))
+    (cond
+     ((and bounds-end (< (point) bounds-end))
+      (prog1 (- bounds-end (point))
+        (goto-char bounds-end)))
+     (t
+      (skip-syntax-forward syntax lim)))))
+
+(defun meep--region-syntax-or-symbol-backward (syntax &optional lim)
+  "Wrap `skip-syntax-backward' skipping SYNTAX in LIM.
+Also skip any symbol bounds."
+  (let ((bounds-beg (car (bounds-of-thing-at-point 'symbol))))
+    (cond
+     ((and bounds-beg (> (point) bounds-beg))
+      (prog1 (- (point) bounds-beg)
+        (goto-char bounds-beg)))
+     (t
+      (skip-syntax-backward syntax lim)))))
+
 ;;;###autoload
 (defun meep-region-syntax-expand ()
   "Expand on matching syntax table elements."
@@ -3234,12 +3257,12 @@ use to maintain line-based selection."
           (when do-beg
             (save-excursion
               (goto-char beg)
-              (skip-syntax-backward beg-syn-str)
+              (meep--region-syntax-or-symbol-backward beg-syn-str)
               (setq beg-next (point))))
           (when do-end
             (save-excursion
               (goto-char end)
-              (skip-syntax-forward end-syn-str)
+              (meep--region-syntax-or-symbol-forward end-syn-str)
               (setq end-next (point))))
 
           ;; Avoid expanding an unbalanced number of brackets as it makes it
@@ -3284,14 +3307,19 @@ use to maintain line-based selection."
           (let ((syn-str (and syn (funcall syn-as-str-fn syn))))
             (let ((beg-next
                    (save-excursion
-                     (skip-syntax-backward syn-str)
+                     (meep--region-syntax-or-symbol-backward syn-str)
                      (point)))
                   (end-next
                    (save-excursion
-                     (skip-syntax-forward syn-str)
+                     (meep--region-syntax-or-symbol-forward syn-str)
                      (point))))
-              (meep--set-marker beg-next)
-              (goto-char end-next)
+              ;; Place the point at the beginning and the mark at the end.
+              ;; This is somewhat arbitrary but matches:
+              ;; - `meep-region-mark-bounds-of-char-inner' and related functions.
+              ;; - `meep-move-matching-bracket-inner' and related functions that
+              ;;   first jump to the beginning.
+              (goto-char beg-next)
+              (meep--set-marker end-next)
               (progn
                 (activate-mark t)
                 (setq deactivate-mark nil)))))))))))
@@ -3357,12 +3385,12 @@ use to maintain line-based selection."
         (when do-beg
           (save-excursion
             (goto-char beg)
-            (skip-syntax-forward beg-syn-str)
+            (meep--region-syntax-or-symbol-forward beg-syn-str)
             (setq beg-next (point))))
         (when do-end
           (save-excursion
             (goto-char end)
-            (skip-syntax-backward end-syn-str)
+            (meep--region-syntax-or-symbol-backward end-syn-str)
             (setq end-next (point))))
 
         ;; Avoid expanding an unbalanced number of brackets as it makes it
