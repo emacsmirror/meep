@@ -80,197 +80,189 @@
     (keymap-set map key def)))
 
 (defun my-meep-basis-keys ()
-  (my-meep-keymap-set-many meep-state-keymap-motion
 
-    '("1" . meep-digit-argument-repeat)
-    '("2" . meep-digit-argument-repeat)
-    '("3" . meep-digit-argument-repeat)
-    '("4" . meep-digit-argument-repeat)
-    '("5" . meep-digit-argument-repeat)
-    '("6" . meep-digit-argument-repeat)
-    '("7" . meep-digit-argument-repeat)
-    '("8" . meep-digit-argument-repeat)
-    '("9" . meep-digit-argument-repeat)
-    '("0" . meep-digit-argument-repeat)
-    '("-" . meep-digit-argument-repeat)
+  ;; For convenience of re-assigning these common prefix keys.
+  (let ((my-find "f ")
+        ;; Extended functionality.
+        (my-ex "s "))
 
-    '("`" . meep-region-to-secondary-selection)
-    '("~" . meep-region-swap)
+    (my-meep-keymap-set-many meep-state-keymap-motion
 
-    ;; ----
-    ;; Left Hand: Row 1.
-    ;; ----
+      '("1" . meep-digit-argument-repeat)
+      '("2" . meep-digit-argument-repeat)
+      '("3" . meep-digit-argument-repeat)
+      '("4" . meep-digit-argument-repeat)
+      '("5" . meep-digit-argument-repeat)
+      '("6" . meep-digit-argument-repeat)
+      '("7" . meep-digit-argument-repeat)
+      '("8" . meep-digit-argument-repeat)
+      '("9" . meep-digit-argument-repeat)
+      '("0" . meep-digit-argument-repeat)
+      '("-" . meep-digit-argument-repeat)
 
-    '("q" . repeat-fu-execute)
-    '("Q" . my-key-free)
+      ;; Commands must be run "after" numeric has been set.
+      ;; Unlike the default to re-running N times.
+      (cons (concat my-ex "1") 'digit-argument)
+      (cons (concat my-ex "2") 'digit-argument)
+      (cons (concat my-ex "3") 'digit-argument)
+      (cons (concat my-ex "4") 'digit-argument)
+      (cons (concat my-ex "5") 'digit-argument)
+      (cons (concat my-ex "6") 'digit-argument)
+      (cons (concat my-ex "7") 'digit-argument)
+      (cons (concat my-ex "8") 'digit-argument)
+      (cons (concat my-ex "9") 'digit-argument)
+      (cons (concat my-ex "0") 'digit-argument)
+      (cons (concat my-ex "-") 'negative-argument)
 
-    '("w" . meep-clipboard-killring-copy)
-    '("W" . meep-clipboard-only-copy)
+      '("`" . meep-region-to-secondary-selection)
+      '("~" . meep-region-swap)
 
-    '("e" . meep-clipboard-killring-cut)
-    '("E" . meep-clipboard-only-cut)
+      ;; ----
+      ;; Left Hand: Row 1.
+      ;; ----
 
-    '("r" . meep-clipboard-killring-yank-pop-stack)
-    '("R" . meep-clipboard-only-yank)
+      '("q" . repeat-fu-execute)
+      '("Q" . my-key-free)
 
-    '("t" . meep-char-surround-insert)
-    '("T" . meep-char-surround-insert-lines)
+      '("w" . meep-clipboard-killring-copy)
+      '("W" . meep-clipboard-only-copy)
+      (cons (concat my-ex "w") 'meep-insert-into-last-copy)
 
-    ;; Left Hand: Row 2.
+      '("e" . meep-clipboard-killring-cut)
+      '("E" . meep-clipboard-only-cut)
+      (cons (concat my-ex "e") 'meep-insert-into-last-move)
 
-    ;; NOTE: a more comprehensive surround map is really needed.
-    ;; This is only character level surround insertion.
-    '("a" . meep-keypad)
-    '("A" . my-key-free)
+      '("r" . meep-clipboard-killring-yank-pop-stack)
+      '("R" . meep-clipboard-only-yank)
+      (cons (concat my-ex "r") 'meep-delete-char-ring-yank)
 
-    '("s w" . meep-insert-into-last-copy)
-    '("s e" . meep-insert-into-last-move)
+      '("t" . meep-char-surround-insert)
+      '("T" . meep-char-surround-insert-lines)
 
-    '("s r" . meep-delete-char-ring-yank)
-    '("s c" . meep-space-shrink-contextual)
+      ;; Left Hand: Row 2.
 
-    '("s s" . meep-insert-at-last)
-    '("s d" . rectangle-mark-mode)
+      ;; NOTE: a more comprehensive surround map is really needed.
+      ;; This is only character level surround insertion.
+      '("a" . meep-keypad)
+      '("A" . my-key-free)
 
-    '("s j" . meep-insert-open-below)
-    '("s k" . meep-insert-open-above)
-    '("s l" . meep-insert-line-end)
-    '("s h" . meep-insert-line-beginning)
+      ;; "s" is currently `my-ex' don't map it.
+      (cons (concat my-ex "s") 'meep-insert-at-last)
 
-    '("s m" . downcase-region)
-    '("s ," . upcase-region)
+      '("d" . meep-region-toggle)
+      '("D" . meep-region-expand-to-line-bounds)
+      (cons (concat my-ex "d") 'rectangle-mark-mode)
 
-    '("s <return>" . fill-region)
-    '("s <end>" . end-of-buffer)
-    '("s <home>" . beginning-of-buffer)
+      ;; "f" is currently `my-find' don't map it.
 
-    ;; Run commands "after" numeric has been set.
-    ;; Unlike the default to re-running N times.
-    '("s 1" . digit-argument)
-    '("s 2" . digit-argument)
-    '("s 3" . digit-argument)
-    '("s 4" . digit-argument)
-    '("s 5" . digit-argument)
-    '("s 6" . digit-argument)
-    '("s 7" . digit-argument)
-    '("s 8" . digit-argument)
-    '("s 9" . digit-argument)
-    '("s 0" . digit-argument)
-    '("s -" . negative-argument)
+      '("F" . my-key-free)
 
-    '("d" . meep-region-toggle)
-    '("D" . meep-region-expand-to-line-bounds)
+      '("g" . meep-char-replace)
+      '("G" . meep-char-insert)
 
-    '("f h" . meep-move-find-char-on-line-at-prev)
-    '("f H" . meep-move-find-char-on-line-till-prev)
-    '("f j" . meep-isearch-regexp-next)
-    '("f k" . meep-isearch-regexp-prev)
-    '("f l" . meep-move-find-char-on-line-at-next)
-    '("f L" . meep-move-find-char-on-line-till-next)
+      ;; Left Hand: Row 3.
+      '("z" . undo-only)
+      '("Z" . undo-redo)
 
-    ;; Find "repeat" are below the keys for find.
-    '("f ." . meep-move-find-char-on-line-repeat-at-next)
-    '("f n" . meep-move-find-char-on-line-repeat-at-prev)
-    '("f >" . meep-move-find-char-on-line-repeat-till-next)
-    '("f N" . meep-move-find-char-on-line-repeat-till-prev)
+      '("x" . meep-insert)
+      '("X" . meep-insert-overwrite)
 
-    '("f m" . meep-isearch-at-point-next)
-    '("f ," . meep-isearch-at-point-prev)
+      '("c" . meep-delete-char-ring-next)
+      '("C" . meep-delete-char-ring-prev)
+      (cons (concat my-ex "c") 'meep-space-shrink-contextual)
 
-    '("f u" . avy-goto-symbol-1-below)
-    '("f i" . avy-goto-symbol-1-above)
+      '("v" . meep-transpose)
+      '("V" . meep-clipboard-killring-cut-line) ; Odd-one out, locate for convenience.
 
-    ;; Alternative to VIM's ":" to go to line numbers (frees up a key).
-    '("f ;" . goto-line)
-    '("f :" . goto-char)
+      '("b" . meep-insert-change)
+      '("B" . meep-insert-change-lines)
 
-    '("F" . my-key-free)
+      ;; Right Hand: Row 1.
+      '("y" . meep-region-syntax-expand)
+      '("Y" . meep-region-syntax-contract)
 
-    '("g" . meep-char-replace)
-    '("G" . meep-char-insert)
+      '("u" . meep-exchange-point-and-mark)
+      '("U" . my-key-free)
+      (cons (concat my-find "u") 'avy-goto-symbol-1-below)
 
-    ;; Left Hand: Row 3.
-    '("z" . undo-only)
-    '("Z" . undo-redo)
+      '("i" . meep-exchange-point-and-mark-motion)
+      '("I" . my-key-free)
+      (cons (concat my-find "i") 'avy-goto-symbol-1-above)
 
-    '("x" . meep-insert)
-    '("X" . meep-insert-overwrite)
+      '("o" . meep-region-mark-bounds-of-char-inner)
+      '("O" . meep-region-mark-bounds-of-char-outer)
 
-    '("c" . meep-delete-char-ring-next)
-    '("C" . meep-delete-char-ring-prev)
+      '("p" . meep-clipboard-register-actions)
+      '("P" . point-to-register)
 
-    '("v" . meep-transpose)
-    '("V" . meep-clipboard-killring-cut-line) ; Odd-one out, locate for convenience.
+      ;; Right Hand: Row 2.
+      '("h" . meep-move-char-prev)
+      '("H" . meep-move-line-non-space-beginning)
+      (cons (concat my-find "h") 'meep-move-find-char-on-line-at-prev)
+      (cons (concat my-find "H") 'meep-move-find-char-on-line-till-prev)
+      (cons (concat my-ex "h") 'meep-insert-line-beginning)
 
-    '("b" . meep-insert-change)
-    '("B" . meep-insert-change-lines)
+      '("j" . meep-move-line-next)
+      '("J" . meep-move-paragraph-next)
+      (cons (concat my-find "j") 'meep-isearch-regexp-next)
+      (cons (concat my-ex "j") 'meep-insert-open-below)
 
-    ;; Right Hand: Row 1.
-    '("y" . meep-region-syntax-expand)
-    '("Y" . meep-region-syntax-contract)
+      '("k" . meep-move-line-prev)
+      '("K" . meep-move-paragraph-prev)
+      (cons (concat my-find "k") 'meep-isearch-regexp-prev)
+      (cons (concat my-ex "k") 'meep-insert-open-above)
 
-    '("u" . meep-exchange-point-and-mark)
-    '("U" . my-key-free)
+      '("l" . meep-move-char-next)
+      '("L" . meep-move-line-non-space-end)
+      (cons (concat my-find "l") 'meep-move-find-char-on-line-at-next)
+      (cons (concat my-find "L") 'meep-move-find-char-on-line-till-next)
+      (cons (concat my-ex "l") 'meep-insert-line-end)
 
-    '("i" . meep-exchange-point-and-mark-motion)
-    '("I" . my-key-free)
+      '(";" . meep-move-matching-bracket-inner)
+      (cons (concat my-find ";") 'goto-line)
+      '(":" . meep-move-matching-bracket-outer)
+      (cons (concat my-find ":") 'goto-char)
 
-    '("o" . meep-region-mark-bounds-of-char-inner)
-    '("O" . meep-region-mark-bounds-of-char-outer)
+      '("'" . meep-move-matching-syntax-inner)
+      '("\"" . meep-move-matching-syntax-outer)
 
-    '("p" . meep-clipboard-register-actions)
-    '("P" . point-to-register)
+      ;; Right Hand: Row 3.
+      '("n" . meep-move-symbol-prev)
+      '("N" . meep-move-same-syntax-and-space-prev)
+      (cons (concat my-find "n") 'meep-move-find-char-on-line-repeat-at-prev)
+      (cons (concat my-find "N") 'meep-move-find-char-on-line-repeat-till-prev)
 
-    ;; Right Hand: Row 2.
-    '("h" . meep-move-char-prev)
-    '("H" . meep-move-line-non-space-beginning)
+      '("m" . meep-isearch-repeat-next)
+      '("M" . my-key-free)
+      (cons (concat my-find "m") 'meep-isearch-at-point-next)
+      (cons (concat my-ex "m") 'downcase-region)
 
+      '("," . meep-isearch-repeat-prev)
+      '("<" . my-key-free)
+      (cons (concat my-find ",") 'meep-isearch-at-point-prev)
+      (cons (concat my-ex ",") 'upcase-region)
 
-    '("j" . meep-move-line-next)
-    '("J" . meep-move-paragraph-next)
+      '("." . meep-move-symbol-next)
+      '(">" . meep-move-same-syntax-and-space-next)
+      (cons (concat my-find ".") 'meep-move-find-char-on-line-repeat-at-next)
+      (cons (concat my-find ">") 'meep-move-find-char-on-line-repeat-till-next)
 
-    '("k" . meep-move-line-prev)
-    '("K" . meep-move-paragraph-prev)
+      '("/" . meep-move-symbol-next-end)
+      '("?" . meep-move-same-syntax-and-space-next-end)
 
-    '("l" . meep-move-char-next)
-    '("L" . meep-move-line-non-space-end)
+      ;; Other keys.
+      '("\\" . meep-register-jump-to)
+      '("|" . meep-register-kmacro-start-or-end)
 
-    '(";" . meep-move-matching-bracket-inner)
-    '(":" . meep-move-matching-bracket-outer)
+      '("[" . meep-move-to-bounds-of-thing-beginning)
+      '("]" . meep-move-to-bounds-of-thing-end)
 
-    '("'" . meep-move-matching-syntax-inner)
-    '("\"" . meep-move-matching-syntax-outer)
+      '("<tab>" . meep-indent-rigidly)
 
-    ;; Right Hand: Row 3.
-    '("n" . meep-move-symbol-prev)
-    '("N" . meep-move-same-syntax-and-space-prev)
-
-    '("m" . meep-isearch-repeat-next)
-    '("M" . my-key-free)
-
-    '("," . meep-isearch-repeat-prev)
-    '("<" . my-key-free)
-
-    '("." . meep-move-symbol-next)
-    '(">" . meep-move-same-syntax-and-space-next)
-
-    '("/" . meep-move-symbol-next-end)
-    '("?" . meep-move-same-syntax-and-space-next-end)
-
-    ;; Other keys.
-    '("\\" . meep-register-jump-to)
-    '("|" . meep-register-kmacro-start-or-end)
-
-    '("[" . meep-move-to-bounds-of-thing-beginning)
-    '("]" . meep-move-to-bounds-of-thing-end)
-
-    '("<tab>" . meep-indent-rigidly)
-
-    '("S-<delete>" . meep-join-line-prev)
-    '("S-<backspace>" . meep-join-line-next)
-
-    '("<home>" . meep-move-line-beginning)
-    '("<end>" . meep-move-line-end))
+      '("<home>" . meep-move-line-beginning)
+      (cons (concat my-ex "<home>") 'beginning-of-buffer)
+      '("<end>" . meep-move-line-end)
+      (cons (concat my-ex "<end>") 'end-of-buffer)))
 
   (my-meep-keymap-set-many meep-state-keymap-normal)
 
