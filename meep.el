@@ -3292,9 +3292,17 @@ Also skip any symbol bounds."
               (setq meep--region-syntax-asym t)))))
        (t
         (let ((syn
-               (or (syntax-after (point))
-                   ;; Needed in case the point is at the end of the buffer.
-                   (syntax-after (max (point-min) (1- (point)))))))
+               (cond
+                ;; When at the buffer end, prioritize the previous characters "unless"
+                ;; the buffer end is itself blank-space.
+                ((and (eolp)
+                      (not (bolp))
+                      (not (string-equal " " (funcall syn-as-str-fn (syntax-after (1- (point)))))))
+                 (syntax-after (1- (point))))
+                (t
+                 (or (syntax-after (point))
+                     ;; Needed in case the point is at the end of the buffer.
+                     (syntax-after (max (point-min) (1- (point)))))))))
 
           (cond
            ((null syn)
