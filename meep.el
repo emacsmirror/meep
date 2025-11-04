@@ -3306,7 +3306,7 @@ Also skip any symbol bounds."
 
           (cond
            ((null syn)
-            ;; Only on the first step, othersise sildently skip.
+            ;; Only on the first step, otherwise silently skip.
             (unless found
               (message "No syntax around the point (empty buffer?)"))
             ;; Break.
