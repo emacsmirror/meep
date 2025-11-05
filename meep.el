@@ -1705,10 +1705,10 @@ Return non-nil when the point was moved."
         (when (and (eq beg (car bounds-outer)) (eq end (cdr bounds-outer)))
           ;; If this fails, just don't return the inner bounds
           ;; not great - but better than returning nil.
-          (let ((bounds-inner (meep--bounds-at-point-for-comment-inner-guess (cons beg end))))
-            (when bounds-inner
-              (setq beg (car bounds-inner))
-              (setq end (cdr bounds-inner)))))
+          (when-let* ((bounds-inner
+                       (meep--bounds-at-point-for-comment-inner-guess (cons beg end))))
+            (setq beg (car bounds-inner))
+            (setq end (cdr bounds-inner))))
 
         ;; Skip repeated chars: "/***** "
         ;; TODO: check if the characters are space (seems very unlikely).
@@ -1998,29 +1998,27 @@ IS-TILL when non-nil, search up until the character."
 
 (defun meep--bounds-of-sentence (inner)
   "Bounds of sentence (contract to INNER when true)."
-  (let ((bounds (bounds-of-thing-at-point 'sentence)))
-    (when bounds
-      (when inner
-        ;; Since it's unlikely the beginning is blank,
-        ;; it's likely only the end of the bounds changes when `inner' is used.
-        ;; Note that skipping back punctuation is a generalization,
-        ;; using `sentence-end' could work too, but is quite involved and
-        ;; difficult to get working reliably.
-        (save-excursion
-          (goto-char (cdr bounds))
-          (skip-chars-backward "[:blank:]\r\n" (car bounds))
-          ;; Trim punctuation.
-          (skip-syntax-backward "." (car bounds))
-          (setcdr bounds (point)))))
+  (when-let* ((bounds (bounds-of-thing-at-point 'sentence)))
+    (when inner
+      ;; Since it's unlikely the beginning is blank,
+      ;; it's likely only the end of the bounds changes when `inner' is used.
+      ;; Note that skipping back punctuation is a generalization,
+      ;; using `sentence-end' could work too, but is quite involved and
+      ;; difficult to get working reliably.
+      (save-excursion
+        (goto-char (cdr bounds))
+        (skip-chars-backward "[:blank:]\r\n" (car bounds))
+        ;; Trim punctuation.
+        (skip-syntax-backward "." (car bounds))
+        (setcdr bounds (point))))
     bounds))
 
 (defun meep--bounds-of-paragraph (inner)
   "Bounds of paragraph (contract to INNER when true)."
-  (let ((bounds (bounds-of-thing-at-point 'paragraph)))
-    (when bounds
-      (when inner
-        (let ((skip "[:blank:]\r\n"))
-          (setq bounds (meep--bounds-contract-by-chars bounds skip skip)))))
+  (when-let* ((bounds (bounds-of-thing-at-point 'paragraph)))
+    (when inner
+      (let ((skip "[:blank:]\r\n"))
+        (setq bounds (meep--bounds-contract-by-chars bounds skip skip))))
     bounds))
 
 (defun meep--move-to-bounds-endpoint (bounds n)
@@ -2037,9 +2035,8 @@ IS-TILL when non-nil, search up until the character."
 
 (defun meep--move-to-bounds-of-thing (thing n)
   "Implement move to bounds of THING (start when N is negative)."
-  (let ((bounds (bounds-of-thing-at-point thing)))
-    (when bounds
-      (meep--move-to-bounds-endpoint bounds n))))
+  (when-let* ((bounds (bounds-of-thing-at-point thing)))
+    (meep--move-to-bounds-endpoint bounds n)))
 
 ;; ---------------------------------------------------------------------------
 ;; Mark: Bounds
@@ -5012,10 +5009,9 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
       (setq beg (region-beginning))
       (setq end (region-end)))
      (t
-      (let ((bounds (bounds-of-thing-at-point 'symbol)))
-        (when bounds
-          (setq beg (car bounds))
-          (setq end (cdr bounds))))))
+      (when-let* ((bounds (bounds-of-thing-at-point 'symbol)))
+        (setq beg (car bounds))
+        (setq end (cdr bounds)))))
 
     (let ((text (and beg end (buffer-substring-no-properties beg end))))
       (when (and beg end move)
