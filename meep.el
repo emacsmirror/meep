@@ -3195,6 +3195,52 @@ Also skip any symbol bounds."
      (t
       (skip-syntax-backward syntax lim)))))
 
+(defun meep--region-syntax-priority (ch)
+  "Return a priority from CH (the result of `syntax-class-to-char')."
+  ;; NOTE: while listing all syntax table chars isn't ideal, these don't change often.
+  ;;
+  ;; NOTE: symmetrical syntax such as open/close begin/end must have the same priority.
+  ;; Otherwise expanding matching syntax won't step over both.
+
+  ;; Priority, first to last.
+  (cond
+   ;; Text-objects.
+   ((eq ch ?_) ; Symbol constituents.
+    13)
+   ((eq ch ?w) ; Word constituents.
+    12)
+
+   ;; Brackets & quotes.
+   ((memq ch (list ?\( ?\))) ; Open/close parenthesis characters.
+    11)
+   ((memq ch (list ?< ?>)) ; Comment start/end.
+    10)
+   ((eq ?$ ch) ; Paired delimiters.
+    9)
+   ((eq ?\" ch) ; String quotes.
+    8)
+   ((eq ?' ch) ; Expression prefixes.
+    7)
+   ((eq ?/ ch) ; Character quotes.
+    6)
+
+   ;; Other punctuation.
+   ((eq ?! ch) ; Generic comment delimiters.
+    5)
+   ((eq ?| ch) ; Generic string delimiters.
+    4)
+   ((eq ?\\ ch) ; Escape-syntax characters.
+    3)
+   ((eq ?@ ch) ; Inherit standard syntax (needs investigation, may not happen in practice).
+    2)
+   ((eq ?. ch) ; Punctuation characters.
+    1)
+   ((eq ?\s ch) ; Blank space (always last).
+    -1)
+   (t
+    ;; Should never reach this (all chars must be accounted for).
+    (meep--assert-failed))))
+
 (defun meep--region-syntax-expand-impl (n)
   "Expand matching syntax table N times."
   (when meep--region-syntax-asym
@@ -3288,21 +3334,64 @@ Also skip any symbol bounds."
             (unless (and do-beg do-end)
               (setq meep--region-syntax-asym t)))))
        (t
-        (let ((syn
-               (cond
-                ;; When at the buffer end, prioritize the previous characters "unless"
-                ;; the buffer end is itself blank-space.
-                ((and (eolp)
-                      (not (bolp))
-                      (not (string-equal " " (funcall syn-as-str-fn (syntax-after (1- (point)))))))
-                 (syntax-after (1- (point))))
-                (t
-                 (or (syntax-after (point))
-                     ;; Needed in case the point is at the end of the buffer.
-                     (syntax-after (max (point-min) (1- (point)))))))))
+        (let ((syn nil)
+              (do-beg nil)
+              (do-end nil)
+              (beg-next-override nil)
+              (end-next-override nil))
 
+          ;; Perform a symmetrical detection for how expansion should be done:
+          ;; - Check symbol bounds at point.
+          ;;   This takes priority over all else.
+          ;; - Otherwise check the priorities on surrounding syntax and scan over the
+          ;;   highest priority or scan both directions when they match.
+          (let ((bounds (bounds-of-thing-at-point 'symbol)))
+            (cond
+             (bounds
+              (setq beg-next-override (car bounds))
+              (setq end-next-override (cdr bounds))
+              (setq do-beg t)
+              (setq do-end t))
+             (t
+              ;; Detect the symbol.
+              (let ((beg-syn (and (not (bobp)) (syntax-after (1- (point)))))
+                    (end-syn (and (not (eobp)) (syntax-after (point)))))
+                (cond
+                 ((and beg-syn end-syn)
+                  (let ((beg-syn-cls (syntax-class beg-syn))
+                        (end-syn-cls (syntax-class end-syn)))
+                    (cond
+                     ((eq beg-syn-cls end-syn-cls)
+                      ;; Simple case, expand over matching syntax in both directions.
+                      (setq syn beg-syn)
+                      (setq do-beg t)
+                      (setq do-end t))
+                     (t
+                      (let* ((beg-syn-ch (syntax-class-to-char beg-syn-cls))
+                             (end-syn-ch (syntax-class-to-char end-syn-cls))
+                             (beg-priority (meep--region-syntax-priority beg-syn-ch))
+                             (end-priority (meep--region-syntax-priority end-syn-ch)))
+
+                        ;; Enforce space syntax for newlines.
+                        ;; For some reason comment start/end is sometimes used here.
+                        (when (eq ?\n (char-before (point)))
+                          (setq beg-priority (meep--region-syntax-priority ?\s)))
+                        (when (eq ?\n (char-after (point)))
+                          (setq end-priority (meep--region-syntax-priority ?\s)))
+
+                        (cond
+                         ((eq beg-priority end-priority)
+                          (setq syn beg-syn)
+                          (setq do-beg t)
+                          (setq do-end t))
+                         ((> beg-priority end-priority)
+                          (setq syn beg-syn)
+                          (setq do-beg t))
+                         (t
+                          (setq syn end-syn)
+                          (setq do-end t)))))))))))))
           (cond
-           ((null syn)
+           ((and (null syn) (null do-beg) (null do-end))
             ;; Only on the first step, otherwise silently skip.
             (unless found
               (message "No syntax around the point (empty buffer?)"))
@@ -3310,26 +3399,35 @@ Also skip any symbol bounds."
             (setq n 0)
             nil)
            (t
-            (let ((syn-str (and syn (funcall syn-as-str-fn syn))))
-              (let ((beg-next
-                     (save-excursion
-                       (meep--region-syntax-or-symbol-backward syn-str)
-                       (point)))
-                    (end-next
-                     (save-excursion
-                       (meep--region-syntax-or-symbol-forward syn-str)
-                       (point))))
-                ;; Place the point at the beginning and the mark at the end.
-                ;; This is somewhat arbitrary but matches:
-                ;; - `meep-region-mark-bounds-of-char-inner' and related functions.
-                ;; - `meep-move-matching-bracket-inner' and related functions that
-                ;;   first jump to the beginning.
-                (goto-char beg-next)
-                (meep--set-marker end-next)
-                (progn
-                  (activate-mark t)
-                  (setq deactivate-mark nil))
-                (setq found t)))))))))
+            (let ((beg-next
+                   (or beg-next-override
+                       (cond
+                        (do-beg
+                         (save-excursion
+                           (meep--region-syntax-or-symbol-backward (funcall syn-as-str-fn syn))
+                           (point)))
+                        (t
+                         (point)))))
+                  (end-next
+                   (or end-next-override
+                       (cond
+                        (do-end
+                         (save-excursion
+                           (meep--region-syntax-or-symbol-forward (funcall syn-as-str-fn syn))
+                           (point)))
+                        (t
+                         (point))))))
+              ;; Place the point at the beginning and the mark at the end.
+              ;; This is somewhat arbitrary but matches:
+              ;; - `meep-region-mark-bounds-of-char-inner' and related functions.
+              ;; - `meep-move-matching-bracket-inner' and related functions that
+              ;;   first jump to the beginning.
+              (goto-char beg-next)
+              (meep--set-marker end-next)
+              (progn
+                (activate-mark t)
+                (setq deactivate-mark nil))
+              (setq found t))))))))
     found))
 
 (defun meep--region-syntax-contract-impl (n)
@@ -3437,7 +3535,11 @@ Also skip any symbol bounds."
 
 ;;;###autoload
 (defun meep-region-syntax-expand (arg)
-  "Expand on matching syntax table elements ARG times."
+  "Expand on matching syntax table elements ARG times.
+
+When there is no active region, active the region and expand.
+This can be used to quickly mark symbols or blocks of contiguous syntax
+including of blank-space."
   (interactive "p")
   (cond
    ((< arg 0)

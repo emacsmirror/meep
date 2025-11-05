@@ -490,6 +490,10 @@ This allows for expanding across surrounding symmetrical characters which can be
 ``(meep-region-syntax-expand ARG)``
    Expand on matching syntax table elements ARG times.
 
+   When there is no active region, active the region and expand.
+   This can be used to quickly mark symbols or blocks of contiguous syntax
+   including of blank-space.
+
 ``(meep-region-syntax-contract ARG)``
    Contract matching syntax table ARG times.
 
