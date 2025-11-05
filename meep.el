@@ -2558,7 +2558,11 @@ Move to the beginning with a negative ARG."
 
 ;;;###autoload
 (defun meep-region-enable ()
-  "Enable the active region."
+  "Enable the active region.
+
+The mark is moved to point to initiate a new region,
+if you wish to activate the region between the existing
+point and mark use: `meep-exchange-point-and-mark'."
   (interactive)
   (unless (region-active-p)
     ;; This may have been set, clear it if it was.
@@ -2586,6 +2590,7 @@ via `meep-exchange-point-and-mark'."
 ;;;###autoload
 (defun meep-region-toggle ()
   "Toggle the active region.
+
 When the region is transient (where motion would clear it),
 this operation makes it stay active, running again clears it."
   (interactive)
