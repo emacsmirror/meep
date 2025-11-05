@@ -138,33 +138,33 @@ Returns the modified P-list, or the original if KEY is not found."
     (let ((tail plist)
           (next nil)
           (next-next nil))
-      ;; Walk the list two cells at a time
+      ;; Walk the list two cells at a time.
       (while (progn
                (setq next (cdr tail))
                (setq next-next (cdr next))
                (and next-next (not (eq (car next-next) key))))
         (setq tail next-next))
-      ;; If we found the key, splice it out
+      ;; If we found the key, splice it out.
       (when next-next
         (setcdr next (cdr (cdr next-next))))
       plist))))
 
 (defun meep--ranges-overlap-p (list-a list-b)
   "Return t if any range in LIST-A overlaps any range in LIST-B.
-Each list contains cons cells (START . END) with START <= END.
+Each list contains cons cells (BEG . END) with BEG <= END.
 Stops at the first detected overlap."
   (let ((found nil))
     (while (and list-a (not found))
       (let* ((range-a (car list-a))
-             (a-start (car range-a))
+             (a-beg (car range-a))
              (a-end (cdr range-a))
              (b-list list-b))
         (while (and b-list (not found))
           (let* ((range-b (car b-list))
-                 (b-start (car range-b))
+                 (b-beg (car range-b))
                  (b-end (cdr range-b)))
             ;; Overlap if ranges intersect at all:
-            (when (and (<= a-start b-end) (<= b-start a-end))
+            (when (and (<= a-beg b-end) (<= b-beg a-end))
               (setq found t)))
           (setq b-list (cdr b-list))))
       (setq list-a (cdr list-a)))
@@ -4880,7 +4880,7 @@ Note using ARG to declare the number of times has not yet been implemented."
       (message "Transpose could not find a last-motion")
       nil)
      ;; Use an alternative code-path for char-wise transpose.
-     ;; Do this because char motions dont' set the mark,
+     ;; Do this because char motions don't set the mark,
      ;; so using the "motion" doesn't work usefully in this case.
      ((meep--transpose-char-wise arg last-motion-info)
       t)
