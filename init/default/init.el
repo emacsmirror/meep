@@ -181,7 +181,7 @@
       '("y" . meep-region-syntax-expand)
       '("Y" . meep-region-syntax-contract)
 
-      '("u" . meep-exchange-point-and-mark)
+      '("u" . meep-region-activate-or-reverse)
       '("U" . my-key-free)
       (cons (concat my-find "u") 'avy-goto-symbol-1-below)
 

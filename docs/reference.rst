@@ -442,9 +442,15 @@ Selection/Region: Primitive
 ``(meep-region-enable)``
    Enable the active region.
 
-   The mark is moved to point to initiate a new region,
-   if you wish to activate the region between the existing
-   point and mark use: ``meep-exchange-point-and-mark``.
+   The mark is moved to point to initiate a new region to begin a new selection.
+   If you wish to activate the region between the existing point and mark see:
+   ``meep-exchange-point-and-mark`` and ``meep-region-activate-or-reverse``.
+
+``(meep-region-activate-or-reverse)``
+   Activate the region without moving the mark.
+
+   Otherwise exchange the point and mark when the region is already active.
+   See: ``meep-exchange-point-and-mark``.
 
 ``(meep-region-disable)``
    Disable the active region.

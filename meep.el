@@ -2563,9 +2563,9 @@ Move to the beginning with a negative ARG."
 (defun meep-region-enable ()
   "Enable the active region.
 
-The mark is moved to point to initiate a new region,
-if you wish to activate the region between the existing
-point and mark use: `meep-exchange-point-and-mark'."
+The mark is moved to point to initiate a new region to begin a new selection.
+If you wish to activate the region between the existing point and mark see:
+`meep-exchange-point-and-mark' and `meep-region-activate-or-reverse'."
   (interactive)
   (unless (region-active-p)
     ;; This may have been set, clear it if it was.
@@ -2574,6 +2574,21 @@ point and mark use: `meep-exchange-point-and-mark'."
     ;; Use `meep-exchange-point-and-mark' to activation the region with the old mark.
     (set-mark (point))
     (activate-mark t)))
+
+;;;###autoload
+(defun meep-region-activate-or-reverse ()
+  "Activate the region without moving the mark.
+
+Otherwise exchange the point and mark when the region is already active.
+See: `meep-exchange-point-and-mark'."
+  (interactive)
+  (cond
+   ((region-active-p)
+    (meep-exchange-point-and-mark))
+   ((mark)
+    (activate-mark t))
+   (t
+    (meep-region-enable))))
 
 ;;;###autoload
 (defun meep-region-disable ()
