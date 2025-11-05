@@ -29,8 +29,11 @@ Custom Variables
    Used for ``meep-region-mark-bounds-of-char-inner`` and
    ``meep-region-mark-bounds-of-char-outer``.
 
-``meep-match-bounds-of-char-contextual-chars``: ``(("\"" . "\"") ("'" . "'") ("`" . "`") ("(" . ")") ("[" . "]") ("{" . "}") ("<" . ">") ("“" . "”") ("‘" . "’"))``
-   List of character matches used for automatically marking bounds.
+``meep-match-bounds-of-char-contextual``: ``(("\"" . "\"") ("'" . "'") ("`" . "`") ("(" . ")") ("[" . "]") ("{" . "}") ("<" . ">") ("“" . "”") ("‘" . "’"))``
+   List of boundary string matches used for automatically marking bounds.
+
+   While this is typically used for brackets and quotes,
+   multi-character pairs are also supported.
 
    Used for ``meep-region-mark-bounds-of-char-inner-contextual`` and
    ``meep-region-mark-bounds-of-char-outer-contextual``.
@@ -345,33 +348,33 @@ Notes:
 - Entering an opening ``(`` bracket marks the region inside: ``( ... )``.
 - Entering a closing ``)`` bracket marks the region inside: ``) ... (``.
 - A "contextual" version of this function has been implemented which marts the nearest region.
-  customizable with the ``meep-match-bounds-of-char-contextual-chars`` variable.
+  customizable with the ``meep-match-bounds-of-char-contextual`` variable.
 
 ``(meep-region-mark-bounds-of-char-inner CH ARG)``
    Mark in bounds of CH over ARG steps.
    A negative ARG positions the POINT at the end of the region.
 
    Note that pressing Return instead of a character performs a contextual mark,
-   finding the closest pair, see: ``meep-match-bounds-of-char-contextual-chars``.
+   finding the closest pair, see: ``meep-match-bounds-of-char-contextual``.
 
 ``(meep-region-mark-bounds-of-char-outer CH ARG)``
    Mark in bounds of CH over ARG steps.
    A negative ARG positions the POINT at the end of the region.
 
    Note that pressing Return instead of a character performs a contextual mark,
-   finding the closest pair, see: ``meep-match-bounds-of-char-contextual-chars``.
+   finding the closest pair, see: ``meep-match-bounds-of-char-contextual``.
 
 ``(meep-region-mark-bounds-of-char-contextual-inner ARG)``
    Mark in bounds of of the nearest character pairs over ARG steps.
    A negative ARG positions the POINT at the end of the region.
 
-   Character pairs are detected using: ``meep-match-bounds-of-char-contextual-chars``.
+   Character pairs are detected using: ``meep-match-bounds-of-char-contextual``.
 
 ``(meep-region-mark-bounds-of-char-contextual-outer ARG)``
-   Mark in bounds of of the nearest character pairs over ARG steps.
+   Mark in bounds of of the nearest boundary pairs over ARG steps.
    A negative ARG positions the POINT at the end of the region.
 
-   Character pairs are detected using: ``meep-match-bounds-of-char-contextual-chars``.
+   Bounds are detected using: ``meep-match-bounds-of-char-contextual``.
 
 Motion: Bounds
 ^^^^^^^^^^^^^^

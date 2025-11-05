@@ -2065,7 +2065,7 @@ Used for `meep-region-mark-bounds-of-char-inner' and
 ;; Since ORG mode and similar should use `*' and `='.
 ;;
 ;; NOTE: order from least to most likely.
-(defcustom meep-match-bounds-of-char-contextual-chars
+(defcustom meep-match-bounds-of-char-contextual
   (list
    (cons "\"" "\"")
    (cons "'" "'")
@@ -2077,7 +2077,10 @@ Used for `meep-region-mark-bounds-of-char-inner' and
    ;; Non ASCII characters.
    (cons "“" "”")
    (cons "‘" "’"))
-  "List of character matches used for automatically marking bounds.
+  "List of boundary string matches used for automatically marking bounds.
+
+While this is typically used for brackets and quotes,
+multi-character pairs are also supported.
 
 Used for `meep-region-mark-bounds-of-char-inner-contextual' and
 `meep-region-mark-bounds-of-char-outer-contextual'."
@@ -2101,74 +2104,70 @@ Used for `meep-region-mark-bounds-of-char-inner-contextual' and
 (defun meep--region-mark-bounds-find-matching-brackets (bounds-init bounds-limit ch-str-pair)
   "Find the pair of matching brackets around BOUNDS-INIT.
 BOUNDS-LIMIT constrains the search bounds.
-Using characters from CH-STR-PAIR.
+Using strings from CH-STR-PAIR (supports multi-character brackets).
 or nil if no matching brackets are found."
   (let* ((has-region (/= (car bounds-init) (cdr bounds-init)))
-         (open-char (car ch-str-pair))
-         (close-char (cdr ch-str-pair))
-         (open-char-code (string-to-char open-char))
-         (close-char-code (string-to-char close-char))
+         (open-str (car ch-str-pair))
+         (close-str (cdr ch-str-pair))
+         (open-str-quote (regexp-quote open-str))
+         (close-str-quote (regexp-quote close-str))
          (limit-min (car bounds-limit))
-         (limit-max (cdr bounds-limit)))
-    (let ((find-open-bracket
+         (limit-max (cdr bounds-limit))
+         (bracket-regex (concat "\\(" open-str-quote "\\)\\|\\(" close-str-quote "\\)")))
+    (let ((find-open-bracket-backward-fn
            (lambda ()
-             (save-excursion
-               (let ((depth 0)
-                     (found nil))
-                 ;; Search backward character by character.
-                 (while (and (not found) (> (point) limit-min))
-                   (backward-char 1)
-                   (let ((char (char-after)))
+             (save-match-data
+               (save-excursion
+                 (let ((depth 0)
+                       (found nil))
+                   (while (and (not found)
+                               (> (point) limit-min)
+                               (re-search-backward bracket-regex limit-min t))
                      (cond
-                      ;; Found a closing bracket of our type - increase depth.
-                      ((eq char close-char-code)
-                       (meep--incf depth))
-                      ;; Found an opening bracket of our type.
-                      ((eq char open-char-code)
+                      ;; Found a closing bracket: finish or decrease depth and continue.
+                      ((match-beginning 1)
                        (cond
                         ((zerop depth)
-                         ;; This is our match!
                          (setq found (point)))
                         (t
-                         ;; Decrease depth and continue.
-                         (meep--decf depth)))))))
-                 found))))
-          (find-close-bracket
+                         (meep--decf depth))))
+                      ((match-beginning 2)
+                       ;; Found a closing bracket: increase depth.
+                       (meep--incf depth))))
+                   found)))))
+          (find-close-bracket-forward-fn
            (lambda ()
-             (save-excursion
-               ;; Move past the opening bracket.
-               (forward-char 1)
-               (let ((depth 0)
-                     (found nil))
-                 ;; Search forward character by character.
-                 (while (and (not found) (< (point) limit-max))
-                   (let ((char (char-after)))
+             (save-match-data
+               (save-excursion
+                 (when (looking-at-p open-str-quote)
+                   (forward-char (length open-str)))
+                 (let ((depth 0)
+                       (found nil))
+                   (while (and (not found)
+                               (< (point) limit-max)
+                               (re-search-forward bracket-regex limit-max t))
                      (cond
-                      ;; Found an opening bracket of our type - increase depth.
-                      ((eq char open-char-code)
-                       (meep--incf depth))
-                      ;; Found a closing bracket of our type.
-                      ((eq char close-char-code)
+                      ((match-beginning 2)
+                       ;; Found an opening bracket: finish or increase depth and continue.
                        (cond
                         ((zerop depth)
-                         ;; This is our match!
-                         (setq found (1+ (point))))
+                         (setq found (point)))
                         (t
-                         ;; Decrease depth and continue.
-                         (meep--decf depth))))))
-                   (unless found
-                     (forward-char 1)))
-                 found)))))
+                         (meep--decf depth))))
+                      ((match-beginning 1)
+                       ;; Found an opening bracket: increase depth.
+                       (meep--incf depth))))
+                   found))))))
 
       (save-excursion
         ;; Search from the beginning of the region.
         (goto-char (car bounds-init))
-        (let* ((open-pos (funcall find-open-bracket))
+        (let* ((open-pos (funcall find-open-bracket-backward-fn))
                (result nil))
           (when open-pos
             ;; Now find the matching closing bracket.
             (goto-char open-pos)
-            (let ((close-pos (funcall find-close-bracket)))
+            (let ((close-pos (funcall find-close-bracket-forward-fn)))
               (when (and close-pos
                          (cond
                           (has-region
@@ -2210,16 +2209,11 @@ BOUNDS-LIMIT constrains the search bounds."
    (t
     (cons (point) (point)))))
 
-(defun meep--region-mark-bounds-to-region (bounds is-forward inner)
+(defun meep--region-mark-bounds-to-region (bounds is-forward)
   "Once BOUNDS is calculated, mark it as a region.
-When IS-FORWARD is t, the point is after the mark.
-
-When INNER is non-nil, mark the inner bounds."
+When IS-FORWARD is t, the point is after the mark."
   (unless (region-active-p)
     (meep-region-enable))
-  (when inner
-    (setcar bounds (1+ (car bounds)))
-    (setcdr bounds (1- (cdr bounds))))
   (cond
    (is-forward
     (meep--set-marker (car bounds))
@@ -2256,7 +2250,10 @@ When INNER is non-nil, mark the inner bounds."
         (let ((is-forward (/= (point) (car bounds-init))))
           (when is-negative
             (setq is-forward (not is-forward)))
-          (meep--region-mark-bounds-to-region bounds is-forward inner))
+          (when inner
+            (setcar bounds (+ (car bounds) (length (car ch-str-pair))))
+            (setcdr bounds (- (cdr bounds) (length (cdr ch-str-pair)))))
+          (meep--region-mark-bounds-to-region bounds is-forward))
         t)))))
 
 (defun meep-region-mark-bounds-of-char-contextual-impl (n inner)
@@ -2265,6 +2262,7 @@ When INNER is non-nil, mark the inner bounds."
 When INNER is non-nil, mark the inner bounds."
   (let ((bounds-limit (cons (point-min) (point-max)))
         (bounds-init (meep--region-mark-bounds-init))
+        (ch-str-pair nil)
         (is-negative
          (cond
           ((< n 0)
@@ -2273,13 +2271,15 @@ When INNER is non-nil, mark the inner bounds."
           (t
            nil))))
     (let ((bounds nil))
-      (dolist (ch-str-pair meep-match-bounds-of-char-contextual-chars)
+      (dolist (ch-str-pair-test meep-match-bounds-of-char-contextual)
         (let ((bounds-test
-               (meep--region-mark-bounds-of-char-calc bounds-init bounds-limit n ch-str-pair)))
+               (meep--region-mark-bounds-of-char-calc
+                bounds-init bounds-limit n ch-str-pair-test)))
           ;; Only update the clamp beginning, since the end may increase and that's OK.
           (when bounds-test
             (setq bounds bounds-test)
-            (setcar bounds-limit (car bounds-test)))))
+            (setcar bounds-limit (car bounds-test))
+            (setq ch-str-pair ch-str-pair-test))))
       (cond
        ((null bounds)
         (message "Unable to find bounds!")
@@ -2288,7 +2288,10 @@ When INNER is non-nil, mark the inner bounds."
         (let ((is-forward (/= (point) (car bounds-init))))
           (when is-negative
             (setq is-forward (not is-forward)))
-          (meep--region-mark-bounds-to-region bounds is-forward inner))
+          (when inner
+            (setcar bounds (+ (car bounds) (length (car ch-str-pair))))
+            (setcdr bounds (- (cdr bounds) (length (cdr ch-str-pair)))))
+          (meep--region-mark-bounds-to-region bounds is-forward))
         t)))))
 
 
@@ -2308,7 +2311,7 @@ When INNER is non-nil, mark the inner bounds."
 ;; - Entering an opening ``(`` bracket marks the region inside: ``( ... )``.
 ;; - Entering a closing ``)`` bracket marks the region inside: ``) ... (``.
 ;; - A "contextual" version of this function has been implemented which marts the nearest region.
-;;   customizable with the ``meep-match-bounds-of-char-contextual-chars`` variable.
+;;   customizable with the ``meep-match-bounds-of-char-contextual`` variable.
 
 ;;;###autoload
 (defun meep-region-mark-bounds-of-char-inner (ch arg)
@@ -2316,7 +2319,7 @@ When INNER is non-nil, mark the inner bounds."
 A negative ARG positions the POINT at the end of the region.
 
 Note that pressing Return instead of a character performs a contextual mark,
-finding the closest pair, see: `meep-match-bounds-of-char-contextual-chars'."
+finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
   (interactive "*cMark inner char:\np")
   ;; NOTE: we could add useful features with other characters.
   (cond
@@ -2332,7 +2335,7 @@ finding the closest pair, see: `meep-match-bounds-of-char-contextual-chars'."
 A negative ARG positions the POINT at the end of the region.
 
 Note that pressing Return instead of a character performs a contextual mark,
-finding the closest pair, see: `meep-match-bounds-of-char-contextual-chars'."
+finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
   (interactive "*cMark outer char:\np")
   ;; NOTE: we could add useful features with other characters.
   (cond
@@ -2347,16 +2350,16 @@ finding the closest pair, see: `meep-match-bounds-of-char-contextual-chars'."
   "Mark in bounds of of the nearest character pairs over ARG steps.
 A negative ARG positions the POINT at the end of the region.
 
-Character pairs are detected using: `meep-match-bounds-of-char-contextual-chars'."
+Character pairs are detected using: `meep-match-bounds-of-char-contextual'."
   (interactive "p")
   (meep-region-mark-bounds-of-char-contextual-impl arg t))
 
 ;;;###autoload
 (defun meep-region-mark-bounds-of-char-contextual-outer (arg)
-  "Mark in bounds of of the nearest character pairs over ARG steps.
+  "Mark in bounds of of the nearest boundary pairs over ARG steps.
 A negative ARG positions the POINT at the end of the region.
 
-Character pairs are detected using: `meep-match-bounds-of-char-contextual-chars'."
+Bounds are detected using: `meep-match-bounds-of-char-contextual'."
   (interactive "p")
   (meep-region-mark-bounds-of-char-contextual-impl arg nil))
 
