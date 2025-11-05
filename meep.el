@@ -1788,7 +1788,7 @@ Return nil if no matching syntax was found."
 
 ;;;###autoload
 (defun meep-move-matching-syntax-inner ()
-  "Move to the inner matching sting/comment syntax.
+  "Move to the inner matching string/comment syntax.
 When not at the bounds, jump the start (when in a string/comment).
 
 Return nil if no matching syntax was found."
