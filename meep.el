@@ -4864,7 +4864,8 @@ General last motion info: LAST-MOTION-INFO."
 
       (goto-char (cdr range-b))
       (setq deactivate-mark nil)
-      (meep--set-marker (- (point) (- (cdr range-a) (car range-a)))))
+      (meep--set-marker (- (point) (- (cdr range-a) (car range-a))))
+      t)
 
      (t
       ;; Unlikely but it's not impossible for reversing to go back too far.
@@ -4881,7 +4882,8 @@ General last motion info: LAST-MOTION-INFO."
 
       (goto-char (car range-b))
       (setq deactivate-mark nil)
-      (meep--set-marker (+ (point) (- (cdr range-a) (car range-a))))))))
+      (meep--set-marker (+ (point) (- (cdr range-a) (car range-a))))
+      t))))
 
 ;;;###autoload
 (defun meep-transpose (arg)
