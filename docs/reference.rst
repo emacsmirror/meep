@@ -52,7 +52,7 @@ Custom Variables
      The text after & lines below are used to create the implied selection.
 
 ``meep-isearch-activate-mark``: ``t``
-   ISearch activates the mark (transient).
+   I-search activates the mark (transient).
    So motion drops the selection.
 
    Useful for pasting while stepping over search results.
@@ -531,8 +531,8 @@ conveniently assigned to macros (VIM style).
 ``(meep-register-jump-to ARG)``
    Jump to the register, may jump to a location or call a macro ARG times.
 
-ISearch Wrapper
-^^^^^^^^^^^^^^^
+I-search Wrapper
+^^^^^^^^^^^^^^^^
 
 Support searching in both directions as well as
 searching based on the active region.

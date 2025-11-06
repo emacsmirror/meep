@@ -3696,14 +3696,14 @@ This must be bound to keys 0..9 or the minus key."
 
 
 ;; ---------------------------------------------------------------------------
-;; ISearch Wrapper
+;; I-search Wrapper
 ;;
 ;; Support searching in both directions as well as
 ;; searching based on the active region.
 
 ;; Wrapped search.
 (defcustom meep-isearch-activate-mark t
-  "ISearch activates the mark (transient).
+  "I-search activates the mark (transient).
 So motion drops the selection.
 
 Useful for pasting while stepping over search results."
