@@ -5121,32 +5121,33 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
 
 (defun meep--insert-into-last-impl (move)
   "Insert text into the last insert point, MOVE deletes the original."
-  (let ((beg nil)
-        (end nil)
-        (pos-last-insert
-         (let ((reg-val (get-register meep-state-insert-register)))
-           (unless reg-val
-             (user-error "No register found"))
-           (unless (markerp reg-val)
-             (user-error "No register found - not a marker"))
-           (marker-position reg-val))))
-
+  (when-let* ((pos-last-insert
+               (let ((reg-val (get-register meep-state-insert-register)))
+                 (cond
+                  ((null reg-val)
+                   (message "No register found")
+                   nil)
+                  ((not (markerp reg-val))
+                   (message "No register found: not a marker")
+                   nil)
+                  (t
+                   (marker-position reg-val))))))
     (cond
-     ((region-active-p)
-      (setq beg (region-beginning))
-      (setq end (region-end)))
+     ((null (mark))
+      (message "No mark found!")
+      nil)
      (t
-      (when-let* ((bounds (bounds-of-thing-at-point 'symbol)))
-        (setq beg (car bounds))
-        (setq end (cdr bounds)))))
-
-    (let ((text (and beg end (buffer-substring-no-properties beg end))))
-      (when (and beg end move)
-        (delete-region beg end))
-      (goto-char pos-last-insert)
-      (meep-insert)
-      (when text
-        (insert text)))))
+      ;; Intentionally use the region even if it's not active.
+      (let* ((beg (region-beginning))
+             (end (region-end))
+             (text (and beg end (buffer-substring-no-properties beg end))))
+        (when (and beg end move)
+          (delete-region beg end))
+        (goto-char pos-last-insert)
+        (meep-insert)
+        (when text
+          (insert text)))
+      t))))
 
 ;;;###autoload
 (defun meep-insert-into-last-copy ()
