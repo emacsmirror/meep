@@ -340,6 +340,19 @@ Typically these will be on the same line but this isn't a requirement."
               last-command)))
      ,@body))
 
+(defun meep--register-position-or-message (reg)
+  "Return the position of REG or report a message."
+  (let ((reg-val (get-register reg)))
+    (cond
+     ((null reg-val)
+      (message "No register found at: %S" reg)
+      nil)
+     ((not (markerp reg-val))
+      (message "No marker register found at: %S" reg)
+      nil)
+     (t
+      (marker-position reg-val)))))
+
 
 ;; ---------------------------------------------------------------------------
 ;; Public Variables/Constants
@@ -4975,16 +4988,13 @@ Note using ARG to declare the number of times has not yet been implemented."
 (defun meep-insert-at-last ()
   "Enter insert mode where insert mode was last exited."
   (interactive)
-  (let ((pos-last-insert
-         (let ((reg-val (get-register meep-state-insert-register)))
-           (unless reg-val
-             (user-error "No register found"))
-           (unless (markerp reg-val)
-             (user-error "No register found - not a marker"))
-           (marker-position reg-val))))
-
-    (goto-char pos-last-insert)
-    (meep--insert-impl)))
+  (let ((pos-last-insert (meep--register-position-or-message meep-state-insert-register)))
+    (cond
+     (pos-last-insert
+      (goto-char pos-last-insert)
+      (meep--insert-impl))
+     (t
+      nil))))
 
 (defun meep--insert-overwrite-disable-on-exit ()
   "A callback to disable overwrite mode."
@@ -5121,18 +5131,10 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
 
 (defun meep--insert-into-last-impl (move)
   "Insert text into the last insert point, MOVE deletes the original."
-  (when-let* ((pos-last-insert
-               (let ((reg-val (get-register meep-state-insert-register)))
-                 (cond
-                  ((null reg-val)
-                   (message "No register found")
-                   nil)
-                  ((not (markerp reg-val))
-                   (message "No register found: not a marker")
-                   nil)
-                  (t
-                   (marker-position reg-val))))))
+  (let ((pos-last-insert (meep--register-position-or-message meep-state-insert-register)))
     (cond
+     ((null pos-last-insert)
+      nil)
      ((null (mark))
       (message "No mark found!")
       nil)
