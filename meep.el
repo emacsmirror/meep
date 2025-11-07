@@ -5142,7 +5142,14 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
              (end (region-end))
              (text (and beg end (buffer-substring-no-properties beg end))))
         (when (and beg end move)
-          (delete-region beg end))
+          (delete-region beg end)
+
+          (cond
+           ((<= end pos-last-insert)
+            (meep--decf pos-last-insert (- end beg)))
+           ((<= beg pos-last-insert)
+            (setq pos-last-insert beg))))
+
         (goto-char pos-last-insert)
         (meep-insert)
         (when text
