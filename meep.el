@@ -5153,6 +5153,9 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
           (cond
            ((<= end pos-last-insert)
             (meep--decf pos-last-insert (- end beg)))
+           ;; This is effectively a NOP: moving text into a region *withing* the text range.
+           ;; Support this for consistency, since it's not technically invalid,
+           ;; but it's also unlikely to a useful edit from a user perspective.
            ((<= beg pos-last-insert)
             (setq pos-last-insert beg))))
 
