@@ -3859,6 +3859,10 @@ When HAD-REGION is non-nil, mark the region."
 
     (let ((text (meep--isearch-extract-regex-from-bounds text-bounds)))
       (push text regexp-search-ring)
+      ;; This function defines the search as being "regex",
+      ;; so it's important I-search's variable is set accordingly.
+      (setq isearch-regexp t)
+
       ;; Inline `isearch-yank-string' because it expects non regex text,
       ;; however this text is already quoted.
       (progn
