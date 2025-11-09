@@ -4262,28 +4262,6 @@ Inset ARG times."
 ;; ---------------------------------------------------------------------------
 ;; Text Editing: Surround Insert/Delete
 
-;; TODO: can emacs do this itself?
-;; Maybe make a public variable.
-(defvar meep--char-surround-pairs (list (cons ?\( ?\)) (cons ?\[ ?\]) (cons ?{ ?}) (cons ?< ?>))
-  "Bracket pairs.")
-
-(defun meep--char-pair-find (ch)
-  "Return the matching character for CH or nil."
-  (let ((pairs meep--char-surround-pairs)
-        (result nil))
-    (while pairs
-      (let ((ch-pair (pop pairs)))
-        (cond
-         ((eq ch (car ch-pair))
-          (setq result (cdr ch-pair))
-          ;; Break.
-          (setq pairs nil))
-         ((eq ch (cdr ch-pair))
-          (setq result (car ch-pair))
-          ;; Break.
-          (setq pairs nil)))))
-    result))
-
 (defun meep--char-surround-insert-impl (ch arg line-wise)
   "Surround the region by CH ARG times.
 When LINE-WISE is non-nil, surround each line otherwise use region bounds."
@@ -4294,7 +4272,7 @@ When LINE-WISE is non-nil, surround each line otherwise use region bounds."
   (meep--char-is-ok-or-error "Surround" ch)
 
   (let* ((buffer-len-old (- (point-max) (point-min)))
-         (ch-end (or (meep--char-pair-find ch) ch))
+         (ch-end (or (matching-paren ch) ch))
 
          (surround-in-range-fn
           `(lambda (beg end n)
