@@ -185,7 +185,7 @@
       '("U" . my-key-free)
       (cons (concat my-find "u") 'avy-goto-symbol-1-below)
 
-      '("i" . meep-exchange-point-and-mark-motion)
+      '("i" . meep-region-activate-and-reverse-motion)
       '("I" . my-key-free)
       (cons (concat my-find "i") 'avy-goto-symbol-1-above)
 

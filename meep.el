@@ -2037,7 +2037,7 @@ IS-TILL when non-nil, search up until the character."
 (defun meep--move-to-bounds-endpoint (bounds n)
   "Move to the start/end of BOUNDS (start when N is negative)."
   ;; Note that it's important to always set the mark because unlike a typical motion,
-  ;; we want to be able to use `meep-exchange-point-and-mark-motion' even if this
+  ;; we want to be able to use `meep-region-activate-and-reverse-motion' even if this
   ;; move-to-bounds action happens not to move the point, see: #8.
   (meep--with-mark-on-motion-always-set
     (cond
@@ -2578,13 +2578,13 @@ Move to the beginning with a negative ARG."
 
 The mark is moved to point to initiate a new region to begin a new selection.
 If you wish to activate the region between the existing point and mark see:
-`meep-exchange-point-and-mark' and `meep-region-activate-or-reverse'."
+`meep-region-activate-and-reverse' and `meep-region-activate-or-reverse'."
   (interactive)
   (unless (region-active-p)
     ;; This may have been set, clear it if it was.
     (setq meep-state-region-elem nil)
     ;; Begin selecting (set the mark to the points location).
-    ;; Use `meep-exchange-point-and-mark' to activation the region with the old mark.
+    ;; Use `meep-region-activate-and-reverse' to activation the region with the old mark.
     (set-mark (point))
     (activate-mark t)))
 
@@ -2593,11 +2593,11 @@ If you wish to activate the region between the existing point and mark see:
   "Activate the region without moving the mark.
 
 Otherwise exchange the point and mark when the region is already active.
-See: `meep-exchange-point-and-mark'."
+See: `meep-region-activate-and-reverse'."
   (interactive)
   (cond
    ((region-active-p)
-    (meep-exchange-point-and-mark))
+    (meep-region-activate-and-reverse))
    ((mark)
     (activate-mark t))
    (t
@@ -2608,7 +2608,7 @@ See: `meep-exchange-point-and-mark'."
   "Disable the active region.
 
 The mark is not moved, the region can be restored
-via `meep-exchange-point-and-mark'."
+via `meep-region-activate-or-reverse' or `meep-region-activate-and-reverse'."
   (interactive)
   (when (region-active-p)
     (cond
@@ -2632,8 +2632,13 @@ this operation makes it stay active, running again clears it."
     (meep-region-enable))))
 
 ;;;###autoload
-(defun meep-exchange-point-and-mark ()
-  "Exchange the point and mark, activating the region."
+(defun meep-region-activate-and-reverse ()
+  "Exchange the point and mark, activating the region.
+
+To first activate the region without exchange the point and mark:
+See: `meep-region-activate-and-reverse'.
+
+Note that this wraps emacs built-in: `exchange-point-and-mark'."
   (interactive)
   ;; This will activate the selection if it's not already selected,
   ;; it allows re-selecting pasted text for example.
@@ -2648,7 +2653,7 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
         (local-last-prefix-arg (meep--last-prefix-arg))
         (local-mrk (mark))
         (new-mrk nil)
-        (prefix "exchange-point-and-mark-motion"))
+        (prefix "region-activate-and-reverse-motion"))
 
     (when (and use-adjust-mark
                meep-mark-adjust
@@ -2670,7 +2675,7 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
                prefix
                (type-of local-last-command))
       nil)
-     ((eq local-last-command 'meep-exchange-point-and-mark-motion)
+     ((eq local-last-command 'meep-region-activate-and-reverse-motion)
       ;; This could be made to do something different/useful.
       (message "%s: failed, cannot reverse ourselves" prefix)
       nil)
@@ -2698,7 +2703,7 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
       (cons new-mrk (cons local-last-command local-last-prefix-arg))))))
 
 ;;;###autoload
-(defun meep-exchange-point-and-mark-motion ()
+(defun meep-region-activate-and-reverse-motion ()
   "Exchange the point and mark, activating the region."
   (interactive)
   (let ((last-motion-info (meep--last-motion-calc-whole-mark-pos nil)))
@@ -5892,7 +5897,8 @@ Uses the `meep-clipboard-register-map' key-map."
 ;; Use this advice for commands you wish to use as "motions".
 ;; This causes them to set the mark before motion (unless overridden when repeating).
 ;;
-;; To support repeating and selecting whole objects (via ``meep-exchange-point-and-mark-motion``),
+;; To support repeating and selecting whole objects
+;; (via ``meep-region-activate-and-reverse-motion``),
 ;; these commands should also accept an integer argument, representing the number of
 ;; times the motion is made, reversing when negative.
 ;; This is typically indicated using ``(interactive "p")``.
@@ -5927,6 +5933,24 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 
 
 ;; ---------------------------------------------------------------------------
+;; Old Commands
+;;
+;; These will eventually be removed.
+;; Report the new commands which should be used so users can upgrade.
+
+(defun meep-exchange-point-and-mark-motion ()
+  "Report that `meep-region-activate-and-reverse-motion' must be used instead."
+  (interactive)
+  (user-error
+   "This function has been renamed, use: `meep-region-activate-and-reverse-motion' instead."))
+
+(defun meep-exchange-point-and-mark ()
+  "Report that `meep-region-activate-and-reverse' must be used instead."
+  (interactive)
+  (user-error "This function has been renamed, use: `meep-region-activate-and-reverse' instead."))
+
+
+;; ---------------------------------------------------------------------------
 ;; Command Properties
 
 ;;;###autoload
@@ -5955,15 +5979,19 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 (dolist (cmd
          (list
           ;; These don't set mark but allow marking.
-          'meep-move-char-prev 'meep-move-char-next
+          'meep-move-char-prev
+          'meep-move-char-next
           ;; Use reverse as an adjustment.
-          'meep-exchange-point-and-mark 'meep-exchange-point-and-mark-motion))
+          'meep-region-activate-or-reverse
+          'meep-region-activate-and-reverse
+          'meep-region-activate-and-reverse-motion))
   (meep-command-prop-set cmd :mark-on-motion 'adjust))
 
 (dolist (cmd
          (list
-          'meep-exchange-point-and-mark
-          'meep-exchange-point-and-mark-motion
+          'meep-region-activate-or-reverse
+          'meep-region-activate-and-reverse
+          'meep-region-activate-and-reverse-motion
           'meep-region-mark-bounds-of-char-inner
           'meep-region-mark-bounds-of-char-outer
           'meep-region-mark-bounds-of-char-contextual-inner

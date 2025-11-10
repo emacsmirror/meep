@@ -63,7 +63,7 @@ Setting the buffers text to INITIAL-BUFFER-TEXT."
          (k-meep-move-symbol-next ".")
          (k-meep-move-symbol-next-end "/")
          (k-meep-region-toggle "d")
-         (k-meep-exchange-point-and-mark-motion "i")
+         (k-meep-region-activate-and-reverse-motion "i")
          (k-bray-state-stack-pop [escape]) ;; Escape.
          (k-meep-insert-change "b")
          (k-rectangle-mark-mode "sd"))
@@ -82,7 +82,7 @@ Setting the buffers text to INITIAL-BUFFER-TEXT."
       k-meep-move-symbol-next
       k-meep-move-symbol-next-end
       k-meep-region-toggle
-      k-meep-exchange-point-and-mark-motion
+      k-meep-region-activate-and-reverse-motion
       k-meep-insert-change
       k-rectangle-mark-mode)
 
@@ -205,7 +205,7 @@ Setting the buffers text to INITIAL-BUFFER-TEXT."
         (vconcat
          k-meep-move-symbol-next
          k-meep-move-matching-syntax-inner
-         k-meep-exchange-point-and-mark-motion
+         k-meep-region-activate-and-reverse-motion
          k-meep-insert-change
          "Changed!"
          k-bray-state-stack-pop))
@@ -224,7 +224,7 @@ Setting the buffers text to INITIAL-BUFFER-TEXT."
         (vconcat
          k-meep-move-symbol-next
          k-meep-move-matching-syntax-outer
-         k-meep-exchange-point-and-mark-motion
+         k-meep-region-activate-and-reverse-motion
          k-meep-insert-change
          "// Changed!"
          k-bray-state-stack-pop))

@@ -444,19 +444,19 @@ Selection/Region: Primitive
 
    The mark is moved to point to initiate a new region to begin a new selection.
    If you wish to activate the region between the existing point and mark see:
-   ``meep-exchange-point-and-mark`` and ``meep-region-activate-or-reverse``.
+   ``meep-region-activate-and-reverse`` and ``meep-region-activate-or-reverse``.
 
 ``(meep-region-activate-or-reverse)``
    Activate the region without moving the mark.
 
    Otherwise exchange the point and mark when the region is already active.
-   See: ``meep-exchange-point-and-mark``.
+   See: ``meep-region-activate-and-reverse``.
 
 ``(meep-region-disable)``
    Disable the active region.
 
    The mark is not moved, the region can be restored
-   via ``meep-exchange-point-and-mark``.
+   via ``meep-region-activate-or-reverse`` or ``meep-region-activate-and-reverse``.
 
 ``(meep-region-toggle)``
    Toggle the active region.
@@ -464,10 +464,15 @@ Selection/Region: Primitive
    When the region is transient (where motion would clear it),
    this operation makes it stay active, running again clears it.
 
-``(meep-exchange-point-and-mark)``
+``(meep-region-activate-and-reverse)``
    Exchange the point and mark, activating the region.
 
-``(meep-exchange-point-and-mark-motion)``
+   To first activate the region without exchange the point and mark:
+   See: ``meep-region-activate-and-reverse``.
+
+   Note that this wraps emacs built-in: ``exchange-point-and-mark``.
+
+``(meep-region-activate-and-reverse-motion)``
    Exchange the point and mark, activating the region.
 
 Selection/Region: Secondary Selection
@@ -834,6 +839,18 @@ Support entering a sequence of keys without the need to hold modifiers, see:
 
 ``(meep-keypad)``
    Begin entering a key sequence.
+
+Old Commands
+^^^^^^^^^^^^
+
+These will eventually be removed.
+Report the new commands which should be used so users can upgrade.
+
+``(meep-exchange-point-and-mark-motion)``
+   Report that ``meep-region-activate-and-reverse-motion`` must be used instead.
+
+``(meep-exchange-point-and-mark)``
+   Report that ``meep-region-activate-and-reverse`` must be used instead.
 
 .. END VARIABLES
 
