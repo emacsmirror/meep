@@ -3,7 +3,7 @@
 MEEP for Emacs
 ##############
 
-MEEP is an experimental modal editing system for emacs.
+MEEP is a modal editing system for emacs.
 
 Available via `melpa <https://melpa.org/#/meep>`__.
 
@@ -53,6 +53,15 @@ Features
 - Record and replay macros (VIM style).
 - Key-pad mode
   (matching Meow's `keypad mode <https://github.com/meow-edit/meow/blob/master/TUTORIAL.org#keypad>`__).
+
+
+Development Status
+==================
+
+It is expected that MEEP should be usable for your text editing needs,
+some functionality is being developed and refined.
+
+While large breaking changes are avoided but some minor changes may occur during development.
 
 
 How it Works
