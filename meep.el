@@ -5758,10 +5758,18 @@ Uses the `meep-clipboard-register-map' key-map."
                  (let ((this-command nil)
                        (which-key-this-command-keys-function
                         (lambda ()
-                          (let ((keyseq-str-list (funcall string-from-keyseq-all keyseq)))
-                            (apply #'vconcat
-                                   (mapcar
-                                    (lambda (keyseq-str) (kbd keyseq-str)) keyseq-str-list))))))
+                          (let ((keyseq-str (funcall string-from-keyseq-default keyseq)))
+                            ;; Strip incomplete keys, this doesn't help and causes
+                            ;; an error when multiple modifiers are used such as "C-M-".
+                            ;; Although it could be handy if `which-key' would filter
+                            ;; based on the incomplete binding.
+                            (when (string-suffix-p "-" keyseq-str)
+                              (let ((split-by " "))
+                                (setq keyseq-str
+                                      (mapconcat
+                                       #'identity (butlast (split-string keyseq-str split-by))
+                                       split-by))))
+                            (kbd keyseq-str)))))
                    (ignore which-key-this-command-keys-function)
                    (read-event
                     (concat
