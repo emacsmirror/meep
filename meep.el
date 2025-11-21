@@ -5738,16 +5738,29 @@ Uses the `meep-clipboard-register-map' key-map."
           ;; <delete> and DEL are properly detected.
           (keyseq (list (list "C-")))
           (was-space nil)
-          ;; TODO: check if this can be automatically calculated.
-          (char-map
-           (list
-            (cons "<backspace>" "BS")
-            (cons "<delete>" "DEL")
-            (cons "<escape>" "ESC")
-            (cons "<linefeed>" "LFD")
-            (cons "<return>" "RET")
-            (cons "<space>" "SPC")
-            (cons "<tab>" "TAB"))))
+
+          ;; A pair of maps forward/reverse keys & values may be symbols or integers.
+          ;; - `tab' -> `13' translates to:
+          ;; - "<tab>" -> "TAB".
+          ;; Maps in both directions to allow the result of `read-event' to be either.
+          (keymap-subst-map-list
+           (let ((map-fwd (make-hash-table :test #'eq))
+                 (map-rev (make-hash-table :test #'eq)))
+             ;; NOTE: `local-function-key-map' includes `function-key-map'.
+             (map-keymap
+              (lambda (k v)
+                (when (symbolp k)
+                  (cond
+                   ((symbolp v)
+                    (puthash k (cons v (gethash k map-fwd)) map-fwd)
+                    (puthash v (cons k (gethash v map-rev)) map-rev))
+                   ((and (vectorp v) (eq 1 (length v)))
+                    (let ((i (aref v 0)))
+                      (when (integerp i)
+                        (puthash k (cons i (gethash k map-fwd)) map-fwd)
+                        (puthash i (cons k (gethash i map-rev)) map-rev)))))))
+              local-function-key-map)
+             (list map-fwd map-rev))))
 
       (while (not found)
         (let ((maybe-complete nil))
@@ -5792,18 +5805,24 @@ Uses the `meep-clipboard-register-map' key-map."
 
                 (ch-str-list nil))
 
-            (let ((ch-str (single-key-description ch))
-                  (ch-str-other nil))
-
-              (or (when-let* ((ch-cell (assoc ch-str char-map)))
-                    (setq ch-str-other (cdr ch-cell))
-                    t)
-                  (when-let* ((ch-cell (rassoc ch-str char-map)))
-                    (setq ch-str-other (car ch-cell))
-                    t))
-
-              (when ch-str-other
-                (push ch-str-other ch-str-list))
+            ;; Expand `ch-str-list' to include all translated keys.
+            (let ((ch-str (single-key-description ch)))
+              (dolist (map keymap-subst-map-list)
+                (let ((stack (list ch))
+                      (stack-visited (list)))
+                  (while stack
+                    (let ((v (pop stack)))
+                      (push v stack-visited)
+                      (dolist (v-other (gethash v map))
+                        (unless (memq v-other stack-visited)
+                          ;; Only push others, the original char is pushed later.
+                          (let ((ch-str-other (single-key-description v-other)))
+                            (unless (string-equal ch-str ch-str-other)
+                              (push ch-str-other ch-str-list)))
+                          (push v-other stack)))))))
+              ;; Not all that likely but possible.
+              (setq ch-str-list (delete-dups ch-str-list))
+              ;; Important this is first, so `string-from-keyseq-default' is predictable.
               (push ch-str ch-str-list))
 
             (cond
