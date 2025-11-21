@@ -2638,7 +2638,7 @@ this operation makes it stay active, running again clears it."
 To first activate the region without exchange the point and mark:
 See: `meep-region-activate-and-reverse'.
 
-Note that this wraps emacs built-in: `exchange-point-and-mark'."
+Note that this wraps Emacs built-in: `exchange-point-and-mark'."
   (interactive)
   ;; This will activate the selection if it's not already selected,
   ;; it allows re-selecting pasted text for example.
@@ -5969,12 +5969,12 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
   "Report that `meep-region-activate-and-reverse-motion' must be used instead."
   (interactive)
   (user-error
-   "This function has been renamed, use: `meep-region-activate-and-reverse-motion' instead."))
+   "This function has been renamed, use: `meep-region-activate-and-reverse-motion' instead"))
 
 (defun meep-exchange-point-and-mark ()
   "Report that `meep-region-activate-and-reverse' must be used instead."
   (interactive)
-  (user-error "This function has been renamed, use: `meep-region-activate-and-reverse' instead."))
+  (user-error "This function has been renamed, use: `meep-region-activate-and-reverse' instead"))
 
 
 ;; ---------------------------------------------------------------------------
