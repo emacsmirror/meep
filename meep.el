@@ -4367,9 +4367,10 @@ When LINE-WISE is non-nil, surround each line otherwise use region bounds."
         ;; Only the left hand side needs updating.
         (let* ((m (mark-marker))
                (p-pos (point))
-               (m-pos (or (and m (marker-position m)) p-pos))
-               (update-pos (<= p-pos m-pos))
-               (update-mrk (and m (>= p-pos m-pos))))
+               ;; Can be nil (the mark may have no position).
+               (m-pos (and m (marker-position m)))
+               (update-pos (<= p-pos (or m-pos p-pos)))
+               (update-mrk (and m-pos (>= p-pos m-pos))))
           (when update-pos
             (goto-char (+ (point) arg)))
           (when update-mrk
