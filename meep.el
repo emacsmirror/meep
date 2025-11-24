@@ -5418,19 +5418,20 @@ When ROTATE-AS-STACK is non-nil, step to the next item in the kill ring."
      ;; Rectangle paste.
      ((eq region-type 'rect-wise)
       (when (region-active-p)
+        ;; Important for the point to be at the start.
+        ;; So pasting replaces this region.
+        ;; This is needed for both `line-wise' & `rect-wise' paste.
+        (when (< (mark) (point))
+          (let ((pos-orig (point)))
+            (goto-char (mark))
+            (meep--set-marker pos-orig)))
+
         (cond
          ((bound-and-true-p rectangle-mark-mode)
           (deactivate-mark t)
           (delete-rectangle (region-beginning) (region-end)))
          (t
           (let ((bounds (cons (region-beginning) (region-end))))
-            ;; Important for the point to be at the start.
-            ;; So pasting replaces this region.
-            (when (< (mark) (point))
-              (let ((pos-orig (point)))
-                (goto-char (mark))
-                (meep--set-marker pos-orig)))
-
             (deactivate-mark t)
             ;; Deleting the region doesn't work so nicely with block pasting.
             ;; Instead, make each line blank, then the block paste replaces
