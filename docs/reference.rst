@@ -199,11 +199,11 @@ Motion: Line
    Moves to the beginning when ARG is negative.
 
 ``(meep-move-line-non-space-beginning ARG)``
-   Move the the beginning of the line, ignoring end of line white-spaces.
+   Move the the beginning of the line, ignoring end of line blank-spaces.
    A negative ARG moves to the end.
 
 ``(meep-move-line-non-space-end ARG)``
-   Move the the end of the line, ignoring end of line white-spaces.
+   Move the the end of the line, ignoring end of line blank-spaces.
    A negative ARG moves to the beginning.
 
 ``(meep-move-line-prev ARG)``
@@ -470,7 +470,7 @@ Selection/Region: Primitive
    To first activate the region without exchange the point and mark:
    See: ``meep-region-activate-and-reverse``.
 
-   Note that this wraps emacs built-in: ``exchange-point-and-mark``.
+   Note that this wraps Emacs built-in: ``exchange-point-and-mark``.
 
 ``(meep-region-activate-and-reverse-motion)``
    Exchange the point and mark, activating the region.

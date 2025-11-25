@@ -198,7 +198,7 @@ The behavior if they have not is undefined."
            (t
             (skip-chars-forward "[:blank:]" eol)
             (cond
-             ((eq (point) eol) ; Blank line (with white-space).
+             ((eq (point) eol) ; Blank line (with blank-space).
               (let ((column (current-column)))
                 (when (< result-non-empty-column column)
                   (setq result-non-empty-column column)
@@ -874,7 +874,7 @@ Moves to the beginning when ARG is negative."
 
 ;;;###autoload
 (defun meep-move-line-non-space-beginning (arg)
-  "Move the the beginning of the line, ignoring end of line white-spaces.
+  "Move the the beginning of the line, ignoring end of line blank-spaces.
 A negative ARG moves to the end."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
@@ -882,7 +882,7 @@ A negative ARG moves to the end."
 
 ;;;###autoload
 (defun meep-move-line-non-space-end (arg)
-  "Move the the end of the line, ignoring end of line white-spaces.
+  "Move the the end of the line, ignoring end of line blank-spaces.
 A negative ARG moves to the beginning."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
@@ -1670,7 +1670,7 @@ Return non-nil when the point was moved."
      ((derived-mode-p 'cmake-mode)
       (cond
        ;; Actual comment is #[[ ]] however: #[=[ ]=] (with arbitrary "=")
-       ;; is allowed, rely on white space skipping to skip over these characters.
+       ;; is allowed, rely on blank-space skipping to skip over these characters.
        ((meep--bounds-equal-at-end-points bounds "#[" "]")
         (setq result (cons (+ (car bounds) 3) (- (cdr bounds) 3))))))
      ((derived-mode-p 'haskell-mode)
@@ -4486,7 +4486,7 @@ When there is no active region, surround the current line."
 ;;    /* Example. Block. Next line. */
 
 (defun meep--join-maybe-skip-comment-prefix (limit)
-  "Skip forward over comment chars and any following white-space.
+  "Skip forward over comment chars and any following blank-space.
 Don't skip past LIMIT."
   (let ((state (syntax-ppss))
         (comment-start-quote (regexp-quote comment-start))
@@ -4518,7 +4518,7 @@ Don't skip past LIMIT."
     (when (and (bound-and-true-p c-buffer-is-cc-mode)
                ;; Less trouble then checking all the derived modes.
                (bound-and-true-p c-block-comment-prefix))
-      ;; White space has already been skipped, so trim it here.
+      ;; Blank space has already been skipped, so trim it here.
       ;; The alternative could be to step backwards,
       ;; either way it's not an important difference.
       (let* ((block-prefix (symbol-value 'c-block-comment-prefix))
@@ -4565,7 +4565,7 @@ Don't skip past LIMIT."
        ((< bol-ws-next (cdr range-a))
         (setq result t))
        ;; Detect two single line comments,
-       ;; we only need to check if the first non white-space is a:
+       ;; we only need to check if the first non blank-space is a:
        ;; - comment start 11.
        ;; - comment generic 14.
        ((memq (car (syntax-after bol-ws-next)) (list 11 14))
