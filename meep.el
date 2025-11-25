@@ -3214,6 +3214,62 @@ use to maintain line-based selection."
 ;; but stop symmetrical extending once the first syntax mismatch if found.
 (defvar-local meep--region-syntax-asym nil)
 
+;; Special case, if we *only* traversed blank space,
+;; traverse all remaining blank space, needed
+;; since there are sometimes syntax changes at line bounds
+;; which are (from a user perspective) *just* blank-space.
+
+(defun meep--skip-syntax-backward-or-blank (syntax &optional lim)
+  "Skip SYNTAX forward limited by LIM.
+When only blank space was skipped, skip all blank space."
+  (let ((pos-orig (point))
+        (is-blank nil)
+        (result (skip-syntax-backward syntax lim)))
+    (unless (zerop result)
+      (setq is-blank (looking-at-p "[[:blank:]\n]"))
+      (when is-blank
+        (setq is-blank nil)
+        (let ((pos-new (point)))
+          (save-excursion
+            (goto-char pos-orig)
+            (skip-chars-backward "[:blank:]\n" pos-new)
+            (when (eq (point) pos-new)
+              ;; The entire range was blank.
+              (setq is-blank t))))))
+
+    ;; If all chars where blank, skip any other blanks
+    ;; (even if this crosses other kinds of syntax).
+    (when is-blank
+      (skip-chars-backward "[:blank:]\n" lim)
+      (setq result (- pos-orig (point))))
+
+    result))
+
+(defun meep--skip-syntax-forward-or-blank (syntax &optional lim)
+  "Skip SYNTAX backward limited by LIM.
+When only blank space was skipped, skip all blank space."
+  (let ((pos-orig (point))
+        (is-blank (looking-at-p "[[:blank:]\n]"))
+        (result (skip-syntax-forward syntax lim)))
+    (unless (zerop result)
+      (when is-blank
+        (setq is-blank nil)
+        (let ((pos-new (point)))
+          (save-excursion
+            (goto-char pos-orig)
+            (skip-chars-forward "[:blank:]\n" pos-new)
+            (when (eq (point) pos-new)
+              ;; The entire range was blank.
+              (setq is-blank t))))))
+
+    ;; If all chars where blank, skip any other blanks
+    ;; (even if this crosses other kinds of syntax).
+    (when is-blank
+      (skip-chars-forward "[:blank:]\n" lim)
+      (setq result (- (point) pos-orig)))
+
+    result))
+
 (defun meep--region-syntax-or-symbol-forward (syntax &optional lim)
   "Wrap `skip-syntax-forward' skipping SYNTAX in LIM.
 Also skip any symbol bounds."
@@ -3223,7 +3279,7 @@ Also skip any symbol bounds."
       (prog1 (- bounds-end (point))
         (goto-char bounds-end)))
      (t
-      (skip-syntax-forward syntax lim)))))
+      (meep--skip-syntax-forward-or-blank syntax lim)))))
 
 (defun meep--region-syntax-or-symbol-backward (syntax &optional lim)
   "Wrap `skip-syntax-backward' skipping SYNTAX in LIM.
@@ -3234,7 +3290,7 @@ Also skip any symbol bounds."
       (prog1 (- (point) bounds-beg)
         (goto-char bounds-beg)))
      (t
-      (skip-syntax-backward syntax lim)))))
+      (meep--skip-syntax-backward-or-blank syntax lim)))))
 
 (defun meep--region-syntax-priority (ch)
   "Return a priority from CH (the result of `syntax-class-to-char')."
