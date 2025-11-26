@@ -16,7 +16,7 @@
 ;; intended to be used with `bray' although
 ;; most of the functions can be used with vanilla Emacs.
 ;;
-;; Starting out you may want to load Emacs with on of the
+;; Starting out you may want to load Emacs with one of the
 ;; bundled `init.el' files, linked from this projects URL.
 
 ;;; Usage
@@ -142,7 +142,7 @@ Returns the modified P-list, or the original if KEY is not found."
       (while (progn
                (setq next (cdr tail))
                (setq next-next (cdr next))
-               (and next-next (not (eq (car next-next) key))))
+               (and next-next (null (eq (car next-next) key))))
         (setq tail next-next))
       ;; If we found the key, splice it out.
       (when next-next
@@ -154,12 +154,12 @@ Returns the modified P-list, or the original if KEY is not found."
 Each list contains cons cells (BEG . END) with BEG <= END.
 Stops at the first detected overlap."
   (let ((found nil))
-    (while (and list-a (not found))
+    (while (and list-a (null found))
       (let* ((range-a (car list-a))
              (a-beg (car range-a))
              (a-end (cdr range-a))
              (b-list list-b))
-        (while (and b-list (not found))
+        (while (and b-list (null found))
           (let* ((range-b (car b-list))
                  (b-beg (car range-b))
                  (b-end (cdr range-b)))
@@ -332,7 +332,7 @@ Typically these will be on the same line but this isn't a requirement."
       (- col-end col-beg))))
 
 (defmacro meep--with-substitute-last-command (&rest body)
-  "Execute BODY, replacing `last-command' with it's :substitute if defined."
+  "Execute BODY, replacing `last-command' with its :substitute if defined."
   (declare (indent 0))
   `(let ((last-command
           (or (and (symbolp last-command) (meep-command-prop-get last-command :substitute))
@@ -347,7 +347,7 @@ Typically these will be on the same line but this isn't a requirement."
      ((null reg-val)
       (message "No register found at: %S" reg)
       nil)
-     ((not (markerp reg-val))
+     ((null (markerp reg-val))
       (message "No marker register found at: %S" reg)
       nil)
      (t
@@ -398,7 +398,7 @@ When ALWAYS is non-nil, mark-on-motion even if the cursor didn't move."
              ;; Has motion, or always.
              (or always (/= pos (point)))
              ;; Has no region.
-             (not (region-active-p))
+             (null (region-active-p))
              ;; Allow numeric commands to adjust the motion,
              ;; without moving the mark.
              (null meep-mark-set-on-motion-override))
@@ -473,7 +473,7 @@ POS-ORIG & MRK-ORIG define the original region."
 
 (defun meep--mark-on-motion-maybe-activate ()
   "Activate the region in preparation for a command to use the active region."
-  (when (and meep-mark-set-on-motion (not (region-active-p)))
+  (when (and meep-mark-set-on-motion (null (region-active-p)))
     (let ((local-last-command (meep--last-command)))
       (when (and (symbolp local-last-command)
                  (meep-command-is-mark-set-on-motion-any local-last-command))
@@ -507,7 +507,7 @@ this should be used in situations commands do not result in a user visible regio
   "Return the equivalent region beginning & end.
 These are the values that *would* be set if the motion
 were to be made into the active region."
-  (when (and meep-mark-set-on-motion (not (region-active-p)))
+  (when (and meep-mark-set-on-motion (null (region-active-p)))
     (let ((local-last-command (meep--last-command)))
       (when (and (symbolp local-last-command)
                  (meep-command-is-mark-set-on-motion-any local-last-command))
@@ -679,14 +679,14 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 
       (when skip-space-end
         (skip-chars-backward "[:blank:]" (point-min)))
-      (while (and (not (bobp))
-                  (not
+      (while (and (null (bobp))
+                  (null
                    (zerop
                     (prog1 n
                       (meep--decf n)))))
         (syntax-ppss)
         (setq syn (syntax-after (1- (point))))
-        (while (and (not (bobp)) (equal syn (syntax-after (1- (point)))))
+        (while (and (null (bobp)) (equal syn (syntax-after (1- (point)))))
           (forward-char -1)
           ;; Optionally step over blocks.
           (when or-thing
@@ -709,14 +709,14 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
       (when (and skip-space-beg (< 0 n))
         (unless (zerop (skip-chars-forward "[:blank:]" (point-max)))
           (meep--decf n skip-space-beg)))
-      (while (and (not (eobp))
-                  (not
+      (while (and (null (eobp))
+                  (null
                    (zerop
                     (prog1 n
                       (meep--decf n)))))
         (syntax-ppss)
         (setq syn (syntax-after (point)))
-        (while (and (not (eobp)) (equal syn (syntax-after (point))))
+        (while (and (null (eobp)) (equal syn (syntax-after (point))))
           (forward-char 1)
           ;; Optionally step over blocks.
           (when or-thing
@@ -1212,7 +1212,7 @@ When STEP-OVER is non-nil don't step into nested blocks."
                       (let ((keep-searching
                              (cond
                               (bracket-chars
-                               (not (memq (char-after (point)) bracket-chars)))
+                               (null (memq (char-after (point)) bracket-chars)))
                               (t
                                nil))))
                         (unless keep-searching
@@ -1241,7 +1241,7 @@ When STEP-OVER is non-nil don't step into nested blocks."
                       (let ((keep-searching
                              (cond
                               (bracket-chars
-                               (not (memq (char-before (point)) bracket-chars)))
+                               (null (memq (char-before (point)) bracket-chars)))
                               (t
                                nil))))
                         (unless keep-searching
@@ -1585,10 +1585,10 @@ Return non-nil when the point was moved."
   (let ((pos-orig (point)))
     (when-let* ((start
                  (or (meep--syntax-state-is-string (syntax-ppss))
-                     (and (not (bobp))
+                     (and (null (bobp))
                           (meep--syntax-state-is-string
                            (save-excursion (syntax-ppss (1- pos-orig)))))
-                     (and (not (eobp))
+                     (and (null (eobp))
                           (meep--syntax-state-is-string
                            (save-excursion (syntax-ppss (1+ pos-orig))))))))
       (when (<= start pos-orig)
@@ -1879,7 +1879,7 @@ IS-TILL when non-nil, search up until the character."
 
     (meep--with-mark-on-motion-maybe-set
       (cond
-       ((not end)
+       ((null end)
         (message "char %s not found" ch-str))
 
        (is-till
@@ -2133,11 +2133,11 @@ or nil if no matching brackets are found."
                (save-excursion
                  (let ((depth 0)
                        (found nil))
-                   (while (and (not found)
+                   (while (and (null found)
                                (> (point) limit-min)
                                (re-search-backward bracket-regex limit-min t))
                      (cond
-                      ;; Found a closing bracket: finish or decrease depth and continue.
+                      ;; Found an opening bracket: finish or decrease depth and continue.
                       ((match-beginning 1)
                        (cond
                         ((zerop depth)
@@ -2156,7 +2156,7 @@ or nil if no matching brackets are found."
                    (forward-char (length open-str)))
                  (let ((depth 0)
                        (found nil))
-                   (while (and (not found)
+                   (while (and (null found)
                                (< (point) limit-max)
                                (re-search-forward bracket-regex limit-max t))
                      (cond
@@ -2168,7 +2168,7 @@ or nil if no matching brackets are found."
                         (t
                          (meep--decf depth))))
                       ((match-beginning 1)
-                       ;; Found an opening bracket: increase depth.
+                       ;; Found a closing bracket: increase depth.
                        (meep--incf depth))))
                    found))))))
 
@@ -2262,7 +2262,7 @@ When INNER is non-nil, mark the inner bounds."
        (t
         (let ((is-forward (/= (point) (car bounds-init))))
           (when is-negative
-            (setq is-forward (not is-forward)))
+            (setq is-forward (null is-forward)))
           (when inner
             (setcar bounds (+ (car bounds) (length (car ch-str-pair))))
             (setcdr bounds (- (cdr bounds) (length (cdr ch-str-pair)))))
@@ -2300,7 +2300,7 @@ When INNER is non-nil, mark the inner bounds."
        (t
         (let ((is-forward (/= (point) (car bounds-init))))
           (when is-negative
-            (setq is-forward (not is-forward)))
+            (setq is-forward (null is-forward)))
           (when inner
             (setcar bounds (+ (car bounds) (length (car ch-str-pair))))
             (setcdr bounds (- (cdr bounds) (length (cdr ch-str-pair)))))
@@ -2670,7 +2670,7 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
      ((null local-last-command)
       (message "%s: failed, no last-command found" prefix)
       nil)
-     ((not (symbolp local-last-command))
+     ((null (symbolp local-last-command))
       (message "%s: failed, the last-command must be a symbol, not %S"
                prefix
                (type-of local-last-command))
@@ -3143,11 +3143,11 @@ use to maintain line-based selection."
             ;; If the first line is empty, skip all empty space.
             (when (funcall is-line-empty-fn)
               (line-move 1 t)
-              (while (not (funcall is-line-empty-fn))
+              (while (null (funcall is-line-empty-fn))
                 (line-move 1 t)))
 
             (let ((x (point)))
-              (while (not (funcall is-line-empty-fn))
+              (while (null (funcall is-line-empty-fn))
                 (setq x (point))
                 (line-move 1 t))
               (goto-char x)
@@ -3169,11 +3169,11 @@ use to maintain line-based selection."
             ;; If the first line is empty, skip all empty space.
             (when (funcall is-line-empty-fn)
               (forward-char -1)
-              (while (not (funcall is-line-empty-fn))
+              (while (null (funcall is-line-empty-fn))
                 (forward-char -1)))
 
             (let ((x (point)))
-              (while (not (funcall is-line-empty-fn))
+              (while (null (funcall is-line-empty-fn))
                 (setq x (point))
                 (forward-char -1))
               (goto-char x)
@@ -3355,7 +3355,7 @@ Also skip any symbol bounds."
                (end (region-end))
                (is-forward (eq end (point)))
                (beg-ok
-                (and (or (null meep--region-syntax-asym) (not is-forward)) (/= beg (point-min))))
+                (and (or (null meep--region-syntax-asym) (null is-forward)) (/= beg (point-min))))
                (end-ok (and (or (null meep--region-syntax-asym) is-forward) (/= end (point-max))))
                (beg-syn (and beg-ok (syntax-after (1- beg))))
                (end-syn (and end-ok (syntax-after end)))
@@ -3451,8 +3451,8 @@ Also skip any symbol bounds."
               (setq do-end t))
              (t
               ;; Detect the symbol.
-              (let ((beg-syn (and (not (bobp)) (syntax-after (1- (point)))))
-                    (end-syn (and (not (eobp)) (syntax-after (point)))))
+              (let ((beg-syn (and (null (bobp)) (syntax-after (1- (point)))))
+                    (end-syn (and (null (eobp)) (syntax-after (point)))))
                 (cond
                  ((and beg-syn end-syn)
                   (let ((beg-syn-cls (syntax-class beg-syn))
@@ -3542,7 +3542,7 @@ Also skip any symbol bounds."
              (end (region-end))
              (is-forward (eq end (point)))
              (beg-ok
-              (and (or (null meep--region-syntax-asym) (not is-forward)) (/= beg (point-min))))
+              (and (or (null meep--region-syntax-asym) (null is-forward)) (/= beg (point-min))))
              (end-ok (and (or (null meep--region-syntax-asym) is-forward) (/= end (point-max))))
 
              (beg-syn (syntax-after beg))
@@ -3634,7 +3634,7 @@ Also skip any symbol bounds."
 (defun meep-region-syntax-expand (arg)
   "Expand on matching syntax table elements ARG times.
 
-When there is no active region, active the region and expand.
+When there is no active region, active and expand the region.
 This can be used to quickly mark symbols or blocks of contiguous syntax
 including of blank-space."
   (interactive "p")
@@ -4574,7 +4574,7 @@ Don't skip past LIMIT."
 
 (defun meep--join-range (bol eol use-comment-strip)
   "Join new lines between BOL & EOL.
-When USE-COMMENT-STRIP is non-til, strip comments."
+When USE-COMMENT-STRIP is non-nil, strip comments."
   (cond
    ;; Detect end of buffer.
    ((eq eol (point-max))
@@ -4659,7 +4659,7 @@ USE-COMMENT-STRIP, strips comments between lines."
       (let ((bol (pos-bol))
             (eol nil)
             (range nil))
-        (while (and (not
+        (while (and (null
                      (zerop
                       (prog1 arg
                         (meep--decf arg))))
@@ -4701,7 +4701,7 @@ USE-COMMENT-STRIP, strips comments between lines."
       (let ((bol nil)
             (eol nil)
             (range nil))
-        (while (and (not
+        (while (and (null
                      (zerop
                       (prog1 arg
                         (meep--decf arg))))
@@ -4723,7 +4723,7 @@ USE-COMMENT-STRIP, strips comments between lines."
               (setq changed t)))))))
 
     (unless changed
-      (message "Join line beginning: no following line found"))
+      (message "Join line beginning: no preceding line found"))
     changed))
 
 
@@ -5438,7 +5438,7 @@ When DO-CUT is non-nil, cut instead of copying."
    (cons 'rect-wise 'meep--yank-handler-rect-wise)))
 
 (defun meep--yank-handler-from-region-type (region-type)
-  "Return the yank-handler from the REGION-TYPE or ni."
+  "Return the yank-handler from the REGION-TYPE or nil."
   (cdr (assq region-type meep--yank-handler-from-region-type-alist)))
 
 (defun meep--yank-handler-to-region-type (yank-handler)
@@ -5820,7 +5820,7 @@ Uses the `meep-clipboard-register-map' key-map."
               local-function-key-map)
              (list map-fwd map-rev))))
 
-      (while (not found)
+      (while (null found)
         (let ((maybe-complete nil))
           (let ((ch
                  ;; Which key needs `this-command' to be nil, else it wont show.
@@ -5935,7 +5935,7 @@ Uses the `meep-clipboard-register-map' key-map."
               ;; (printf "RESULT: '%S' | %S | %S\n" keyseq bind (type-of bind))
               (cond
                ((or (and bind (symbolp bind) (commandp bind))
-                    (and bind (not (symbolp bind)) (interpreted-function-p bind)))
+                    (and bind (null (symbolp bind)) (interpreted-function-p bind)))
 
                 ;; Don't look any further.
                 (setq found t)
@@ -6233,17 +6233,17 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
       (meep-command-is-mark-set-on-motion-no-repeat cmd)))
 ;;;###autoload
 (defun meep-command-is-mark-activate (cmd)
-  "Return t if CMD doesn't use mark on motion (without active)."
+  "Return t if CMD doesn't use mark on motion (unless the region is active)."
   (declare (important-return-value t))
   (eq t (meep-command-prop-get cmd :mark-activate)))
 ;;;###autoload
 (defun meep-command-is-mark-on-motion-exclude (cmd)
-  "Return t if CMD doesn't use mark on motion (without active)."
+  "Return t if CMD should be excluded from mark-on-motion."
   (declare (important-return-value t))
   (eq t (meep-command-prop-get cmd :mark-on-motion-exclude)))
 ;;;###autoload
 (defun meep-command-is-mark-respect-temporary-goal-column (cmd)
-  "Return t if CMD doesn't use mark on motion (without active)."
+  "Return t if CMD should maintain the temporary goal column."
   (declare (important-return-value t))
   (eq t (meep-command-prop-get cmd :respect-temporary-goal-column)))
 ;;;###autoload
