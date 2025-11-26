@@ -9,7 +9,7 @@
 
 ;; Detect if this is running in a test environment.
 ;; Otherwise we can assume this is an example for trying out meep.
-(defconst my-meep-is-test-env (not (string-empty-p (or (getenv "MEEP_TEST_ENV") "")))
+(defconst my-meep-is-test-env (null (string-empty-p (or (getenv "MEEP_TEST_ENV") "")))
   "True when running tests")
 
 ;; ----------------------------------------------------------------------------

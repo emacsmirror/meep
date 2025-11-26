@@ -45,11 +45,11 @@ Valid values for TY include:
                     ((eq ty 'fun-interactive)
                      (and (fboundp sym) (commandp sym)))
                     ((eq ty 'fun)
-                     (and (fboundp sym) (not (commandp sym))))
+                     (and (fboundp sym) (null (commandp sym))))
                     ((eq ty 'var)
-                     (and (not (fboundp sym)) (not (get sym 'custom-type))))
+                     (and (null (fboundp sym)) (null (get sym 'custom-type))))
                     ((eq ty 'var-custom)
-                     (and (not (fboundp sym)) (get sym 'custom-type))))
+                     (and (null (fboundp sym)) (get sym 'custom-type))))
                (push sym vars)))))))
 
     ;; Sort by their order in the buffer.
