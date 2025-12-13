@@ -126,6 +126,7 @@ This must be set by commands that pass the:
 (defun meep--plist-remove (plist key)
   "Remove KEY and its value from PLIST destructively.
 Returns the modified P-list, or the original if KEY is not found."
+  (declare (important-return-value t))
   (cond
    ;; Empty P-list.
    ((null plist)
@@ -153,6 +154,7 @@ Returns the modified P-list, or the original if KEY is not found."
   "Return t if any range in LIST-A overlaps any range in LIST-B.
 Each list contains cons cells (BEG . END) with BEG <= END.
 Stops at the first detected overlap."
+  (declare (important-return-value t))
   (let ((found nil))
     (while (and list-a (null found))
       (let* ((range-a (car list-a))
@@ -184,6 +186,7 @@ Stops at the first detected overlap."
 
 It is expected that BEG & END have been extended to line end-points.
 The behavior if they have not is undefined."
+  (declare (important-return-value t))
   (let ((result-non-empty nil)
         (result-non-empty-column 0))
     (save-excursion
@@ -270,6 +273,7 @@ When the point is at the very beginning of a comment
 there may be no comment syntax information at point, move forward until
 `syntax-ppss' information is available (typically only 1-2 characters).
 Return t when the point was moved to the comment start."
+  (declare (important-return-value t))
   (let ((pos-found nil)
         (pos-init (point)))
     (when (forward-comment 1)
@@ -300,6 +304,7 @@ Return t when the point was moved to the comment start."
 
 (defun meep--rectangle-range-list-from-rectangle (beg end)
   "Return a list of ranges from a rectangle from BEG & END."
+  (declare (important-return-value t))
   (let* ((result (list))
          (accum-fn (lambda (beg end) (push (cons beg end) result))))
     (apply-on-rectangle
@@ -320,6 +325,7 @@ Return t when the point was moved to the comment start."
   "Calculate the column offset between points BEG & END.
 
 Typically these will be on the same line but this isn't a requirement."
+  (declare (important-return-value t))
   (save-excursion
     (let ((col-beg
            (progn
@@ -342,6 +348,7 @@ Typically these will be on the same line but this isn't a requirement."
 
 (defun meep--register-position-or-message (reg)
   "Return the position of REG or report a message."
+  (declare (important-return-value t))
   (let ((reg-val (get-register reg)))
     (cond
      ((null reg-val)
@@ -507,6 +514,7 @@ this should be used in situations commands do not result in a user visible regio
   "Return the equivalent region beginning & end.
 These are the values that *would* be set if the motion
 were to be made into the active region."
+  (declare (important-return-value t))
   (when (and meep-mark-set-on-motion (null (region-active-p)))
     (let ((local-last-command (meep--last-command)))
       (when (and (symbolp local-last-command)
@@ -521,6 +529,7 @@ were to be made into the active region."
 
 (defun meep--region-or-mark-on-motion-bounds ()
   "Return the region beginning & end or motion bounds."
+  (declare (important-return-value t))
   (cond
    ((region-active-p)
     (cons (region-beginning) (region-end)))
@@ -529,6 +538,7 @@ were to be made into the active region."
 
 (defun meep--calc-beginning-of-next-thing (thing n)
   "Move to the beginning of the next THING N times."
+  (declare (important-return-value t))
   ;; Move to the start of the next thing.
   ;; Otherwise the point moves to the end.
   (let ((pos-orig (point)))
@@ -553,6 +563,7 @@ were to be made into the active region."
 
 (defun meep--calc-end-of-prev-thing (thing n)
   "Move to the end of the previous THING N times."
+  (declare (important-return-value t))
   ;; Move to the end of the previous thing.
   ;; Otherwise the point moves to the end.
   (let ((pos-orig (point)))
@@ -1005,6 +1016,7 @@ NOERROR is forwarded to `line-move'."
 
 When DIR is -1, the beginning, 1 the end.
 Return t when stepping out of string or comment bounds."
+  (declare (important-return-value t))
   ;; When in a comment or string, skip out of it.
   (let ((state (syntax-ppss))
         (changed nil))
@@ -1045,6 +1057,7 @@ Return t when stepping out of string or comment bounds."
 
 (defun meep--jump-brackets-from-mode ()
   "Return a cons cell of brackets to use for navigation based on the major mode."
+  (declare (important-return-value t))
   (cond
    ;; Modes that use {} brackets.
    ;; For now, assume if "{}" are brackets.
@@ -1058,6 +1071,7 @@ Return t when stepping out of string or comment bounds."
 
 (defun meep--jump-next-sexp-step-over-impl ()
   "Step over the next SEXP or return nil."
+  (declare (important-return-value t))
   (let ((p nil))
     ;; Never true when at the beginning.
     (unless (bobp)
@@ -1075,6 +1089,7 @@ Return t when stepping out of string or comment bounds."
 
 (defun meep--jump-prev-sexp-step-over-impl ()
   "Step over the previous SEXP or return nil."
+  (declare (important-return-value t))
   (let ((p nil))
     ;; Never true when at the end.
     (unless (eobp)
@@ -1093,6 +1108,7 @@ Return t when stepping out of string or comment bounds."
 (defun meep--jump-next-sexp-impl (n step-over)
   "Jump to the next SEXP N times.
 When STEP-OVER is non-nil, don't step into expressions."
+  (declare (important-return-value t))
   (let ((pos nil)
         (changed nil))
     (cond
@@ -1121,6 +1137,7 @@ When STEP-OVER is non-nil, don't step into expressions."
 (defun meep--jump-prev-sexp-impl (n step-over)
   "Jump to the previous SEXP N times.
 When STEP-OVER is non-nil, don't step into expressions."
+  (declare (important-return-value t))
   (setq n (- n))
   (let ((pos nil)
         (changed nil))
@@ -1149,6 +1166,7 @@ When STEP-OVER is non-nil, don't step into expressions."
 
 (defun meep--is-point-after-bracket-close (bracket-chars)
   "Return t if the point is after a closed BRACKET-CHARS."
+  (declare (important-return-value t))
   (cond
    ((and (save-match-data (looking-back "\\s)" (pos-bol)))
          (or (null bracket-chars) (memq (char-before (point)) bracket-chars)))
@@ -1158,6 +1176,7 @@ When STEP-OVER is non-nil, don't step into expressions."
 
 (defun meep--is-point-after-bracket-open (bracket-chars)
   "Return t if the point is after an open BRACKET-CHARS."
+  (declare (important-return-value t))
   (cond
    ((and (save-match-data (looking-back "\\s(" (pos-bol)))
          (or (null bracket-chars) (memq (char-before (point)) bracket-chars)))
@@ -1167,6 +1186,7 @@ When STEP-OVER is non-nil, don't step into expressions."
 
 (defun meep--is-point-before-bracket-close (bracket-chars)
   "Return t if the point is before a closed BRACKET-CHARS."
+  (declare (important-return-value t))
   (cond
    ((and (looking-at-p "\\s)") (or (null bracket-chars) (memq (char-after (point)) bracket-chars)))
     t)
@@ -1175,6 +1195,7 @@ When STEP-OVER is non-nil, don't step into expressions."
 
 (defun meep--is-point-before-bracket-open (bracket-chars)
   "Return t if the point is before an open BRACKET-CHARS."
+  (declare (important-return-value t))
   (cond
    ((and (looking-at-p "\\s(") (or (null bracket-chars) (memq (char-after (point)) bracket-chars)))
     t)
@@ -1184,6 +1205,7 @@ When STEP-OVER is non-nil, don't step into expressions."
 (defun meep--move-by-sexp-any-impl (n step-over)
   "Jump to the next/previous SEXP by N.
 When STEP-OVER is non-nil don't step into nested blocks."
+  (declare (important-return-value t))
   (let ((pos-init (point))
         (pos-found nil)
         ;; Store valid steps, as it's possible to step into S-expressions
@@ -1294,6 +1316,7 @@ Only used between successive
 
 (defun meep--sexp-depth-calc ()
   "Return the S-expression depth."
+  (declare (important-return-value t))
   (let* ((bracket-chars (meep--jump-brackets-from-mode))
          (cache-prev meep--sexp-depth-calc-cache)
          (cache-tail (cons nil nil))
@@ -1340,6 +1363,7 @@ Only used between successive
 
 (defun meep--move-by-sexp-over-last-command-check ()
   "Return non-nil when the `last-command' moved over an S-expression."
+  (declare (important-return-value t))
   (memq last-command (list 'meep-move-by-sexp-over-next 'meep-move-by-sexp-over-prev)))
 
 ;;;###autoload
@@ -1540,6 +1564,7 @@ Return non-nil when the point was moved."
 
 (defun meep--bounds-at-point-for-comment-outer ()
   "Return the outer bounds for the comments at point or nil when not found."
+  (declare (important-return-value t))
   (let ((state (syntax-ppss)))
     (unless (nth 4 state)
       ;; Don't step back onto the previous line as it causes
@@ -1578,10 +1603,12 @@ Return non-nil when the point was moved."
 
 (defun meep--syntax-state-is-string (state)
   "Return non-nil if STATE is a string."
+  (declare (important-return-value t))
   (and (null (nth 4 state)) (nth 8 state)))
 
 (defun meep--bounds-at-point-for-string-outer ()
   "Return the outer bounds for the string at point or nil when not found."
+  (declare (important-return-value t))
   (let ((pos-orig (point)))
     (when-let* ((start
                  (or (meep--syntax-state-is-string (syntax-ppss))
@@ -1600,6 +1627,7 @@ Return non-nil when the point was moved."
 
 (defun meep--bounds-match-at-end-points (bounds beg-re end-re)
   "Return t if BOUNDS begins and ends with BEG-RE & END-RE."
+  (declare (important-return-value t))
   (save-excursion
     (cond
      ((and (or (null beg-re)
@@ -1616,6 +1644,7 @@ Return non-nil when the point was moved."
 
 (defun meep--bounds-equal-at-end-points (bounds beg-str end-str)
   "Return t if BOUNDS begins and ends with BEG-STR & END-STR."
+  (declare (important-return-value t))
   (let* ((beg (car bounds))
          (end (cdr bounds))
          (bounds-len (- end beg))
@@ -1697,6 +1726,7 @@ Return non-nil when the point was moved."
 
 (defun meep--bounds-at-point-for-comment-inner ()
   "Return the inner bounds for the comments at point or nil when not found."
+  (declare (important-return-value t))
   (let ((bounds-outer (meep--bounds-at-point-for-comment-outer))
         (result nil))
     ;; Contract, NOTE: this doesn't work with C/C++
@@ -1756,6 +1786,7 @@ Return non-nil when the point was moved."
 
 (defun meep--bounds-at-point-for-string-inner ()
   "Return the inner bounds for the string at point or nil when not found."
+  (declare (important-return-value t))
   (let ((bounds (meep--bounds-at-point-for-string-outer)))
     ;; TODO: make this more advanced, for now, simply contract successive matching characters
     ;; as this is quite a good heuristic for strings in most languages.
@@ -1898,6 +1929,7 @@ IS-TILL when non-nil, search up until the character."
 ;; Avoids repeating the error message all over the place.
 (defun meep--move-find-last-char-or-message ()
   "Return the last character or raise an error."
+  (declare (important-return-value t))
   (cond
    (meep--move-find-last-char
     meep--move-find-last-char)
@@ -1996,6 +2028,7 @@ IS-TILL when non-nil, search up until the character."
 
 (defun meep--bounds-of-visual-line (inner)
   "Bounds of visual line (contract to INNER when true)."
+  (declare (important-return-value t))
   (let ((bounds
          (cons
           (save-excursion
@@ -2011,6 +2044,7 @@ IS-TILL when non-nil, search up until the character."
 
 (defun meep--bounds-of-sentence (inner)
   "Bounds of sentence (contract to INNER when true)."
+  (declare (important-return-value t))
   (when-let* ((bounds (bounds-of-thing-at-point 'sentence)))
     (when inner
       ;; Since it's unlikely the beginning is blank,
@@ -2028,6 +2062,7 @@ IS-TILL when non-nil, search up until the character."
 
 (defun meep--bounds-of-paragraph (inner)
   "Bounds of paragraph (contract to INNER when true)."
+  (declare (important-return-value t))
   (when-let* ((bounds (bounds-of-thing-at-point 'paragraph)))
     (when inner
       (let ((skip "[:blank:]\r\n"))
@@ -2101,6 +2136,7 @@ Used for `meep-region-mark-bounds-of-char-inner-contextual' and
 
 (defun meep--symmetrical-char-other-any (ch-str)
   "Return the symmetrical character of CH-STR or nil."
+  (declare (important-return-value t))
   (let ((chars meep-symmetrical-chars)
         (result nil))
     (while chars
@@ -2119,6 +2155,7 @@ Used for `meep-region-mark-bounds-of-char-inner-contextual' and
 BOUNDS-LIMIT constrains the search bounds.
 Using strings from CH-STR-PAIR (supports multi-character brackets).
 or nil if no matching brackets are found."
+  (declare (important-return-value t))
   (let* ((has-region (/= (car bounds-init) (cdr bounds-init)))
          (open-str (car ch-str-pair))
          (close-str (cdr ch-str-pair))
@@ -2195,6 +2232,7 @@ or nil if no matching brackets are found."
 (defun meep--region-mark-bounds-of-char-calc (bounds-init bounds-limit n ch-str-pair)
   "Calculate the bounds around CH-STR-PAIR from BOUNDS-INIT N times.
 BOUNDS-LIMIT constrains the search bounds."
+  (declare (important-return-value t))
   (cond
    ((string-equal (car ch-str-pair) (cdr ch-str-pair))
     (let ((beg nil)
@@ -2216,6 +2254,7 @@ BOUNDS-LIMIT constrains the search bounds."
 
 (defun meep--region-mark-bounds-init ()
   "Return the initial bounds."
+  (declare (important-return-value t))
   (cond
    ((region-active-p)
     (cons (region-beginning) (region-end)))
@@ -2237,6 +2276,7 @@ When IS-FORWARD is t, the point is after the mark."
 
 (defun meep--region-mark-ch-pair-from-char (ch)
   "Return a cons cell of CH converted to a string."
+  (declare (important-return-value t))
   (let ((ch-str (make-string 1 ch)))
     (cons ch-str (or (meep--symmetrical-char-other-any ch-str) ch-str))))
 
@@ -2649,6 +2689,7 @@ Note that this wraps Emacs built-in: `exchange-point-and-mark'."
   "When a partial motion command has been made.
 
 When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
+  (declare (important-return-value t))
   (let ((local-last-command (meep--last-command))
         (local-last-prefix-arg (meep--last-prefix-arg))
         (local-mrk (mark))
@@ -2733,6 +2774,7 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
 
 (defun meep--range-list-as-marker-list (ranges)
   "Create a list of markers from RANGES of integer ranges."
+  (declare (important-return-value t))
   (mapcar
    (lambda (item)
      (let ((mark-beg (set-marker (make-marker) (car item)))
@@ -3663,6 +3705,7 @@ including of blank-space."
 
 (defun meep--last-command ()
   "A version of `last-command' that isn't masked by numeric arguments."
+  (declare (important-return-value t))
   (cond
    ;; The symbol check is needed as keys may be bound to a lambda,
    ;; in that case checking for the symbol raises an error.
@@ -3673,6 +3716,7 @@ including of blank-space."
 
 (defun meep--last-prefix-arg ()
   "A version of `last-prefix-arg' that isn't masked by numeric arguments."
+  (declare (important-return-value t))
   (cond
    ;; The symbol check is needed as keys may be bound to a lambda,
    ;; in that case checking for the symbol raises an error.
@@ -5439,15 +5483,18 @@ When DO-CUT is non-nil, cut instead of copying."
 
 (defun meep--yank-handler-from-region-type (region-type)
   "Return the yank-handler from the REGION-TYPE or nil."
+  (declare (important-return-value t))
   (cdr (assq region-type meep--yank-handler-from-region-type-alist)))
 
 (defun meep--yank-handler-to-region-type (yank-handler)
   "Return region type from the YANK-HANDLER or nil."
+  (declare (important-return-value t))
   (car (rassq yank-handler meep--yank-handler-from-region-type-alist)))
 
 (defun meep--wrap-current-kill (n &optional do-not-move)
   "Wrap `current-kill', only ever use the kill ring.
 Forward N & DO-NOT-MOVE."
+  (declare (important-return-value t))
   (let ((interprogram-paste-function nil))
     (current-kill n do-not-move)))
 
@@ -6047,6 +6094,7 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 ;;;###autoload
 (defun meep-command-prop-get (cmd prop)
   "Get CMD property for PROP or nil."
+  (declare (important-return-value t))
   (let* ((sym 'meep)
          (plist (get cmd sym)))
     (and plist (plist-get plist prop))))
@@ -6228,6 +6276,7 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 ;;;###autoload
 (defun meep-command-is-mark-set-on-motion-any (cmd)
   "Check if CMD is any motion."
+  (declare (important-return-value t))
   (or (meep-command-is-mark-set-on-motion cmd)
       (meep-command-is-mark-set-on-motion-adjust cmd)
       (meep-command-is-mark-set-on-motion-no-repeat cmd)))
@@ -6260,6 +6309,7 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 ;;;###autoload
 (defun meep-enabled-p ()
   "Return non-nil if MEEP is enabled."
+  (declare (important-return-value t))
   (bound-and-true-p bray-mode))
 
 ;;;###autoload
