@@ -19,7 +19,7 @@
 ;; Starting out you may want to load Emacs with one of the
 ;; bundled `init.el' files, linked from this projects URL.
 
-;;; Usage
+;;; Usage:
 
 ;; Bind any of the `autoload' functions in this file to a key-map.
 
@@ -125,10 +125,10 @@ This must be set by commands that pass the:
 
 (defun meep--plist-remove (plist key)
   "Remove KEY and its value from PLIST destructively.
-Returns the modified P-list, or the original if KEY is not found."
+Returns the modified PLIST, or the original if KEY is not found."
   (declare (important-return-value t))
   (cond
-   ;; Empty P-list.
+   ;; Empty PLIST.
    ((null plist)
     plist)
    ;; Key is at the beginning.
@@ -365,17 +365,18 @@ Typically these will be on the same line but this isn't a requirement."
 ;; Public Variables/Constants
 
 ;; This value only exists in order to temporarily override it.
-(defconst meep-mark-set-on-motion-override nil
-  "This constant exists so it's possible to let-bind the value to t.
+(defvar meep-mark-set-on-motion-override nil
+  "This variable exists so it's possible to let-bind the value to t.
 
-Used so a motion can be repeated without setting the mark.")
+Used so a motion can be repeated without setting the mark.
+Must never be set.")
 
 
 ;; ---------------------------------------------------------------------------
 ;; Motion: Symbol/Word
 ;;
 ;; Command properties:
-;; commands may have a `meep' property, this is expected to be a P-list of properties.
+;; commands may have a `meep' property, this is expected to be a PLIST of properties.
 ;;
 ;; :mark-on-motion
 ;;    - t: Mark on motion.
@@ -759,7 +760,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 
 ;;;###autoload
 (defun meep-move-same-syntax-next (arg)
-  "Move to the end of the next word ARG times."
+  "Move forward a syntax-spans ARG times."
   (interactive "^p")
   (cond
    ((< arg 0)
@@ -1462,7 +1463,7 @@ Return non-nil when the point was moved."
   (interactive "^")
   (meep--with-mark-on-motion-maybe-set
     (let ((result nil)
-          (interactive t)
+          (is-interactive t)
           ;; It only makes sense to use an argument of 1
           ;; when jumping to matching items.
           (arg 1)
@@ -1475,7 +1476,7 @@ Return non-nil when the point was moved."
                (save-excursion
                  (when pos-outer
                    (goto-char pos-outer))
-                 (forward-sexp arg interactive)
+                 (forward-sexp arg is-interactive)
                  (point))))
           (setq result t)
           (goto-char pos)))
@@ -1484,7 +1485,7 @@ Return non-nil when the point was moved."
                (save-excursion
                  (when pos-outer
                    (goto-char pos-outer))
-                 (forward-sexp (- arg) interactive)
+                 (forward-sexp (- arg) is-interactive)
                  (point))))
           (setq result t)
           (goto-char pos))))
@@ -1519,7 +1520,7 @@ Return non-nil when the point was moved."
   (interactive "^")
   (meep--with-mark-on-motion-maybe-set
     (let ((result nil)
-          (interactive t)
+          (is-interactive t)
           ;; It only makes sense to use an argument of 1
           ;; when jumping to matching items.
           (arg 1)
@@ -1533,7 +1534,7 @@ Return non-nil when the point was moved."
                  (when pos-outer
                    (goto-char pos-outer))
                  (forward-char -1)
-                 (forward-sexp arg interactive)
+                 (forward-sexp arg is-interactive)
                  (forward-char -1)
                  (point))))
           (setq result t)
@@ -1544,7 +1545,7 @@ Return non-nil when the point was moved."
                  (when pos-outer
                    (goto-char pos-outer))
                  (forward-char 1)
-                 (forward-sexp (- arg) interactive)
+                 (forward-sexp (- arg) is-interactive)
                  (forward-char 1)
                  (point))))
           (setq result t)
@@ -2095,7 +2096,7 @@ IS-TILL when non-nil, search up until the character."
 ;; - Activating the region is an extra step.
 ;;
 ;; A common operation such as [change, in, quotes] is 3 keys,
-;; without a way to mark he region in bounds this would take
+;; without a way to mark the region in bounds this would take
 ;; an additional key-stroke to activate.
 ;;
 ;; While it's arguably acceptable, it's a useful enough functionality
@@ -4308,7 +4309,7 @@ Leave the char-ring unmodified afterwards."
 ;;;###autoload
 (defun meep-char-insert (ch arg)
   "Read a character CH and insert it or replace the active region.
-Inset ARG times."
+Insert ARG times."
   (interactive "*cInsert Char:\np")
   ;; Sanitize numeric prefix.
   (when (< arg 0)
@@ -4479,7 +4480,7 @@ When LINE-WISE is non-nil, surround each line otherwise use region bounds."
 ;;;###autoload
 (defun meep-char-surround-insert (ch arg)
   "Read a character CH and surround the selection with it.
-Inset ARG times.
+Insert ARG times.
 
 When there is no active region, surround the current point."
   (interactive "*cSurround Char:\np")
@@ -4488,7 +4489,7 @@ When there is no active region, surround the current point."
 ;;;###autoload
 (defun meep-char-surround-insert-lines (ch arg)
   "Read a character CH and surround the selected lines with it.
-Inset ARG times.
+Insert ARG times.
 
 When multiple lines are are in the active region,
 surround each line individually.
@@ -5351,7 +5352,7 @@ When DO-CUT is non-nil, cut instead of copying."
 (defun meep--clipboard-only-yank-impl ()
   "Yank-replace from clipboard-only."
   (let ((text (funcall interprogram-paste-function)))
-    ;; This is strange that emacs cannot access it's own selection.
+    ;; This is strange that emacs cannot access its own selection.
     ;; Copy sets this value, could investigate this further.
     (unless text
       (setq text gui--last-selected-text-clipboard))
@@ -6059,7 +6060,7 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 
 ;;;###autoload
 (defun meep-command-mark-on-motion-advice-remove (cmd)
-  "Remove advice added to CMD by `meep-command-mark-on-motion-advice-remove'."
+  "Remove advice added to CMD by `meep-command-mark-on-motion-advice-add'."
   (advice-remove cmd #'meep--command-mark-on-motion-advice)
   (meep-command-prop-remove cmd :mark-on-motion))
 
