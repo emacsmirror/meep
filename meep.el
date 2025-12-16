@@ -103,7 +103,7 @@ This must be set by commands that pass the:
 (defmacro meep--assert (condition)
   "Assert CONDITION is non-nil."
   `(unless ,condition
-     (meep--assert-failed)))
+     (error "Assertion failed: %S" ',condition)))
 
 (defmacro meep--swap-vars (i j)
   "Swap I & J."
