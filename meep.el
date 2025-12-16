@@ -4948,8 +4948,6 @@ General last motion info: LAST-MOTION-INFO."
             1)))
          (dir (* mark-dir last-dir)))
 
-    (cond
-     ((and (integerp local-last-prefix-arg))))
     ;; TODO: backwards logic.
     (let ((current-prefix-arg last-dir))
       (call-interactively local-last-command))
