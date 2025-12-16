@@ -150,6 +150,7 @@ Returns the modified PLIST, or the original if KEY is not found."
       (while (progn
                (setq next (cdr tail))
                (setq next-next (cdr next))
+               ;; Check the next-next doesn't equal the key.
                (and next-next (null (eq (car next-next) key))))
         (setq tail next-next))
       ;; If we found the key, splice it out.
@@ -260,6 +261,7 @@ Return the region replaced."
         (meep--incf beg i)))
 
     (when (or i-beg i-end)
+      ;; This may assign an empty string, which is OK.
       (setq str (substring-no-properties str (or i-beg 0) (or i-end len))))
 
     (goto-char beg)
@@ -595,7 +597,8 @@ were to be made into the active region."
           (point))))))))
 
 (defun meep--move-thing-prev-next-end-impl (thing n)
-  "Implementation for next/previous THING, move N times."
+  "Implementation for next/previous THING, move N times.
+N maybe negative to move in the reverse direction."
   (forward-thing thing n)
   nil)
 
