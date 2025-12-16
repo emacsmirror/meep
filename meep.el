@@ -2045,7 +2045,8 @@ IS-TILL when non-nil, search up until the character."
     (cons beg end)))
 
 (defun meep--bounds-of-visual-line (inner)
-  "Bounds of visual line (contract to INNER when true)."
+  "Bounds of visual line.
+When INNER is non-nil, contract to inner bounds."
   (declare (important-return-value t))
   (let ((bounds
          (cons
@@ -2061,7 +2062,8 @@ IS-TILL when non-nil, search up until the character."
     bounds))
 
 (defun meep--bounds-of-sentence (inner)
-  "Bounds of sentence (contract to INNER when true)."
+  "Bounds of sentence.
+When INNER is non-nil, contract to inner bounds."
   (declare (important-return-value t))
   (when-let* ((bounds (bounds-of-thing-at-point 'sentence)))
     (when inner
@@ -2079,7 +2081,9 @@ IS-TILL when non-nil, search up until the character."
     bounds))
 
 (defun meep--bounds-of-paragraph (inner)
-  "Bounds of paragraph (contract to INNER when true)."
+  "Bounds of paragraph.
+
+When INNER is non-nil, contract to inner bounds."
   (declare (important-return-value t))
   (when-let* ((bounds (bounds-of-thing-at-point 'paragraph)))
     (when inner
@@ -4826,7 +4830,6 @@ Return non-nil when a change was made."
           (and (eq 1 (- (cdr line-bounds) (car line-bounds)))
                (eq ?\s (char-after (car line-bounds)))))
       (let ((changed-prev nil)
-
             (changed-next nil))
         (save-match-data
           (save-excursion
