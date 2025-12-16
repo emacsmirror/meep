@@ -1655,7 +1655,7 @@ Return non-nil when the point was moved."
            (or (null end-re)
                (progn
                  (goto-char (cdr bounds))
-                 (save-match-data (looking-back beg-re (car bounds))))))
+                 (save-match-data (looking-back end-re (car bounds))))))
       t)
      (t
       nil))))
