@@ -1890,7 +1890,7 @@ IS-TILL when non-nil, search up until the character."
            (t
             (char-to-string ch))))
 
-         ;: Note that limiting could be optional.
+         ;; Note that limiting could be optional.
          (end-limit
           (cond
            ((> n 0)
