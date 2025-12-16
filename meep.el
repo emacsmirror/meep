@@ -1428,7 +1428,8 @@ Only used between successive
 Move forward when ARG is positive, otherwise backwards."
   (let ((pos-init (point))
         (pos-found (point))
-        (bracket-chars (meep--jump-brackets-from-mode)))
+        (bracket-chars (meep--jump-brackets-from-mode))
+        (found nil))
     (save-excursion
       (cond
        ((meep--is-point-after-bracket-open bracket-chars)
@@ -1439,22 +1440,30 @@ Move forward when ARG is positive, otherwise backwards."
       ;; TODO: only get opening brackets.
       (let ((keep-looking t))
         (while keep-looking
-          (backward-up-list (abs arg) nil t)
-          (when (or (null bracket-chars) (memq (char-after (point)) bracket-chars))
-            (setq keep-looking nil))))
+          (let ((pos-prev (point)))
+            (backward-up-list (abs arg) nil t)
+            (cond
+             ;; Stop if we didn't move (reached top of buffer/structure).
+             ((eq (point) pos-prev)
+              (setq keep-looking nil))
+             ;; Stop if we found a valid bracket (or aren't filtering by brackets).
+             ((or (null bracket-chars) (memq (char-after (point)) bracket-chars))
+              (setq keep-looking nil)
+              (setq found t))))))
 
-      ;; Jump to the matching bracket (otherwise this is like prev-out).
-      (when (< 0 arg)
-        (forward-sexp 1 t))
+      (when found
+        ;; Jump to the matching bracket (otherwise this is like prev-out).
+        (when (< 0 arg)
+          (forward-sexp 1 t))
 
-      (unless (eq pos-init (point))
-        (forward-char
-         (cond
-          ((< 0 arg)
-           -1)
-          (t
-           1)))
-        (setq pos-found (point))))
+        (unless (eq pos-init (point))
+          (forward-char
+           (cond
+            ((< 0 arg)
+             -1)
+            (t
+             1)))
+          (setq pos-found (point)))))
 
     (unless (eq pos-init pos-found)
       (meep--with-mark-on-motion-maybe-set
