@@ -893,7 +893,7 @@ Moves to the beginning when ARG is negative."
 
 ;;;###autoload
 (defun meep-move-line-non-space-beginning (arg)
-  "Move the the beginning of the line, ignoring end of line blank-spaces.
+  "Move to the beginning of the line, ignoring end of line blank-spaces.
 A negative ARG moves to the end."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
@@ -901,7 +901,7 @@ A negative ARG moves to the end."
 
 ;;;###autoload
 (defun meep-move-line-non-space-end (arg)
-  "Move the the end of the line, ignoring end of line blank-spaces.
+  "Move to the end of the line, ignoring end of line blank-spaces.
 A negative ARG moves to the beginning."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
