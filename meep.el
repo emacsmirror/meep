@@ -1246,7 +1246,7 @@ When STEP-OVER is non-nil don't step into nested blocks."
           (goto-char pos-step)
           (when (meep--is-point-before-bracket-open bracket-chars)
             (forward-char 1))
-          (unless (eq pos-init pos-found)
+          (unless (eq pos-init (point))
             (setq pos-found (point))))))
      ;; Next.
      (t
@@ -1275,7 +1275,7 @@ When STEP-OVER is non-nil don't step into nested blocks."
           (goto-char pos-step)
           (when (meep--is-point-after-bracket-close bracket-chars)
             (forward-char -1))
-          (unless (eq pos-init pos-found)
+          (unless (eq pos-init (point))
             (setq pos-found (point)))))))
     pos-found))
 
