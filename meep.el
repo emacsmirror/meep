@@ -120,6 +120,13 @@ This must be set by commands that pass the:
   (set-marker (mark-marker) pos)
   nil)
 
+(defun meep--set-marker-and-activate (pos)
+  "Set the current marker to POS and activate the region."
+  (meep--set-marker pos)
+  (activate-mark t)
+  (setq deactivate-mark nil)
+  nil)
+
 ;; ---------------------------------------------------------------------------
 ;; Internal Functions: Algorithms
 
@@ -3457,17 +3464,10 @@ Also skip any symbol bounds."
             (cond
              ((eq beg (point))
               (goto-char beg-next)
-              (meep--set-marker end-next)
-              (progn
-                (activate-mark t)
-                (setq deactivate-mark nil)))
-
+              (meep--set-marker-and-activate end-next))
              (t
               (goto-char end-next)
-              (meep--set-marker beg-next)
-              (progn
-                (activate-mark t)
-                (setq deactivate-mark nil)))))
+              (meep--set-marker-and-activate beg-next))))
 
           ;; Don't attempt symmetry in future.
           (unless meep--region-syntax-asym
@@ -3563,10 +3563,7 @@ Also skip any symbol bounds."
               ;; - `meep-move-matching-bracket-inner' and related functions that
               ;;   first jump to the beginning.
               (goto-char beg-next)
-              (meep--set-marker end-next)
-              (progn
-                (activate-mark t)
-                (setq deactivate-mark nil))
+              (meep--set-marker-and-activate end-next)
               (setq found t))))))))
     found))
 
@@ -3653,18 +3650,12 @@ Also skip any symbol bounds."
 
            ((eq beg (point))
             (goto-char beg-next)
-            (meep--set-marker end-next)
-            (progn
-              (activate-mark t)
-              (setq deactivate-mark nil))
+            (meep--set-marker-and-activate end-next)
             (setq found t))
 
            (t
             (goto-char end-next)
-            (meep--set-marker beg-next)
-            (progn
-              (activate-mark t)
-              (setq deactivate-mark nil))
+            (meep--set-marker-and-activate beg-next)
             (setq found t))))
 
         ;; Don't attempt symmetry in future.
