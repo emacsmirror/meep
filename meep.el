@@ -2226,14 +2226,14 @@ or nil if no matching brackets are found."
                                (re-search-forward bracket-regex limit-max t))
                      (cond
                       ((match-beginning 2)
-                       ;; Found an opening bracket: finish or increase depth and continue.
+                       ;; Found a closing bracket: finish or decrease depth and continue.
                        (cond
                         ((zerop depth)
                          (setq found (point)))
                         (t
                          (meep--decf depth))))
                       ((match-beginning 1)
-                       ;; Found a closing bracket: increase depth.
+                       ;; Found an opening bracket: increase depth.
                        (meep--incf depth))))
                    found))))))
 
