@@ -1783,19 +1783,19 @@ Return non-nil when the point was moved."
           (unless (eq beg (car bounds-outer))
             (save-excursion
               (goto-char beg)
-              ;; TODO: char-before could be nil if at beginning of buffer.
-              (let ((ch (char-to-string (char-before beg))))
-                (skip-chars-forward ch end)
-                (unless (eq (point) end)
-                  (setq beg (point))))))
+              (when-let* ((ch-code (char-before beg)))
+                (let ((ch (char-to-string ch-code)))
+                  (skip-chars-forward ch end)
+                  (unless (eq (point) end)
+                    (setq beg (point)))))))
           (unless (eq end (cdr bounds-outer))
             (save-excursion
               (goto-char end)
-              ;; TODO: char-after could be nil if at the end of the buffer.
-              (let ((ch (char-to-string (char-after end))))
-                (skip-chars-backward ch beg)
-                (unless (eq (point) beg)
-                  (setq end (point)))))))
+              (when-let* ((ch-code (char-after end)))
+                (let ((ch (char-to-string ch-code)))
+                  (skip-chars-backward ch beg)
+                  (unless (eq (point) beg)
+                    (setq end (point))))))))
 
         (unless (and (eq beg (car bounds-outer)) (eq end (cdr bounds-outer)))
           (setq result (cons beg end))))
