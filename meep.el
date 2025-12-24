@@ -1697,8 +1697,7 @@ Return non-nil when the point was moved."
        ;; This looks to be the most generic way to check for a C-like mode.
        (bound-and-true-p c-buffer-is-cc-mode)
        ;; Other modes that support both C++ and C style comment blocks.
-       (derived-mode-p
-        (list 'dart-mode 'javascript-mode 'kotlin-mode 'php-mode 'scala-mode 'rust-mode)))
+       (derived-mode-p 'dart-mode 'javascript-mode 'kotlin-mode 'php-mode 'scala-mode 'rust-mode))
       (cond
        ((meep--bounds-equal-at-end-points bounds "/*" "*/")
         (setq result (cons (+ (car bounds) 2) (- (cdr bounds) 2))))
@@ -1732,7 +1731,7 @@ Return non-nil when the point was moved."
         (setq result (cons (+ (car bounds) 3) (- (cdr bounds) 3))))
        ((meep--bounds-equal-at-end-points bounds "{-" "-}")
         (setq result (cons (+ (car bounds) 2) (- (cdr bounds) 2))))))
-     ((derived-mode-p (list 'html-mode 'xml-mode))
+     ((derived-mode-p 'html-mode 'xml-mode)
       (cond
        ((meep--bounds-equal-at-end-points bounds "<!--" "-->")
         (setq result (cons (+ (car bounds) 4) (- (cdr bounds) 3))))))
