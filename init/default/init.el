@@ -387,7 +387,8 @@
 ;; Emacs Default Modes
 
 ;; Give additional hints.
-(which-key-mode)
+(unless my-meep-is-test-env
+  (which-key-mode))
 
 
 ;; ----------------------------------------------------------------------------
