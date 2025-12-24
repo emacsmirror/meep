@@ -6112,8 +6112,12 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
   (let* ((sym 'meep)
          (plist (get cmd sym)))
     (when plist
-      (unless (setq plist (meep--plist-remove plist prop))
-        (setplist cmd (meep--plist-remove (symbol-plist cmd) sym))))))
+      (setq plist (meep--plist-remove plist prop))
+      (cond
+       (plist
+        (put cmd sym plist))
+       (t
+        (setplist cmd (meep--plist-remove (symbol-plist cmd) sym)))))))
 
 ;; Setup values...
 (dolist (cmd
