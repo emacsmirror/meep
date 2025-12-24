@@ -3287,7 +3287,7 @@ use to maintain line-based selection."
 ;; which are (from a user perspective) *just* blank-space.
 
 (defun meep--skip-syntax-backward-or-blank (syntax &optional lim)
-  "Skip SYNTAX forward limited by LIM.
+  "Skip SYNTAX backward limited by LIM.
 When only blank space was skipped, skip all blank space."
   (let ((pos-orig (point))
         (is-blank nil)
@@ -3313,7 +3313,7 @@ When only blank space was skipped, skip all blank space."
     result))
 
 (defun meep--skip-syntax-forward-or-blank (syntax &optional lim)
-  "Skip SYNTAX backward limited by LIM.
+  "Skip SYNTAX forward limited by LIM.
 When only blank space was skipped, skip all blank space."
   (let ((pos-orig (point))
         (is-blank (looking-at-p "[[:blank:]\n]"))
