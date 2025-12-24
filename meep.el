@@ -4011,7 +4011,7 @@ Repeat the search ARG times."
   (cond
    (goal-column
     (prog1 (funcall fn)
-      (line-move-to-column (min (pos-eol) goal-column))))
+      (line-move-to-column goal-column)))
    ((and temporary-goal-column
          (and (symbolp last-command)
               (meep-command-is-mark-respect-temporary-goal-column last-command)))
@@ -4029,7 +4029,7 @@ Repeat the search ARG times."
 
       (prog1 (funcall fn)
 
-        (line-move-to-column (min (pos-eol) column))
+        (line-move-to-column column)
         (cond
          ((consp temporary-goal-column)
           (setcar temporary-goal-column column))
@@ -4038,7 +4038,7 @@ Repeat the search ARG times."
    (t ;; Set a new temporary column.
     (let ((column (current-column)))
       (prog1 (funcall fn)
-        (line-move-to-column (min (pos-eol) column))
+        (line-move-to-column column)
         (setq temporary-goal-column column))))))
 
 (defmacro meep--with-respect-goal-column (&rest body)
