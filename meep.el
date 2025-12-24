@@ -2701,8 +2701,8 @@ this operation makes it stay active, running again clears it."
 (defun meep-region-activate-and-reverse ()
   "Exchange the point and mark, activating the region.
 
-To first activate the region without exchange the point and mark:
-See: `meep-region-activate-and-reverse'.
+To first activate the region without exchanging the point and mark:
+See: `meep-region-activate-or-reverse'.
 
 Note that this wraps Emacs built-in: `exchange-point-and-mark'."
   (interactive)
