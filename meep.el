@@ -4196,6 +4196,7 @@ When KEEP is non-nil, don't modify the char-ring."
   "Yank from the delete character ring ARG times.
 
 Leave the char-ring unmodified afterwards."
+  (interactive "*p")
   (meep--delete-char-ring-yank-impl arg t))
 
 
