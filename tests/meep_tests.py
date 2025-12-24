@@ -9,7 +9,7 @@ BASE_DIR = os.path.normpath(os.path.join(THIS_DIR, ".."))
 
 EMACS_BIN = os.environ.get("EMACS_BIN") or "emacs"
 
-def run_meep_tests() -> None:
+def run_meep_tests() -> int:
     env = os.environ.copy()
     env["MEEP_TEST_ENV"] = "1"
     cmd = [
@@ -22,27 +22,30 @@ def run_meep_tests() -> None:
         "-f", "meep_tests-run-all"
     ]
 
-    subprocess.call(
+    return subprocess.call(
         cmd,
         env=env,
     )
 
 
-def run_meep_tests_internal() -> None:
+def run_meep_tests_internal() -> int:
     cmd = [
         EMACS_BIN,
         "-batch",
         "-l", os.path.join("tests", "meep_tests_internal.el"),
         "-f", "ert-run-tests-batch-and-exit"
     ]
-    subprocess.call(
+    return subprocess.call(
         cmd,
     )
 
-def main():
-    run_meep_tests()
-    run_meep_tests_internal()
+def main() -> int:
+    exit_code = 0
+    exit_code |= run_meep_tests()
+    exit_code |= run_meep_tests_internal()
+    return exit_code
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    sys.exit(main())
