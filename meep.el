@@ -96,10 +96,6 @@ This must be set by commands that pass the:
 ;; ---------------------------------------------------------------------------
 ;; Internal Functions: Generic Helpers
 
-(defun meep--assert-failed ()
-  "Raise an error."
-  (error "Assertion failed"))
-
 (defmacro meep--assert (condition)
   "Assert CONDITION is non-nil."
   `(unless ,condition
