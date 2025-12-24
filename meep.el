@@ -17,7 +17,7 @@
 ;; most of the functions can be used with vanilla Emacs.
 ;;
 ;; Starting out you may want to load Emacs with one of the
-;; bundled `init.el' files, linked from this projects URL.
+;; bundled `init.el' files, linked from this project's URL.
 
 ;;; Usage:
 
@@ -574,8 +574,6 @@ were to be made into the active region."
 (defun meep--calc-end-of-prev-thing (thing n)
   "Move to the end of the previous THING N times."
   (declare (important-return-value t))
-  ;; Move to the end of the previous thing.
-  ;; Otherwise the point moves to the end.
   (let ((pos-orig (point)))
     (save-excursion
       (when-let* ((bounds (bounds-of-thing-at-point thing)))
@@ -598,7 +596,7 @@ were to be made into the active region."
 
 (defun meep--move-thing-prev-next-end-impl (thing n)
   "Implementation for next/previous THING, move N times.
-N maybe negative to move in the reverse direction."
+N may be negative to move in the reverse direction."
   (forward-thing thing n)
   nil)
 
@@ -631,7 +629,7 @@ N maybe negative to move in the reverse direction."
 
 ;;;###autoload
 (defun meep-move-symbol-next (arg)
-  "Move point to the beginning next symbol, ARG times."
+  "Move point to the beginning of the next symbol, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (cond
@@ -839,7 +837,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 
 ;;;###autoload
 (defun meep-move-same-syntax-and-space-next-end (arg)
-  "Move to the beginning of the next syntax-and-space, ARG times."
+  "Move to the end of the next syntax-and-space, ARG times."
   (interactive "^p")
   (cond
    ((< arg 0)
@@ -862,7 +860,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 
 ;;;###autoload
 (defun meep-move-line-beginning (arg)
-  "Move to the beginning of the current line end.
+  "Move to the beginning of the current line.
 Moves to the end when ARG is negative."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
@@ -870,7 +868,7 @@ Moves to the end when ARG is negative."
 
 ;;;###autoload
 (defun meep-move-line-end (arg)
-  "Move to the end of the current line end.
+  "Move to the end of the current line.
 Moves to the beginning when ARG is negative."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
@@ -896,7 +894,7 @@ Moves to the beginning when ARG is negative."
 
 ;;;###autoload
 (defun meep-move-line-non-space-beginning (arg)
-  "Move to the beginning of the line, ignoring end of line blank-spaces.
+  "Move to the first non-blank character of the line.
 A negative ARG moves to the end."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
@@ -1478,7 +1476,7 @@ Step ARG times or 1 when default."
 
 ;;;###autoload
 (defun meep-move-by-sexp-out-next (&optional arg)
-  "Jump to the next SEXP, jumping into the next expression.
+  "Jump to the next SEXP, jumping out of the current expression.
 Step ARG times or 1 when default."
   (interactive "^p")
   (meep--move-by-sexp-out-impl arg))
@@ -1486,7 +1484,7 @@ Step ARG times or 1 when default."
 ;;;###autoload
 (defun meep-move-matching-bracket-outer ()
   "Jump to the matching outer bracket.
-When not at the bounds, jump the start (when enclosed in brackets).
+When not at the bounds, jump to the start (when enclosed in brackets).
 
 Return non-nil when the point was moved."
   (interactive "^")
@@ -1543,7 +1541,7 @@ Return non-nil when the point was moved."
 ;;;###autoload
 (defun meep-move-matching-bracket-inner ()
   "Jump to the matching inner bracket.
-When not at the bounds, jump the start (when enclosed in brackets).
+When not at the bounds, jump to the start (when enclosed in brackets).
 
 Return non-nil when the point was moved."
   (interactive "^")
@@ -1798,7 +1796,7 @@ Return non-nil when the point was moved."
           (unless (eq end (cdr bounds-outer))
             (save-excursion
               (goto-char end)
-              ;; TODO: char-after could be nil if at the end of the of buffer.
+              ;; TODO: char-after could be nil if at the end of the buffer.
               (let ((ch (char-to-string (char-after end))))
                 (skip-chars-backward ch beg)
                 (unless (eq (point) beg)
@@ -1838,7 +1836,7 @@ Return non-nil when the point was moved."
 ;;;###autoload
 (defun meep-move-matching-syntax-outer ()
   "Move to the outer matching string/comment syntax.
-When not at the bounds, jump the start (when in a string/comment).
+When not at the bounds, jump to the start (when in a string/comment).
 
 Return nil if no matching syntax was found."
   (interactive "^")
@@ -1863,7 +1861,7 @@ Return nil if no matching syntax was found."
 ;;;###autoload
 (defun meep-move-matching-syntax-inner ()
   "Move to the inner matching string/comment syntax.
-When not at the bounds, jump the start (when in a string/comment).
+When not at the bounds, jump to the start (when in a string/comment).
 
 Return nil if no matching syntax was found."
   (interactive "^")
@@ -1888,14 +1886,14 @@ Return nil if no matching syntax was found."
 ;;;###autoload
 (defun meep-move-matching-contextual-outer ()
   "Move to the matching character.
-When not at the bounds, jump the start."
+When not at the bounds, jump to the start."
   (interactive "^")
   (or (meep-move-matching-syntax-outer) (meep-move-matching-bracket-outer)))
 
 ;;;###autoload
 (defun meep-move-matching-contextual-inner ()
   "Move to the matching character.
-When not at the bounds, jump the start."
+When not at the bounds, jump to the start."
   (interactive "^")
   (or (meep-move-matching-syntax-inner) (meep-move-matching-bracket-inner)))
 
@@ -2385,8 +2383,8 @@ When INNER is non-nil, mark the inner bounds."
 ;; ---------------------------------------------------------------------------
 ;; Region Mark: Bounds in Character
 ;;
-;; Support's convenient marking of a region in character bounds.
-;; This works by prompting for a character which is is then scanned in both direction,
+;; Supports convenient marking of a region in character bounds.
+;; This works by prompting for a character which is then scanned in both directions,
 ;; marking the region in the bounds when it is found.
 ;;
 ;; Notes:
@@ -2397,7 +2395,7 @@ When INNER is non-nil, mark the inner bounds."
 ;;   customizable with the ``meep-symmetrical-chars`` variable.
 ;; - Entering an opening ``(`` bracket marks the region inside: ``( ... )``.
 ;; - Entering a closing ``)`` bracket marks the region inside: ``) ... (``.
-;; - A "contextual" version of this function has been implemented which marts the nearest region.
+;; - A "contextual" version of this function has been implemented which marks the nearest region.
 ;;   customizable with the ``meep-match-bounds-of-char-contextual`` variable.
 
 ;;;###autoload
@@ -2434,7 +2432,7 @@ finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
 
 ;;;###autoload
 (defun meep-region-mark-bounds-of-char-contextual-inner (arg)
-  "Mark in bounds of of the nearest character pairs over ARG steps.
+  "Mark in bounds of the nearest character pairs over ARG steps.
 A negative ARG positions the POINT at the end of the region.
 
 Character pairs are detected using: `meep-match-bounds-of-char-contextual'."
@@ -2443,7 +2441,7 @@ Character pairs are detected using: `meep-match-bounds-of-char-contextual'."
 
 ;;;###autoload
 (defun meep-region-mark-bounds-of-char-contextual-outer (arg)
-  "Mark in bounds of of the nearest boundary pairs over ARG steps.
+  "Mark in bounds of the nearest boundary pairs over ARG steps.
 A negative ARG positions the POINT at the end of the region.
 
 Bounds are detected using: `meep-match-bounds-of-char-contextual'."
@@ -2536,7 +2534,7 @@ INNER to move to inner bound."
   (meep-move-to-bounds-of-string arg t))
 
 ;;;###autoload
-(defun meep-move-to-bounds-of-defun (arg &rest inner)
+(defun meep-move-to-bounds-of-defun (arg &optional inner)
   "Move to the function start/end (start when ARG is negative).
 INNER to move to inner bound."
   (interactive "^p")
@@ -2610,8 +2608,7 @@ INNER to move to inner bound."
      (string :tag "Description"))))
 
 (defun meep--move-bounds-of-thing-impl (n)
-  "Initiate a bounds motion, forward when N is positive.
-When INNER is non-nil move to the outer bounds."
+  "Initiate a bounds motion, forward when N is positive."
   (let ((km nil)
         (info-text
          (mapcar
@@ -2630,7 +2627,7 @@ When INNER is non-nil move to the outer bounds."
 
 ;;;###autoload
 (defun meep-move-to-bounds-of-thing-beginning (arg)
-  "Move to inner bounds of thing (begging).
+  "Move to inner bounds of thing (beginning).
 Move to the end with a negative ARG."
   (interactive "^p")
   (meep--move-bounds-of-thing-impl (- arg)))
@@ -2798,7 +2795,7 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
 (defcustom meep-region-swap-imply-region t
   "Imply the region from the length of the secondary region.
 
-- When the region on a single line:
+- When the region is on a single line:
   The text after point implies the selection.
 - When a line-wise region is used:
   The same number of lines after the point is used (ignoring line length).
@@ -3018,7 +3015,7 @@ to line boundaries."
 
     ;; We _could_ subtract one region from another - to prevent overlap,
     ;; or handle overlap as part of the swapping logic.
-    ;; Raise an error as this seems like enough of corner case.
+    ;; Raise an error as this seems like enough of a corner case.
     ;; It could always be supported if an important use-case is shown.
     (when (meep--ranges-overlap-p line-ranges-a line-ranges-b)
       (user-error "Region swap unsupported for overlapping (rectangle) regions"))
@@ -3039,7 +3036,7 @@ to line boundaries."
                (text-a (buffer-substring-no-properties (car range-a) (cdr range-a)))
                (text-b (buffer-substring-no-properties (car range-b) (cdr range-b))))
 
-          ;; Unlikely, but may as well skip redundant.
+          ;; Unlikely, but may as well skip redundant swaps.
           (unless (string-equal text-a text-b)
             (meep--replace-in-region text-b (car range-a) (cdr range-a))
             (meep--replace-in-region text-a (car range-b) (cdr range-b)))
@@ -3055,7 +3052,7 @@ to line boundaries."
               (setq secondary-end-next (marker-position (cdr range-b)))
               (setq region-end-next (marker-position (cdr range-a))))))
 
-          ;; Queue makers to be cleared.
+          ;; Queue markers to be cleared.
           (set-marker (car range-a) nil)
           (set-marker (cdr range-a) nil)
           (set-marker (car range-b) nil)
@@ -3170,7 +3167,6 @@ If the region no longer meets line bounds, return nil."
 ;;;###autoload
 (defun meep-region-expand-to-line-bounds ()
   "Expand the region to the line bounds.
-Consecutive
 
 `meep-state-region-elem' is set to \\='line-wise which commands may
 use to maintain line-based selection."
@@ -4129,7 +4125,7 @@ This deletion is not sent to the `kill-ring'."
 ;; ---------------------------------------------------------------------------
 ;; Text Editing: Character Delete/Backspace (Ring)
 ;;
-;; Character level delete which has it's own kill-ring.
+;; Character level delete which has its own kill-ring.
 ;; This can be useful for quickly relocating characters.
 ;;
 ;; Note that this is only accumulated on successive calls.
@@ -4869,7 +4865,7 @@ Return non-nil when a change was made."
 ;; typically I'd like to complete the feature fully before adding it
 ;; however I can't work on this full-time, and the basic functionality
 ;; (transposing symbols/lines mainly) is useful enough that I feel it better
-;; to include the functionality in it's current state.
+;; to include the functionality in its current state.
 ;; While it's nice to support transposing N times AND to support repeating the action.
 ;; These can be supported later.
 
@@ -5155,10 +5151,10 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
   ;;   without having to wrestle with box selection in situations
   ;;   where the line at the boundary is shorter than lines in the rest of the block.
   ;;
-  ;; NOTE: there is two modes for this action, the behavior is as follows:
+  ;; NOTE: there are two modes for this action, the behavior is as follows:
   ;; - Without an active region the result is:
   ;;   - Delete the line back until the indentation level,
-  ;;   - Inter insert mode.
+  ;;   - Enter insert mode.
   ;; - With an active region:
   ;;   - Clear all lines (without deleting the lines).
   ;;   - Fill them to the indentation level of the 1st non blank line.
@@ -5169,7 +5165,7 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
   ;;   - When the end of the selection reaches a line without selecting any text on that line,
   ;;     the line is not included in the change.
   ;;     This is done because of the default behavior of `meep-region-expand-to-line-bounds'
-  ;;     Where the cursor is always moved to the following next.
+  ;;     Where the cursor is always moved to the following line.
   (cond
    ((region-active-p)
     ;; Sort of odd but this is how emacs supports changing a region.
@@ -5252,9 +5248,9 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
           (cond
            ((<= end pos-last-insert)
             (meep--decf pos-last-insert (- end beg)))
-           ;; This is effectively a NOP: moving text into a region *withing* the text range.
+           ;; This is effectively a NOP: moving text into a region *within* the text range.
            ;; Support this for consistency, since it's not technically invalid,
-           ;; but it's also unlikely to a useful edit from a user perspective.
+           ;; but it's also unlikely to be a useful edit from a user perspective.
            ((<= beg pos-last-insert)
             (setq pos-last-insert beg))))
 
@@ -5301,14 +5297,14 @@ When there is no active region, the symbol at the point is used."
 
 ;;;###autoload
 (defun meep-insert-line-beginning ()
-  "Move the line indentation start and switch to INSERT state."
+  "Move to the line indentation start and switch to INSERT state."
   (interactive "*")
   (back-to-indentation)
   (bray-state-set meep-state-insert))
 
 ;;;###autoload
 (defun meep-insert-line-end ()
-  "Move the line end and switch to INSERT state."
+  "Move to the line end and switch to INSERT state."
   (interactive "*")
   (end-of-line)
   (bray-state-set meep-state-insert))
@@ -5885,7 +5881,7 @@ Uses the `meep-clipboard-register-map' key-map."
       (while (null found)
         (let ((maybe-complete nil))
           (let ((ch
-                 ;; Which key needs `this-command' to be nil, else it wont show.
+                 ;; Which key needs `this-command' to be nil, else it won't show.
                  ;; Also bind the command to return the keys for which-key to show.
                  ;; This is harmless if which-key isn't in use.
                  (let ((this-command nil)
@@ -6319,7 +6315,7 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 ;; ---------------------------------------------------------------------------
 ;; Public API
 ;;
-;; Public non interactive functions.
+;; Public non-interactive functions.
 
 ;;;###autoload
 (defun meep-enabled-p ()
@@ -6331,7 +6327,7 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 (defun meep-bootstrap-once ()
   "Run this to initialize MEEP.
 
-This may be use for `use-package' commands, to defer loading MEEP until it's needed."
+This may be used for `use-package' commands, to defer loading MEEP until it's needed."
   (ignore))
 
 (provide 'meep)

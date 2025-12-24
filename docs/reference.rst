@@ -44,7 +44,7 @@ Custom Variables
 ``meep-region-swap-imply-region``: ``t``
    Imply the region from the length of the secondary region.
 
-   - When the region on a single line:
+   - When the region is on a single line:
      The text after point implies the selection.
    - When a line-wise region is used:
      The same number of lines after the point is used (ignoring line length).
@@ -74,9 +74,10 @@ Other Variables
    ``meep-command-is-mark-set-on-motion-adjust`` test.
 
 ``meep-mark-set-on-motion-override``: ``nil``
-   This constant exists so it’s possible to let-bind the value to t.
+   This variable exists so it’s possible to let-bind the value to t.
 
    Used so a motion can be repeated without setting the mark.
+   Must never be set.
 
 ``meep-move-by-sexp-over-depth``: ``nil``
    The target depth when moving over S-expressions.
@@ -104,7 +105,7 @@ Motion: Symbol/Word
 ^^^^^^^^^^^^^^^^^^^
 
 Command properties:
-commands may have a `meep' property, this is expected to be a P-list of properties.
+commands may have a `meep' property, this is expected to be a PLIST of properties.
 
 :mark-on-motion
    - t: Mark on motion.
@@ -137,7 +138,7 @@ commands may have a `meep' property, this is expected to be a P-list of properti
    Move to the end of the next symbol, ARG times.
 
 ``(meep-move-symbol-next ARG)``
-   Move point to the beginning next symbol, ARG times.
+   Move point to the beginning of the next symbol, ARG times.
 
 ``(meep-move-word-prev ARG)``
    Move point to the beginning of the previous word, ARG times.
@@ -158,7 +159,7 @@ Motion: Same Syntax
    Move back a syntax-spans ARG times.
 
 ``(meep-move-same-syntax-next ARG)``
-   Move to the end of the next word ARG times.
+   Move forward a syntax-spans ARG times.
 
 Motion: Same Syntax or Symbol
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -185,25 +186,25 @@ how this is handled for skipping words & symbols.
    Move to the end of the next syntax-and-space, ARG times.
 
 ``(meep-move-same-syntax-and-space-next-end ARG)``
-   Move to the beginning of the next syntax-and-space, ARG times.
+   Move to the end of the next syntax-and-space, ARG times.
 
 Motion: Line
 ^^^^^^^^^^^^
 
 ``(meep-move-line-beginning ARG)``
-   Move to the beginning of the current line end.
+   Move to the beginning of the current line.
    Moves to the end when ARG is negative.
 
 ``(meep-move-line-end ARG)``
-   Move to the end of the current line end.
+   Move to the end of the current line.
    Moves to the beginning when ARG is negative.
 
 ``(meep-move-line-non-space-beginning ARG)``
-   Move the the beginning of the line, ignoring end of line blank-spaces.
+   Move to the first non-blank character of the line.
    A negative ARG moves to the end.
 
 ``(meep-move-line-non-space-end ARG)``
-   Move the the end of the line, ignoring end of line blank-spaces.
+   Move to the end of the line, ignoring end of line blank-spaces.
    A negative ARG moves to the beginning.
 
 ``(meep-move-line-prev ARG)``
@@ -261,12 +262,12 @@ Motion: S-expressions
    Step ARG times or 1 when default.
 
 ``(meep-move-by-sexp-out-next &optional ARG)``
-   Jump to the next SEXP, jumping into the next expression.
+   Jump to the next SEXP, jumping out of the current expression.
    Step ARG times or 1 when default.
 
 ``(meep-move-matching-bracket-outer)``
    Jump to the matching outer bracket.
-   When not at the bounds, jump the start (when enclosed in brackets).
+   When not at the bounds, jump to the start (when enclosed in brackets).
 
    Return non-nil when the point was moved.
 
@@ -281,29 +282,29 @@ jump to the start of the surrounding characters (if found).
 
 ``(meep-move-matching-bracket-inner)``
    Jump to the matching inner bracket.
-   When not at the bounds, jump the start (when enclosed in brackets).
+   When not at the bounds, jump to the start (when enclosed in brackets).
 
    Return non-nil when the point was moved.
 
 ``(meep-move-matching-syntax-outer)``
    Move to the outer matching string/comment syntax.
-   When not at the bounds, jump the start (when in a string/comment).
+   When not at the bounds, jump to the start (when in a string/comment).
 
    Return nil if no matching syntax was found.
 
 ``(meep-move-matching-syntax-inner)``
    Move to the inner matching string/comment syntax.
-   When not at the bounds, jump the start (when in a string/comment).
+   When not at the bounds, jump to the start (when in a string/comment).
 
    Return nil if no matching syntax was found.
 
 ``(meep-move-matching-contextual-outer)``
    Move to the matching character.
-   When not at the bounds, jump the start.
+   When not at the bounds, jump to the start.
 
 ``(meep-move-matching-contextual-inner)``
    Move to the matching character.
-   When not at the bounds, jump the start.
+   When not at the bounds, jump to the start.
 
 Motion: Find & Till
 ^^^^^^^^^^^^^^^^^^^
@@ -335,8 +336,8 @@ Motion: Find & Till
 Region Mark: Bounds in Character
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Support's convenient marking of a region in character bounds.
-This works by prompting for a character which is is then scanned in both direction,
+Supports convenient marking of a region in character bounds.
+This works by prompting for a character which is then scanned in both directions,
 marking the region in the bounds when it is found.
 
 Notes:
@@ -347,7 +348,7 @@ Notes:
   customizable with the ``meep-symmetrical-chars`` variable.
 - Entering an opening ``(`` bracket marks the region inside: ``( ... )``.
 - Entering a closing ``)`` bracket marks the region inside: ``) ... (``.
-- A "contextual" version of this function has been implemented which marts the nearest region.
+- A "contextual" version of this function has been implemented which marks the nearest region.
   customizable with the ``meep-match-bounds-of-char-contextual`` variable.
 
 ``(meep-region-mark-bounds-of-char-inner CH ARG)``
@@ -365,13 +366,13 @@ Notes:
    finding the closest pair, see: ``meep-match-bounds-of-char-contextual``.
 
 ``(meep-region-mark-bounds-of-char-contextual-inner ARG)``
-   Mark in bounds of of the nearest character pairs over ARG steps.
+   Mark in bounds of the nearest character pairs over ARG steps.
    A negative ARG positions the POINT at the end of the region.
 
    Character pairs are detected using: ``meep-match-bounds-of-char-contextual``.
 
 ``(meep-region-mark-bounds-of-char-contextual-outer ARG)``
-   Mark in bounds of of the nearest boundary pairs over ARG steps.
+   Mark in bounds of the nearest boundary pairs over ARG steps.
    A negative ARG positions the POINT at the end of the region.
 
    Bounds are detected using: ``meep-match-bounds-of-char-contextual``.
@@ -407,7 +408,7 @@ Motion: Bounds
 ``(meep-move-to-bounds-of-string-inner ARG)``
    Move to the string inner start/end (start when ARG is negative).
 
-``(meep-move-to-bounds-of-defun ARG &rest INNER)``
+``(meep-move-to-bounds-of-defun ARG &optional INNER)``
    Move to the function start/end (start when ARG is negative).
    INNER to move to inner bound.
 
@@ -429,7 +430,7 @@ Motion: Bounds
    Move to the inner visual-line start/end (start when ARG is negative).
 
 ``(meep-move-to-bounds-of-thing-beginning ARG)``
-   Move to inner bounds of thing (begging).
+   Move to inner bounds of thing (beginning).
    Move to the end with a negative ARG.
 
 ``(meep-move-to-bounds-of-thing-end ARG)``
@@ -492,7 +493,6 @@ Selection/Region: Line Selection
 
 ``(meep-region-expand-to-line-bounds)``
    Expand the region to the line bounds.
-   Consecutive
 
    ``meep-state-region-elem`` is set to \='line-wise which commands may
    use to maintain line-based selection.
@@ -509,7 +509,7 @@ This allows for expanding across surrounding symmetrical characters which can be
 ``(meep-region-syntax-expand ARG)``
    Expand on matching syntax table elements ARG times.
 
-   When there is no active region, active the region and expand.
+   When there is no active region, active and expand the region.
    This can be used to quickly mark symbols or blocks of contiguous syntax
    including of blank-space.
 
@@ -597,7 +597,7 @@ Text Editing: Character Delete/Backspace
 Text Editing: Character Delete/Backspace (Ring)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Character level delete which has it's own kill-ring.
+Character level delete which has its own kill-ring.
 This can be useful for quickly relocating characters.
 
 Note that this is only accumulated on successive calls.
@@ -613,6 +613,11 @@ Note that this is only accumulated on successive calls.
 ``(meep-delete-char-ring-yank ARG)``
    Yank from the delete character ring ARG times.
 
+``(meep-delete-char-ring-yank-no-pop ARG)``
+   Yank from the delete character ring ARG times.
+
+   Leave the char-ring unmodified afterwards.
+
 Text Editing: Character Operations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -621,20 +626,20 @@ Text Editing: Character Operations
 
 ``(meep-char-insert CH ARG)``
    Read a character CH and insert it or replace the active region.
-   Inset ARG times.
+   Insert ARG times.
 
 Text Editing: Surround Insert/Delete
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``(meep-char-surround-insert CH ARG)``
    Read a character CH and surround the selection with it.
-   Inset ARG times.
+   Insert ARG times.
 
    When there is no active region, surround the current point.
 
 ``(meep-char-surround-insert-lines CH ARG)``
    Read a character CH and surround the selected lines with it.
-   Inset ARG times.
+   Insert ARG times.
 
    When multiple lines are are in the active region,
    surround each line individually.
@@ -745,10 +750,10 @@ State: Insert
    Open a newline below and switch to INSERT state.
 
 ``(meep-insert-line-beginning)``
-   Move the line indentation start and switch to INSERT state.
+   Move to the line indentation start and switch to INSERT state.
 
 ``(meep-insert-line-end)``
-   Move the line end and switch to INSERT state.
+   Move to the line end and switch to INSERT state.
 
 Clipboard: System Only
 ^^^^^^^^^^^^^^^^^^^^^^
