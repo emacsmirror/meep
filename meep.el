@@ -1744,7 +1744,7 @@ Return non-nil when the point was moved."
        ((meep--bounds-equal-at-end-points bounds "(*" "*)")
         (setq result (cons (+ (car bounds) 2) (- (cdr bounds) 2))))
        ((meep--bounds-equal-at-end-points bounds "{" "}")
-        (setq result (cons (+ (car bounds) 2) (- (cdr bounds) 2)))))))
+        (setq result (cons (+ (car bounds) 1) (- (cdr bounds) 1)))))))
     result))
 
 (defun meep--bounds-at-point-for-comment-inner ()
