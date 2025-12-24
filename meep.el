@@ -2141,17 +2141,11 @@ Used for `meep-region-mark-bounds-of-char-inner' and
 ;;
 ;; NOTE: order from least to most likely.
 (defcustom meep-match-bounds-of-char-contextual
-  (list
-   (cons "\"" "\"")
-   (cons "'" "'")
-   (cons "`" "`")
-   (cons "(" ")")
-   (cons "[" "]")
-   (cons "{" "}")
-   (cons "<" ">")
-   ;; Non ASCII characters.
-   (cons "“" "”")
-   (cons "‘" "’"))
+  '(("\"" . "\"")
+    ("'" . "'") ("`" . "`") ("(" . ")") ("[" . "]") ("{" . "}") ("<" . ">")
+
+    ;; Non ASCII characters.
+    ("“" . "”") ("‘" . "’"))
   "List of boundary string matches used for automatically marking bounds.
 
 While this is typically used for brackets and quotes,
@@ -5484,9 +5478,7 @@ When DO-CUT is non-nil, cut instead of copying."
   "Rectangle wise wrapper for ARGS."
   (apply #'insert args))
 (defconst meep--yank-handler-from-region-type-alist
-  (list
-   (cons 'line-wise 'meep--yank-handler-line-wise)
-   (cons 'rect-wise 'meep--yank-handler-rect-wise)))
+  '((line-wise . meep--yank-handler-line-wise) (rect-wise . meep--yank-handler-rect-wise)))
 
 (defun meep--yank-handler-from-region-type (region-type)
   "Return the yank-handler from the REGION-TYPE or nil."
@@ -6121,132 +6113,125 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 
 ;; Setup values...
 (dolist (cmd
-         (list
-          ;; These don't set mark but allow marking.
-          'meep-move-char-prev
-          'meep-move-char-next
-          ;; Use reverse as an adjustment.
-          'meep-region-activate-or-reverse
-          'meep-region-activate-and-reverse
-          'meep-region-activate-and-reverse-motion))
+         '( ;; These don't set mark but allow marking.
+           meep-move-char-prev
+           meep-move-char-next
+           ;; Use reverse as an adjustment.
+           meep-region-activate-or-reverse
+           meep-region-activate-and-reverse
+           meep-region-activate-and-reverse-motion))
   (meep-command-prop-set cmd :mark-on-motion 'adjust))
 
 (dolist (cmd
-         (list
-          'meep-region-activate-or-reverse
-          'meep-region-activate-and-reverse
-          'meep-region-activate-and-reverse-motion
-          'meep-region-mark-bounds-of-char-inner
-          'meep-region-mark-bounds-of-char-outer
-          'meep-region-mark-bounds-of-char-contextual-inner
-          'meep-region-mark-bounds-of-char-contextual-outer))
+         '(meep-region-activate-or-reverse
+           meep-region-activate-and-reverse
+           meep-region-activate-and-reverse-motion
+           meep-region-mark-bounds-of-char-inner
+           meep-region-mark-bounds-of-char-outer
+           meep-region-mark-bounds-of-char-contextual-inner
+           meep-region-mark-bounds-of-char-contextual-outer))
   (meep-command-prop-set cmd :mark-activate t))
 
-(dolist (cmd (list 'meep-digit-argument-repeat))
+(dolist (cmd '(meep-digit-argument-repeat))
   (meep-command-prop-set cmd :digit-repeat t))
 
 (dolist (cmd
-         (list
-          'meep-clipboard-killring-cut-line
-          'meep-clipboard-only-cut-line
-          'meep-move-line-next
-          'meep-move-line-prev
-          'next-line
-          'previous-line))
+         '(meep-clipboard-killring-cut-line
+           meep-clipboard-only-cut-line
+           meep-move-line-next
+           meep-move-line-prev
+           next-line
+           previous-line))
   (meep-command-prop-set cmd :respect-temporary-goal-column t))
 
 ;; Currently only repeat-fu uses this.
 (dolist (cmd
-         (list
-          'meep-char-replace
-          'meep-char-insert
-          'meep-delete-char-next
-          'meep-delete-char-prev
-          'meep-delete-char-ring-next
-          'meep-delete-char-ring-prev
-          'meep-delete-char-ring-yank))
+         '(meep-char-replace
+           meep-char-insert
+           meep-delete-char-next
+           meep-delete-char-prev
+           meep-delete-char-ring-next
+           meep-delete-char-ring-prev
+           meep-delete-char-ring-yank))
   (meep-command-prop-set cmd :mark-on-motion-exclude t))
 
 ;; The inactive mark should be used, but the action should not be repeated.
 (dolist (cmd
-         (list
-          ;; Only this is used for interactive ISEARCH.
-          'isearch-exit
-          ;; `'meep-isearch-regexp-prev'
-          ;; `'meep-isearch-regexp-next'
+         '( ;; Only this is used for interactive ISEARCH.
+           isearch-exit
+           ;; `'meep-isearch-regexp-prev'
+           ;; `'meep-isearch-regexp-next'
 
-          'meep-isearch-at-point-prev
-          'meep-isearch-at-point-next
-          'meep-isearch-repeat-prev
-          'meep-isearch-repeat-next))
+           meep-isearch-at-point-prev
+           meep-isearch-at-point-next
+           meep-isearch-repeat-prev
+           meep-isearch-repeat-next))
   (meep-command-prop-set cmd :mark-on-motion-no-repeat t))
 
 (dolist (cmd
-         (list
-          'meep-move-by-sexp-any-next
-          'meep-move-by-sexp-any-prev
-          'meep-move-by-sexp-out-next
-          'meep-move-by-sexp-out-prev
-          'meep-move-by-sexp-over-next
-          'meep-move-by-sexp-over-prev
-          'meep-move-find-char-on-line-at-next
-          'meep-move-find-char-on-line-at-prev
-          'meep-move-find-char-on-line-repeat-at-next
-          'meep-move-find-char-on-line-repeat-at-prev
-          'meep-move-find-char-on-line-repeat-till-next
-          'meep-move-find-char-on-line-repeat-till-prev
-          'meep-move-find-char-on-line-till-next
-          'meep-move-find-char-on-line-till-prev
-          'meep-move-same-syntax-or-symbol-next
-          'meep-move-same-syntax-or-symbol-prev
-          'meep-move-same-syntax-and-space-next
-          'meep-move-same-syntax-and-space-next-end
-          'meep-move-same-syntax-and-space-prev
-          'meep-move-same-syntax-next
-          'meep-move-same-syntax-prev
-          'meep-move-line-beginning
-          'meep-move-line-end
-          'meep-move-line-next
-          'meep-move-line-non-space-beginning
-          'meep-move-line-non-space-end
-          'meep-move-line-prev
-          'meep-move-matching-bracket-inner
-          'meep-move-matching-bracket-outer
-          'meep-move-matching-contextual-inner
-          'meep-move-matching-contextual-outer
-          'meep-move-matching-syntax-inner
-          'meep-move-matching-syntax-outer
-          'meep-move-paragraph-next
-          'meep-move-paragraph-prev
-          'meep-move-sentence-next
-          'meep-move-sentence-prev
-          'meep-move-symbol-next
-          'meep-move-symbol-next-end
-          'meep-move-symbol-prev
-          'meep-move-to-bounds-of-comment-inner
-          'meep-move-to-bounds-of-defun-inner
-          'meep-move-to-bounds-of-line-inner
-          'meep-move-to-bounds-of-paragraph-inner
-          'meep-move-to-bounds-of-string-inner
-          'meep-move-to-bounds-of-visual-line-inner
-          'meep-move-word-next
-          'meep-move-word-next-end
-          'meep-move-word-prev
+         '(meep-move-by-sexp-any-next
+           meep-move-by-sexp-any-prev
+           meep-move-by-sexp-out-next
+           meep-move-by-sexp-out-prev
+           meep-move-by-sexp-over-next
+           meep-move-by-sexp-over-prev
+           meep-move-find-char-on-line-at-next
+           meep-move-find-char-on-line-at-prev
+           meep-move-find-char-on-line-repeat-at-next
+           meep-move-find-char-on-line-repeat-at-prev
+           meep-move-find-char-on-line-repeat-till-next
+           meep-move-find-char-on-line-repeat-till-prev
+           meep-move-find-char-on-line-till-next
+           meep-move-find-char-on-line-till-prev
+           meep-move-same-syntax-or-symbol-next
+           meep-move-same-syntax-or-symbol-prev
+           meep-move-same-syntax-and-space-next
+           meep-move-same-syntax-and-space-next-end
+           meep-move-same-syntax-and-space-prev
+           meep-move-same-syntax-next
+           meep-move-same-syntax-prev
+           meep-move-line-beginning
+           meep-move-line-end
+           meep-move-line-next
+           meep-move-line-non-space-beginning
+           meep-move-line-non-space-end
+           meep-move-line-prev
+           meep-move-matching-bracket-inner
+           meep-move-matching-bracket-outer
+           meep-move-matching-contextual-inner
+           meep-move-matching-contextual-outer
+           meep-move-matching-syntax-inner
+           meep-move-matching-syntax-outer
+           meep-move-paragraph-next
+           meep-move-paragraph-prev
+           meep-move-sentence-next
+           meep-move-sentence-prev
+           meep-move-symbol-next
+           meep-move-symbol-next-end
+           meep-move-symbol-prev
+           meep-move-to-bounds-of-comment-inner
+           meep-move-to-bounds-of-defun-inner
+           meep-move-to-bounds-of-line-inner
+           meep-move-to-bounds-of-paragraph-inner
+           meep-move-to-bounds-of-string-inner
+           meep-move-to-bounds-of-visual-line-inner
+           meep-move-word-next
+           meep-move-word-next-end
+           meep-move-word-prev
 
-          'meep-move-to-bounds-of-paragraph
-          'meep-move-to-bounds-of-comment
-          'meep-move-to-bounds-of-string
-          'meep-move-to-bounds-of-line
-          'meep-move-to-bounds-of-visual-line
-          'meep-move-to-bounds-of-defun))
+           meep-move-to-bounds-of-paragraph
+           meep-move-to-bounds-of-comment
+           meep-move-to-bounds-of-string
+           meep-move-to-bounds-of-line
+           meep-move-to-bounds-of-visual-line
+           meep-move-to-bounds-of-defun))
   (meep-command-prop-set cmd :mark-on-motion t))
 
 (dolist (cmd-pair
-         (list
-          (cons 'meep-move-line-next 'next-line)
-          (cons 'meep-move-line-prev 'previous-line)
-          (cons 'meep-move-line-end 'move-end-of-line)
-          (cons 'meep-move-line-beginning 'move-beginning-of-line)))
+         '((meep-move-line-next . next-line)
+           (meep-move-line-prev . previous-line)
+           (meep-move-line-end . move-end-of-line)
+           (meep-move-line-beginning . move-beginning-of-line)))
   (meep-command-prop-set (car cmd-pair) :substitute (cdr cmd-pair)))
 
 
