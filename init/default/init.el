@@ -259,6 +259,9 @@
 
       '("<tab>" . meep-indent-rigidly)
 
+      '("S-<delete>" . meep-join-line-next)
+      '("S-<backspace>" . meep-join-line-prev)
+
       '("<home>" . meep-move-line-beginning)
       (cons (concat my-ex "<home>") 'beginning-of-buffer)
       '("<end>" . meep-move-line-end)
@@ -291,7 +294,7 @@
   (dolist (key
            (list
             ;; electric indent mode, gets in way of evil-style keys for plugins
-            "\C-j" "\C-k" "\C-m" "\C-u" "\C-w"
+            "\C-j" "\C-k" "\C-m" "\C-w"
             "\C-e" ;; Was `move-end-of-line'
             "\C-a" ;; Was `move-beginning-of-line'
             "\C-r" ;; Was `isearch-backward'
