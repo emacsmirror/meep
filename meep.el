@@ -310,19 +310,17 @@ Return t when the point was moved to the comment start."
 (defun meep--rectangle-range-list-from-rectangle (beg end)
   "Return a list of ranges from a rectangle from BEG & END."
   (declare (important-return-value t))
-  (let* ((result (list))
-         (accum-fn (lambda (beg end) (push (cons beg end) result))))
+  (let ((result (list)))
     (apply-on-rectangle
-     ;; Make the values global.
-     `(lambda (col-beg col-end)
-        (let ((pos-beg nil)
-              (pos-end nil))
-          (save-excursion
-            (move-to-column col-beg)
-            (setq pos-beg (point))
-            (move-to-column col-end)
-            (setq pos-end (point))
-            (funcall ,accum-fn pos-beg pos-end))))
+     (lambda (col-beg col-end)
+       (let ((pos-beg nil)
+             (pos-end nil))
+         (save-excursion
+           (move-to-column col-beg)
+           (setq pos-beg (point))
+           (move-to-column col-end)
+           (setq pos-end (point))
+           (push (cons pos-beg pos-end) result))))
      beg end)
     (nreverse result)))
 
