@@ -1125,7 +1125,7 @@ When STEP-OVER is non-nil, don't step into expressions."
      (t
       (save-excursion
         ;; When in a comment or string, skip out of it.
-        (meep--goto-comment-or-string-bounds 1)
+        (ignore (meep--goto-comment-or-string-bounds 1))
         (condition-case _
             (progn
               (down-list n)
@@ -1155,7 +1155,7 @@ When STEP-OVER is non-nil, don't step into expressions."
      (t
       (save-excursion
         ;; When in a comment or string, skip out of it.
-        (meep--goto-comment-or-string-bounds -1)
+        (ignore (meep--goto-comment-or-string-bounds -1))
         (condition-case _
             (progn
               (down-list n)
