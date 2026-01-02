@@ -53,13 +53,13 @@
 (defcustom meep-state-insert-register ?^
   "The register set when leaving insert mode.
 
-Used by `meep-insert-last' which will enter insert mode at this location."
+Used by `meep-insert-at-last' which will enter insert mode at this location."
   :type 'register)
 
 (defvar-local meep-state-region-elem nil
-  "Supported values are symbols nil or \\='line-wise.
+  "Supported values are nil or the symbol \\='line-wise.
 
-Note that line-wise navigation is not enforced,
+Note that line-wise navigation is not enforced;
 this is a hint that commands may use.")
 
 ;; ---------------------------------------------------------------------------
@@ -71,7 +71,7 @@ this is a hint that commands may use.")
 ;; This is needed so it's possible to use `meep-move-char-prev' & `meep-move-char-next'
 ;; as motions which transpose characters.
 (defvar-local meep-mark-adjust nil
-  "The previous position for commands that don't mark on motion.
+  "The previous position for commands that don't set mark-on-motion.
 
 This must be set by commands that pass the:
 `meep-command-is-mark-set-on-motion-adjust' test.")
@@ -128,7 +128,7 @@ This must be set by commands that pass the:
 
 (defun meep--plist-remove (plist key)
   "Remove KEY and its value from PLIST destructively.
-Returns the modified PLIST, or the original if KEY is not found."
+Return the modified PLIST, or the original if KEY is not found."
   (declare (important-return-value t))
   (cond
    ;; Empty PLIST.
@@ -157,7 +157,7 @@ Returns the modified PLIST, or the original if KEY is not found."
 (defun meep--ranges-overlap-p (list-a list-b)
   "Return t if any range in LIST-A overlaps any range in LIST-B.
 Each list contains cons cells (BEG . END) with BEG <= END.
-Stops at the first detected overlap."
+Stop at the first detected overlap."
   (declare (important-return-value t))
   (let ((found nil))
     (while (and list-a (null found))
@@ -185,7 +185,7 @@ Stops at the first detected overlap."
 (defun meep--indent-calc-in-region-from-first-non-blank-or-non-empty (beg end)
   "Return a string representing the text indenting this region.
 - The first non-blank line is used.
-- If all lines are blank the first non-empty.
+- If all lines are blank, use the first non-empty line.
 - If all lines are empty - return the longest empty string.
 
 It is expected that BEG & END have been extended to line end-points.
@@ -219,7 +219,7 @@ The behavior if they have not is undefined."
     (or result-non-empty "")))
 
 (defun meep--replace-in-region (str beg end)
-  "Utility to replace region from BEG to END with STR.
+  "Replace region from BEG to END with STR.
 Return the region replaced."
   (declare (important-return-value nil))
   (let ((len (length str))
@@ -273,11 +273,12 @@ Return the region replaced."
     (cons beg (+ beg (length str)))))
 
 (defun meep--syntax-skip-to-comment-start ()
-  "Move the point to the start of comment syntax.
-When the point is at the very beginning of a comment
-there may be no comment syntax information at point, move forward until
-`syntax-ppss' information is available (typically only 1-2 characters).
-Return t when the point was moved to the comment start."
+  "Move point to the start of comment syntax.
+When point is at the very beginning of a comment,
+there may be no comment syntax information at point.
+Move forward until `syntax-ppss' information is available
+\(typically only 1-2 characters).
+Return t when point was moved to the comment start."
   (declare (important-return-value t))
   (let ((pos-found nil)
         (pos-init (point)))
@@ -367,19 +368,19 @@ Typically these will be on the same line but this isn't a requirement."
 ;; ---------------------------------------------------------------------------
 ;; Public Variables/Constants
 
-;; This value only exists in order to temporarily override it.
+;; This value only exists to temporarily override it.
 (defvar meep-mark-set-on-motion-override nil
-  "This variable exists so it's possible to let-bind the value to t.
+  "Override variable for suppressing mark-on-motion.
 
-Used so a motion can be repeated without setting the mark.
-Must never be set.")
+When let-bound to t, motions can be repeated without setting the mark.
+Must never be set directly.")
 
 
 ;; ---------------------------------------------------------------------------
 ;; Motion: Symbol/Word
 ;;
 ;; Command properties:
-;; commands may have a `meep' property, this is expected to be a PLIST of properties.
+;; Commands may have a `meep' property which is expected to be a PLIST of properties.
 ;;
 ;; :mark-on-motion
 ;;    - t: Mark on motion.
@@ -395,7 +396,7 @@ Must never be set.")
 ;;    - nil: don't mark on motion (same as missing).
 ;;
 ;; :mark-on-motion-no-repeat
-;;    - t: These motions that should not be repeated such as search.
+;;    - t: Motions that should not be repeated, such as search.
 ;;      (used by repeat-fu).
 ;; :digit-repeat
 ;;    - t: The command is a digit command.
@@ -403,7 +404,7 @@ Must never be set.")
 ;;      This command can repeat other commands multiple times.
 
 (defun meep--mark-on-motion-set (pos always)
-  "Set the mark to POS the region is not active.
+  "Set the mark to POS if the region is not active.
 When ALWAYS is non-nil, mark-on-motion even if the cursor didn't move."
   (when (and meep-mark-set-on-motion
              ;; Has motion, or always.
@@ -417,7 +418,7 @@ When ALWAYS is non-nil, mark-on-motion even if the cursor didn't move."
     (meep--set-marker pos)))
 
 (defmacro meep--with-mark-on-motion-maybe-set (&rest body)
-  "Run the given BODY, motion will set the mark."
+  "Execute BODY with mark-on-motion enabled."
   (declare (indent 0))
   (let ((pos-orig (make-symbol "pos-orig")))
     `(let ((,pos-orig (point)))
@@ -428,7 +429,7 @@ When ALWAYS is non-nil, mark-on-motion even if the cursor didn't move."
          (meep--mark-on-motion-set ,pos-orig nil)))))
 
 (defmacro meep--with-mark-on-motion-always-set (&rest body)
-  "Run the given BODY, motion will always set the mark."
+  "Execute BODY with mark-on-motion always enabled."
   (declare (indent 0))
   (let ((pos-orig (make-symbol "pos-orig")))
     `(let ((,pos-orig (point)))
@@ -439,10 +440,10 @@ When ALWAYS is non-nil, mark-on-motion even if the cursor didn't move."
          (meep--mark-on-motion-set ,pos-orig t)))))
 
 (defun meep--maintain-line-based-region (pos-orig mrk-orig)
-  "Internal utility to maintain line based selection.
+  "Maintain line-based selection.
 POS-ORIG & MRK-ORIG define the original region."
   (when (and
-         ;; Check line based selection is in use.
+         ;; Check line-based selection is in use.
          (eq meep-state-region-elem 'line-wise)
          ;; Unlikely this de-activates, check for the sake of correctness.
          (region-active-p))
@@ -467,7 +468,7 @@ POS-ORIG & MRK-ORIG define the original region."
           (meep--set-marker (point)))))))
   nil)
 (defmacro meep--with-maintain-line-based-region (&rest body)
-  "Run the given BODY, motion will set the mark."
+  "Execute BODY, maintaining line-based region selection."
   (declare (indent 0))
   (let ((pos-orig (make-symbol "pos-orig"))
         (mrk-orig (make-symbol "mrk-orig"))
@@ -493,9 +494,9 @@ POS-ORIG & MRK-ORIG define the original region."
   nil)
 
 (defun meep--mark-on-motion-maybe-activate-as-bounds ()
-  "A version of `meep--mark-on-motion-maybe-activate' returning bounds or nil.
+  "Like `meep--mark-on-motion-maybe-activate' but returns bounds or nil.
 The bounds represent the region that would have been activated.
-this should be used in situations commands do not result in a user visible region."
+This should be used in situations where commands do not result in a visible region."
   (let ((result nil))
     (cond
      ((region-active-p)
@@ -642,14 +643,14 @@ N may be negative to move in the reverse direction."
 
 ;;;###autoload
 (defun meep-move-word-next-end (arg)
-  "Move to the end of the next word ARG times."
+  "Move to the end of the next word, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (meep--move-thing-prev-next-end-impl 'word arg)))
 
 ;;;###autoload
 (defun meep-move-word-prev-end (arg)
-  "Move to the end of the previous word ARG times."
+  "Move to the end of the previous word, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (cond
@@ -680,7 +681,7 @@ N may be negative to move in the reverse direction."
 (defun meep--move-same-syntax-impl (n skip-single skip-space or-thing)
   "Move forward over N syntax-spans, a negative argument skips backwards.
 When SKIP-SINGLE isn't nil, initial single motion isn't counted as a step for N.
-SKIP-SPACE a cons cell additional space skipping before & after the motion.
+SKIP-SPACE is a cons cell for additional space skipping before & after the motion.
 When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
   (let ((syn nil)
         (skip-space-beg (car skip-space))
@@ -751,7 +752,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 
 ;;;###autoload
 (defun meep-move-same-syntax-prev (arg)
-  "Move back a syntax-spans ARG times."
+  "Move back over characters with the same syntax class, ARG times."
   (interactive "^p")
   (cond
    ((< arg 0)
@@ -762,7 +763,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 
 ;;;###autoload
 (defun meep-move-same-syntax-next (arg)
-  "Move forward a syntax-spans ARG times."
+  "Move forward over characters with the same syntax class, ARG times."
   (interactive "^p")
   (cond
    ((< arg 0)
@@ -775,11 +776,11 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 ;; ---------------------------------------------------------------------------
 ;; Motion: Same Syntax or Symbol
 ;;
-;; Skips over the same syntax or entire symbols.
+;; Skip over the same syntax or entire symbols.
 
 ;;;###autoload
 (defun meep-move-same-syntax-or-symbol-prev (arg)
-  "Move back a syntax-spans or symbols ARG times."
+  "Move back over characters with the same syntax class or symbols, ARG times."
   (interactive "^p")
   (cond
    ((< arg 0)
@@ -790,7 +791,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 
 ;;;###autoload
 (defun meep-move-same-syntax-or-symbol-next (arg)
-  "Move forward a syntax-spans or symbols ARG times."
+  "Move forward over characters with the same syntax class or symbols, ARG times."
   (interactive "^p")
   (cond
    ((< arg 0)
@@ -803,7 +804,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 ;; ---------------------------------------------------------------------------
 ;; Motion: Same Syntax & Space
 ;;
-;; Skips over the same syntax with changes to behavior for surrounding space,
+;; Skip over the same syntax with changes to behavior for surrounding space,
 ;; where space at the bounds of text is skipped over, matching
 ;; how this is handled for skipping words & symbols.
 
@@ -845,7 +846,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 ;; Motion: Line
 
 (defun meep--move-line-beginning-end-impl (n)
-  "Implementation for line beginning/end, using N."
+  "Move to line beginning or end based on sign of N."
   (cond
    ((< n 0)
     (beginning-of-line))
@@ -855,7 +856,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 ;;;###autoload
 (defun meep-move-line-beginning (arg)
   "Move to the beginning of the current line.
-Moves to the end when ARG is negative."
+Move to the end when ARG is negative."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (meep--move-line-beginning-end-impl (- arg))))
@@ -863,13 +864,13 @@ Moves to the end when ARG is negative."
 ;;;###autoload
 (defun meep-move-line-end (arg)
   "Move to the end of the current line.
-Moves to the beginning when ARG is negative."
+Move to the beginning when ARG is negative."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (meep--move-line-beginning-end-impl arg)))
 
 (defun meep--move-line-non-space-beginning-end-impl (n)
-  "Implementation for non-space line beginning/end, using N."
+  "Move to non-space line beginning or end based on sign of N."
   (cond
    ((< n 0)
     (beginning-of-line)
@@ -896,14 +897,14 @@ A negative ARG moves to the end."
 
 ;;;###autoload
 (defun meep-move-line-non-space-end (arg)
-  "Move to the end of the line, ignoring end of line blank-spaces.
+  "Move to the end of the line, ignoring trailing whitespace.
 A negative ARG moves to the beginning."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
     (meep--move-line-non-space-beginning-end-impl arg)))
 
 (defun meep--move-line-wrapper (n &optional noerror)
-  "Call `line-move' N, with `last-command' set to respect the goal column.
+  "Call `line-move' with N, setting `last-command' to respect the goal column.
 Only needed from interactive line move.
 NOERROR is forwarded to `line-move'."
   ;; With a line-wise region, enforce a zero goal.
@@ -916,7 +917,7 @@ NOERROR is forwarded to `line-move'."
                 ;; Only makes sense to use line-wise with an active region.
                 (region-active-p)
                 ;; Otherwise this locks to the line beginning,
-                ;; even after horizon motion which feels too constrained.
+                ;; even after horizontal motion which feels too constrained.
                 (bolp))
            0)
           (t
@@ -1009,7 +1010,7 @@ NOERROR is forwarded to `line-move'."
   "When navigating comment bounds, skip leading/trailing space."
   :type 'boolean)
 
-;; Useful, for e.g. `/** comment */` or `/// comment.`
+;; Useful for `/** comment */` or `/// comment.`
 (defcustom meep-move-comment-skip-repeated t
   "When navigating comment bounds, skip repeated characters."
   :type 'boolean)
@@ -1017,7 +1018,7 @@ NOERROR is forwarded to `line-move'."
 (defun meep--goto-comment-or-string-bounds (dir)
   "Move point to the beginning/end of the comment or string.
 
-When DIR is -1, the beginning, 1 the end.
+When DIR is -1, move to the beginning; when 1, move to the end.
 Return t when stepping out of string or comment bounds."
   (declare (important-return-value t))
   ;; When in a comment or string, skip out of it.
@@ -1063,9 +1064,9 @@ Return t when stepping out of string or comment bounds."
   (declare (important-return-value t))
   (cond
    ;; Modes that use {} brackets.
-   ;; For now, assume if "{}" are brackets.
-   ;; Then these are the "main" brackets to use for navigation,
-   ;; true for C/C++/Java ... etc.
+   ;; For now, assume that if "{}" are brackets,
+   ;; then these are the "main" brackets to use for navigation,
+   ;; true for C/C++/Java, etc.
    ((and (eq (char-syntax ?\{) ?\() ; Check both match.
          (eq (char-syntax ?\}) ?\)))
     (list ?{ ?}))
@@ -1168,7 +1169,7 @@ When STEP-OVER is non-nil, don't step into expressions."
     changed))
 
 (defun meep--is-point-after-bracket-open (bracket-chars)
-  "Return t if the point is after an open BRACKET-CHARS."
+  "Return t if point is after an opening bracket in BRACKET-CHARS."
   (declare (important-return-value t))
   (let ((syn (syntax-after (1- (point)))))
     (cond
@@ -1180,7 +1181,7 @@ When STEP-OVER is non-nil, don't step into expressions."
       nil))))
 
 (defun meep--is-point-after-bracket-close (bracket-chars)
-  "Return t if the point is after a closed BRACKET-CHARS."
+  "Return t if point is after a closing bracket in BRACKET-CHARS."
   (declare (important-return-value t))
   (let ((syn (syntax-after (1- (point)))))
     (cond
@@ -1192,7 +1193,7 @@ When STEP-OVER is non-nil, don't step into expressions."
       nil))))
 
 (defun meep--is-point-before-bracket-open (bracket-chars)
-  "Return t if the point is before an open BRACKET-CHARS."
+  "Return t if point is before an opening bracket in BRACKET-CHARS."
   (declare (important-return-value t))
   (let ((syn (syntax-after (point))))
     (cond
@@ -1204,7 +1205,7 @@ When STEP-OVER is non-nil, don't step into expressions."
       nil))))
 
 (defun meep--is-point-before-bracket-close (bracket-chars)
-  "Return t if the point is before a closed BRACKET-CHARS."
+  "Return t if point is before a closing bracket in BRACKET-CHARS."
   (declare (important-return-value t))
   (let ((syn (syntax-after (point))))
     (cond
@@ -1217,7 +1218,7 @@ When STEP-OVER is non-nil, don't step into expressions."
 
 (defun meep--move-by-sexp-any-impl (n step-over)
   "Jump to the next/previous SEXP by N.
-When STEP-OVER is non-nil don't step into nested blocks."
+When STEP-OVER is non-nil, don't step into nested blocks."
   (declare (important-return-value t))
   (let ((pos-init (point))
         (pos-found nil)
@@ -1293,8 +1294,7 @@ When STEP-OVER is non-nil don't step into nested blocks."
 
 ;;;###autoload
 (defun meep-move-by-sexp-any-next (arg)
-  "Jump to the next SEXP.
-Step ARG times or 1 when default."
+  "Jump to the next S-expression, ARG times."
   (interactive "^p")
   (when-let* ((pos-found (meep--move-by-sexp-any-impl arg nil)))
     (meep--with-mark-on-motion-maybe-set
@@ -1302,8 +1302,7 @@ Step ARG times or 1 when default."
 
 ;;;###autoload
 (defun meep-move-by-sexp-any-prev (arg)
-  "Jump to the previous SEXP.
-Step ARG times or 1 when default."
+  "Jump to the previous S-expression, ARG times."
   (interactive "^p")
   (when-let* ((pos-found (meep--move-by-sexp-any-impl (- arg) nil)))
     (meep--with-mark-on-motion-maybe-set
@@ -1312,8 +1311,8 @@ Step ARG times or 1 when default."
 
 (defvar-local meep-move-by-sexp-over-depth nil
   "The target depth when moving over S-expressions.
-Used to maintain the depth even when moving over causes
-navigation to move to outer scope.
+Used to maintain the depth even when the motion causes
+navigation to move to an outer scope.
 
 Only used between successive
 `meep-move-by-sexp-over-next' & `meep-move-by-sexp-over-prev' calls.")
@@ -1381,7 +1380,7 @@ Only used between successive
 
 ;;;###autoload
 (defun meep-move-by-sexp-over-next (arg)
-  "Move next over the SEXP ARG times."
+  "Move to the next S-expression at the same depth, ARG times."
   (interactive "^p")
   (let ((step-over t)
         (this-depth (meep--sexp-depth-calc)))
@@ -1399,7 +1398,7 @@ Only used between successive
 
 ;;;###autoload
 (defun meep-move-by-sexp-over-prev (arg)
-  "Move previous over the SEXP ARG times."
+  "Move to the previous S-expression at the same depth, ARG times."
   (interactive "^p")
   (let ((step-over t)
         (this-depth (meep--sexp-depth-calc)))
@@ -1463,15 +1462,13 @@ Move forward when ARG is positive, otherwise backwards."
 
 ;;;###autoload
 (defun meep-move-by-sexp-out-prev (&optional arg)
-  "Jump to the previous SEXP, jumping out of the current expression.
-Step ARG times or 1 when default."
+  "Jump out of the current S-expression to the opening bracket, ARG times."
   (interactive "^p")
   (meep--move-by-sexp-out-impl (- arg)))
 
 ;;;###autoload
 (defun meep-move-by-sexp-out-next (&optional arg)
-  "Jump to the next SEXP, jumping out of the current expression.
-Step ARG times or 1 when default."
+  "Jump out of the current S-expression to the closing bracket, ARG times."
   (interactive "^p")
   (meep--move-by-sexp-out-impl arg))
 
@@ -1480,7 +1477,7 @@ Step ARG times or 1 when default."
   "Jump to the matching outer bracket.
 When not at the bounds, jump to the start (when enclosed in brackets).
 
-Return non-nil when the point was moved."
+Return non-nil when point was moved."
   (interactive "^")
   (meep--with-mark-on-motion-maybe-set
     (let ((result nil)
@@ -1489,7 +1486,7 @@ Return non-nil when the point was moved."
           ;; when jumping to matching items.
           (arg 1)
           (pos-orig (point))
-          ;; Jump the start of the string, prevents failure to jump out of the string.
+          ;; Jump to the start of the string to prevent failure to jump out of it.
           (pos-outer (nth 8 (syntax-ppss))))
       (cond
        ((meep--is-point-before-bracket-open nil)
@@ -1510,7 +1507,7 @@ Return non-nil when the point was moved."
                  (point))))
           (setq result t)
           (goto-char pos))))
-      ;; As a handy fallback, jump up to the opening parent parenthesis.
+      ;; As a handy fallback, jump up to the enclosing parenthesis.
       (when (eq pos-orig (point))
         (let ((pos
                (save-excursion
@@ -1537,7 +1534,7 @@ Return non-nil when the point was moved."
   "Jump to the matching inner bracket.
 When not at the bounds, jump to the start (when enclosed in brackets).
 
-Return non-nil when the point was moved."
+Return non-nil when point was moved."
   (interactive "^")
   (meep--with-mark-on-motion-maybe-set
     (let ((result nil)
@@ -1546,7 +1543,7 @@ Return non-nil when the point was moved."
           ;; when jumping to matching items.
           (arg 1)
           (pos-orig (point))
-          ;; Jump the start of the string, prevents failure to jump out of the string.
+          ;; Jump to the start of the string to prevent failure to jump out of it.
           (pos-outer (nth 8 (syntax-ppss))))
       (cond
        ((meep--is-point-after-bracket-open nil)
@@ -1571,7 +1568,7 @@ Return non-nil when the point was moved."
                  (point))))
           (setq result t)
           (goto-char pos))))
-      ;; As a handy fallback, jump up to the opening parent parenthesis.
+      ;; As a handy fallback, jump up to the opening parenthesis.
       (when (eq pos-orig (point))
         (let ((pos
                (save-excursion
@@ -1585,12 +1582,12 @@ Return non-nil when the point was moved."
       result)))
 
 (defun meep--bounds-at-point-for-comment-outer ()
-  "Return the outer bounds for the comments at point or nil when not found."
+  "Return the outer bounds for the comment at point or nil when not found."
   (declare (important-return-value t))
   (let ((state (syntax-ppss)))
     (unless (nth 4 state)
       ;; Don't step back onto the previous line as it causes
-      ;; syntax with single line comments consider the blank
+      ;; syntax with single line comments to consider the blank
       ;; line after a comment to be a comment.
       (unless (or (bobp) (bolp))
         (save-excursion
@@ -1746,7 +1743,7 @@ Return non-nil when the point was moved."
     result))
 
 (defun meep--bounds-at-point-for-comment-inner ()
-  "Return the inner bounds for the comments at point or nil when not found."
+  "Return the inner bounds for the comment at point or nil when not found."
   (declare (important-return-value t))
   (let ((bounds-outer (meep--bounds-at-point-for-comment-outer))
         (result nil))
@@ -1846,7 +1843,7 @@ Return nil if no matching syntax was found."
           (goto-char (cdr bounds)))
          ((eq (point) (cdr bounds))
           (goto-char (car bounds))))
-        ;; As a handy fallback, jump up to the opening parent parenthesis.
+        ;; As a handy fallback, jump to the beginning of bounds.
         (when (eq pos-orig (point))
           (goto-char (car bounds))))
       result)))
@@ -1871,7 +1868,7 @@ Return nil if no matching syntax was found."
           (goto-char (cdr bounds)))
          ((eq (point) (cdr bounds))
           (goto-char (car bounds))))
-        ;; As a handy fallback, jump up to the opening parent parenthesis.
+        ;; As a handy fallback, jump to the beginning of bounds.
         (when (eq pos-orig (point))
           (goto-char (car bounds))))
       result)))
@@ -1898,10 +1895,10 @@ When not at the bounds, jump to the start."
   "The last character used to find.")
 
 (defun meep--move-find-impl (n ch is-till)
-  "Find/Till implementation.
-N the number of times to find.
+  "Implementation for find and till motions.
+N is the number of times to find.
 CH is the character to find.
-IS-TILL when non-nil, search up until the character."
+IS-TILL when non-nil, stop just before the character."
   (let* ((case-fold-search nil)
          (ch-str
           (cond
@@ -1947,9 +1944,9 @@ IS-TILL when non-nil, search up until the character."
         (goto-char end)
         (setq meep--move-find-last-char ch))))))
 
-;; Avoids repeating the error message all over the place.
+;; Avoid repeating the message all over the place.
 (defun meep--move-find-last-char-or-message ()
-  "Return the last character or raise an error."
+  "Return the last character or display a message and return nil."
   (declare (important-return-value t))
   (cond
    (meep--move-find-last-char
@@ -1960,49 +1957,49 @@ IS-TILL when non-nil, search up until the character."
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-at-next (arg ch)
-  "Find the next ARG char CH, read from mini-buffer."
+  "Find the next ARG char CH, read from minibuffer."
   (interactive "^p\ncFind Next:")
   (meep--move-find-impl arg ch nil))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-at-prev (arg ch)
-  "Find the previous ARG char CH, read from mini-buffer."
+  "Find the previous ARG char CH, read from minibuffer."
   (interactive "^p\ncFind Prev:")
   (meep--move-find-impl (- arg) ch nil))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-till-next (arg ch)
-  "Find till the next ARG char CH, read from mini-buffer."
+  "Find till the next char CH, ARG times."
   (interactive "^p\ncTill Next:")
   (meep--move-find-impl arg ch t))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-till-prev (arg ch)
-  "Find till the previous ARG CH, char read from mini-buffer."
+  "Find till the previous char CH, ARG times."
   (interactive "^p\ncTill Prev:")
   (meep--move-find-impl (- arg) ch t))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-repeat-at-next (arg)
-  "Repeat find ARG chars forwards."
+  "Repeat find ARG times forwards."
   (interactive "^p")
   (meep--move-find-impl arg (meep--move-find-last-char-or-message) nil))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-repeat-at-prev (arg)
-  "Repeat find ARG chars backwards."
+  "Repeat find ARG times backwards."
   (interactive "^p")
   (meep--move-find-impl (- arg) (meep--move-find-last-char-or-message) nil))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-repeat-till-next (arg)
-  "Repeat find ARG chars forwards."
+  "Repeat find-till ARG times forwards."
   (interactive "^p")
   (meep--move-find-impl arg (meep--move-find-last-char-or-message) t))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-repeat-till-prev (arg)
-  "Repeat find ARG chars backwards."
+  "Repeat find-till ARG times backwards."
   (interactive "^p")
   (meep--move-find-impl (- arg) (meep--move-find-last-char-or-message) t))
 
@@ -2048,7 +2045,7 @@ IS-TILL when non-nil, search up until the character."
     (cons beg end)))
 
 (defun meep--bounds-of-visual-line (inner)
-  "Bounds of visual line.
+  "Return the bounds of the visual line at point.
 When INNER is non-nil, contract to inner bounds."
   (declare (important-return-value t))
   (let ((bounds
@@ -2065,7 +2062,7 @@ When INNER is non-nil, contract to inner bounds."
     bounds))
 
 (defun meep--bounds-of-sentence (inner)
-  "Bounds of sentence.
+  "Return the bounds of the sentence at point.
 When INNER is non-nil, contract to inner bounds."
   (declare (important-return-value t))
   (when-let* ((bounds (bounds-of-thing-at-point 'sentence)))
@@ -2084,8 +2081,7 @@ When INNER is non-nil, contract to inner bounds."
     bounds))
 
 (defun meep--bounds-of-paragraph (inner)
-  "Bounds of paragraph.
-
+  "Return the bounds of the paragraph at point.
 When INNER is non-nil, contract to inner bounds."
   (declare (important-return-value t))
   (when-let* ((bounds (bounds-of-thing-at-point 'paragraph)))
@@ -2107,7 +2103,7 @@ When INNER is non-nil, contract to inner bounds."
       (goto-char (cdr bounds))))))
 
 (defun meep--move-to-bounds-of-thing (thing n)
-  "Implement move to bounds of THING (start when N is negative)."
+  "Move to bounds of THING (start when N is negative)."
   (when-let* ((bounds (bounds-of-thing-at-point thing)))
     (meep--move-to-bounds-endpoint bounds n)))
 
@@ -2115,7 +2111,7 @@ When INNER is non-nil, contract to inner bounds."
 ;; Mark: Bounds
 ;;
 ;; Note that MEEP's design is typically to mark after a motion,
-;; however in there are some down sides to this:
+;; however there are some downsides to this:
 ;; - A motion only sets the point, not the opposite mark.
 ;; - Activating the region is an extra step.
 ;;
@@ -2172,8 +2168,8 @@ Used for `meep-region-mark-bounds-of-char-inner-contextual' and
 (defun meep--region-mark-bounds-find-matching-brackets (bounds-init bounds-limit ch-str-pair)
   "Find the pair of matching brackets around BOUNDS-INIT.
 BOUNDS-LIMIT constrains the search bounds.
-Using strings from CH-STR-PAIR (supports multi-character brackets).
-or nil if no matching brackets are found."
+CH-STR-PAIR provides the bracket strings (supports multi-character brackets).
+Return the bounds or nil if no matching brackets are found."
   (declare (important-return-value t))
   (let* ((has-region (/= (car bounds-init) (cdr bounds-init)))
          (open-str (car ch-str-pair))
@@ -2281,8 +2277,8 @@ BOUNDS-LIMIT constrains the search bounds."
     (cons (point) (point)))))
 
 (defun meep--region-mark-bounds-to-region (bounds is-forward)
-  "Once BOUNDS is calculated, mark it as a region.
-When IS-FORWARD is t, the point is after the mark."
+  "Mark BOUNDS as a region.
+When IS-FORWARD is non-nil, point is after the mark."
   (unless (region-active-p)
     (meep-region-enable))
   (cond
@@ -2300,7 +2296,7 @@ When IS-FORWARD is t, the point is after the mark."
     (cons ch-str (or (meep--symmetrical-char-other-any ch-str) ch-str))))
 
 (defun meep--region-mark-bounds-of-char-impl (ch n inner)
-  "Implement mark region bounds in CH, N times.
+  "Mark region bounds of CH, N times.
 
 When INNER is non-nil, mark the inner bounds."
   (let ((bounds-limit (cons (point-min) (point-max)))
@@ -2329,7 +2325,7 @@ When INNER is non-nil, mark the inner bounds."
         t)))))
 
 (defun meep-region-mark-bounds-of-char-contextual-impl (n inner)
-  "Implement mark region bounds (contextual), N times.
+  "Mark region bounds contextually, N times.
 
 When INNER is non-nil, mark the inner bounds."
   (let ((bounds-limit (cons (point-min) (point-max)))
@@ -2370,7 +2366,7 @@ When INNER is non-nil, mark the inner bounds."
 ;; ---------------------------------------------------------------------------
 ;; Region Mark: Bounds in Character
 ;;
-;; Supports convenient marking of a region in character bounds.
+;; Support convenient marking of a region in character bounds.
 ;; This works by prompting for a character which is then scanned in both directions,
 ;; marking the region in the bounds when it is found.
 ;;
@@ -2378,17 +2374,17 @@ When INNER is non-nil, mark the inner bounds."
 ;;
 ;; - Both inner/outer commands are available,
 ;;   in case you wish to manipulate the region including/excluding the characters.
-;; - Entering bracket characters uses matching brackets,
-;;   customizable with the ``meep-symmetrical-chars`` variable.
+;; - Entering bracket characters uses matching brackets.
+;;   This is customizable with the ``meep-symmetrical-chars`` variable.
 ;; - Entering an opening ``(`` bracket marks the region inside: ``( ... )``.
 ;; - Entering a closing ``)`` bracket marks the region inside: ``) ... (``.
 ;; - A "contextual" version of this function has been implemented which marks the nearest region.
-;;   customizable with the ``meep-match-bounds-of-char-contextual`` variable.
+;;   This is customizable with the ``meep-match-bounds-of-char-contextual`` variable.
 
 ;;;###autoload
 (defun meep-region-mark-bounds-of-char-inner (ch arg)
-  "Mark in bounds of CH over ARG steps.
-A negative ARG positions the POINT at the end of the region.
+  "Mark the inner bounds of CH, ARG times.
+A negative ARG positions point at the end of the region.
 
 Note that pressing Return instead of a character performs a contextual mark,
 finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
@@ -2403,8 +2399,8 @@ finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
 
 ;;;###autoload
 (defun meep-region-mark-bounds-of-char-outer (ch arg)
-  "Mark in bounds of CH over ARG steps.
-A negative ARG positions the POINT at the end of the region.
+  "Mark the outer bounds of CH, ARG times.
+A negative ARG positions point at the end of the region.
 
 Note that pressing Return instead of a character performs a contextual mark,
 finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
@@ -2419,8 +2415,8 @@ finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
 
 ;;;###autoload
 (defun meep-region-mark-bounds-of-char-contextual-inner (arg)
-  "Mark in bounds of the nearest character pairs over ARG steps.
-A negative ARG positions the POINT at the end of the region.
+  "Mark the inner bounds of the nearest character pairs, ARG times.
+A negative ARG positions point at the end of the region.
 
 Character pairs are detected using: `meep-match-bounds-of-char-contextual'."
   (interactive "p")
@@ -2428,8 +2424,8 @@ Character pairs are detected using: `meep-match-bounds-of-char-contextual'."
 
 ;;;###autoload
 (defun meep-region-mark-bounds-of-char-contextual-outer (arg)
-  "Mark in bounds of the nearest boundary pairs over ARG steps.
-A negative ARG positions the POINT at the end of the region.
+  "Mark the outer bounds of the nearest boundary pairs, ARG times.
+A negative ARG positions point at the end of the region.
 
 Bounds are detected using: `meep-match-bounds-of-char-contextual'."
   (interactive "p")
@@ -2440,8 +2436,8 @@ Bounds are detected using: `meep-match-bounds-of-char-contextual'."
 
 ;;;###autoload
 (defun meep-move-to-bounds-of-sentence (arg &optional inner)
-  "Move to the sentences start/end (start when ARG is negative).
-INNER to move to inner bound."
+  "Move to the sentence start/end (start when ARG is negative).
+When INNER is non-nil, move to the inner bound."
   (interactive "^p")
   (let ((bounds (meep--bounds-of-sentence inner)))
     (cond
@@ -2452,14 +2448,14 @@ INNER to move to inner bound."
       nil))))
 ;;;###autoload
 (defun meep-move-to-bounds-of-sentence-inner (arg)
-  "Move to the inner sentences start/end (start when ARG is negative)."
+  "Move to the inner sentence start/end (start when ARG is negative)."
   (interactive "^p")
   (meep-move-to-bounds-of-sentence arg t))
 
 ;;;###autoload
 (defun meep-move-to-bounds-of-paragraph (arg &optional inner)
   "Move to the paragraph start/end (start when ARG is negative).
-INNER to move to inner bound."
+When INNER is non-nil, move to the inner bound."
   (interactive "^p")
   (let ((bounds (meep--bounds-of-paragraph inner)))
     (cond
@@ -2477,7 +2473,7 @@ INNER to move to inner bound."
 ;;;###autoload
 (defun meep-move-to-bounds-of-comment (arg &optional inner)
   "Move to the comment start/end (start when ARG is negative).
-INNER to move to inner bound."
+When INNER is non-nil, move to the inner bound."
   (interactive "^p")
   (let ((bounds
          (cond
@@ -2500,7 +2496,7 @@ INNER to move to inner bound."
 ;;;###autoload
 (defun meep-move-to-bounds-of-string (arg &optional inner)
   "Move to the string start/end (start when ARG is negative).
-INNER to move to inner bound."
+When INNER is non-nil, move to the inner bound."
   (interactive "^p")
   (let ((bounds
          (cond
@@ -2523,7 +2519,7 @@ INNER to move to inner bound."
 ;;;###autoload
 (defun meep-move-to-bounds-of-defun (arg &optional inner)
   "Move to the function start/end (start when ARG is negative).
-INNER to move to inner bound."
+When INNER is non-nil, move to the inner bound."
   (interactive "^p")
   (ignore inner) ;; TODO: support inner.
   (meep--move-to-bounds-of-thing 'defun arg))
@@ -2536,7 +2532,7 @@ INNER to move to inner bound."
 ;;;###autoload
 (defun meep-move-to-bounds-of-line (arg &optional inner)
   "Move to the line start/end (start when ARG is negative).
-INNER to move to inner bound."
+When INNER is non-nil, move to the inner bound."
   (interactive "^p")
   (let ((bounds (cons (pos-bol) (pos-eol))))
     (cond
@@ -2558,7 +2554,7 @@ INNER to move to inner bound."
 ;;;###autoload
 (defun meep-move-to-bounds-of-visual-line (arg &optional inner)
   "Move to the visual-line start/end (start when ARG is negative).
-INNER to move to inner bound."
+When INNER is non-nil, move to the inner bound."
   (interactive "^p")
   (let ((bounds (meep--bounds-of-visual-line inner)))
     ;; No need to check for nil.
@@ -2584,7 +2580,8 @@ INNER to move to inner bound."
     (?D meep-move-to-bounds-of-defun "defun")
     (?\. meep-move-to-bounds-of-sentence-inner "sentence inner")
     (?> meep-move-to-bounds-of-sentence "sentence"))
-  "List of commands for bounds movement.  Each element is (key function description)."
+  "List of commands for bounds movement.
+Each element is (key function description)."
   :type
   '(repeat
     (list
@@ -2608,7 +2605,7 @@ INNER to move to inner bound."
     (set-transient-map km
                        nil nil
                        (concat
-                        (format "Jump to the %s, of" (or (and (< n 0) "beginning") "end"))
+                        (format "Jump to the %s of" (or (and (< n 0) "beginning") "end"))
                         ": %k or any other to exit\n"
                         (mapconcat #'identity info-text ", ")))))
 
@@ -2634,15 +2631,15 @@ Move to the beginning with a negative ARG."
 (defun meep-region-enable ()
   "Enable the active region.
 
-The mark is moved to point to initiate a new region to begin a new selection.
+The mark is moved to point to begin a new selection.
 If you wish to activate the region between the existing point and mark see:
 `meep-region-activate-and-reverse' and `meep-region-activate-or-reverse'."
   (interactive)
   (unless (region-active-p)
     ;; This may have been set, clear it if it was.
     (setq meep-state-region-elem nil)
-    ;; Begin selecting (set the mark to the points location).
-    ;; Use `meep-region-activate-and-reverse' to activation the region with the old mark.
+    ;; Begin selecting (set the mark to the point's location).
+    ;; Use `meep-region-activate-and-reverse' to activate the region with the old mark.
     (set-mark (point))
     (activate-mark t)))
 
@@ -2650,7 +2647,7 @@ If you wish to activate the region between the existing point and mark see:
 (defun meep-region-activate-or-reverse ()
   "Activate the region without moving the mark.
 
-Otherwise exchange the point and mark when the region is already active.
+Otherwise exchange point and mark when the region is already active.
 See: `meep-region-activate-and-reverse'."
   (interactive)
   (cond
@@ -2691,9 +2688,9 @@ this operation makes it stay active, running again clears it."
 
 ;;;###autoload
 (defun meep-region-activate-and-reverse ()
-  "Exchange the point and mark, activating the region.
+  "Exchange point and mark, activating the region.
 
-To first activate the region without exchanging the point and mark:
+To first activate the region without exchanging point and mark:
 See: `meep-region-activate-or-reverse'.
 
 Note that this wraps Emacs built-in: `exchange-point-and-mark'."
@@ -2704,7 +2701,7 @@ Note that this wraps Emacs built-in: `exchange-point-and-mark'."
   (exchange-point-and-mark))
 
 (defun meep--last-motion-calc-whole-mark-pos (use-adjust-mark)
-  "When a partial motion command has been made.
+  "Calculate the mark position to select the whole object from a partial motion.
 
 When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
   (declare (important-return-value t))
@@ -2763,7 +2760,7 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
 
 ;;;###autoload
 (defun meep-region-activate-and-reverse-motion ()
-  "Exchange the point and mark, activating the region."
+  "Exchange point and mark, activating the region."
   (interactive)
   (let ((last-motion-info (meep--last-motion-calc-whole-mark-pos nil)))
     (cond
@@ -2785,13 +2782,13 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
 - When the region is on a single line:
   The text after point implies the selection.
 - When a line-wise region is used:
-  The same number of lines after the point is used (ignoring line length).
+  The same number of lines after point is used (ignoring line length).
 - When a rectangle-wise region is used:
   The text after & lines below are used to create the implied selection."
   :type 'boolean)
 
 (defun meep--range-list-as-marker-list (ranges)
-  "Create a list of markers from RANGES of integer ranges."
+  "Create a list of markers from RANGES, a list of integer ranges."
   (declare (important-return-value t))
   (mapcar
    (lambda (item)
@@ -2806,8 +2803,8 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
 (defun meep--region-swap-contiguous-impl (is-line-wise)
   "Swap the region with the secondary.
 
-When IS-LINE-WISE is non-nil, the secondary selection represents whole lines,
-this impacts `meep-region-swap-imply-region' causing the implied region to extend
+When IS-LINE-WISE is non-nil, the secondary selection represents whole lines.
+This impacts `meep-region-swap-imply-region', causing the implied region to extend
 to line boundaries."
   (let ((range-a nil)
         (range-b nil)
@@ -3127,7 +3124,7 @@ only the secondary region needs to be set."
 If the region no longer meets line bounds, return nil."
   (cond
    ((eq meep-state-region-elem 'line-wise)
-    ;; Ensure the region is line based (even if not active).
+    ;; Ensure the region is line-based (even if not active).
     (let ((beg (region-beginning))
           (end (region-end)))
       (save-excursion
@@ -3216,7 +3213,7 @@ use to maintain line-based selection."
             ;; This is (among other reasons)
             ;; so it's possible to select a line and cut it.
             ;; It also has some minor added benefits.
-            ;; - The cursor doesn't scroll of the RHS of the screen
+            ;; - The cursor doesn't scroll off the RHS of the screen
             ;;   for long lines.
             ;; - Moving the cursor up-down can stick to column zero.
             (unless (funcall is-line-empty-fn)
@@ -3270,7 +3267,7 @@ use to maintain line-based selection."
 
 ;; When non-nil, don't attempt to extend in both directions.
 ;; This is useful so it's possible to expand into brackets or quotes
-;; but stop symmetrical extending once the first syntax mismatch if found.
+;; but stop symmetrical extending once the first syntax mismatch is found.
 (defvar-local meep--region-syntax-asym nil)
 
 ;; Special case, if we *only* traversed blank space,
@@ -3296,7 +3293,7 @@ When only blank space was skipped, skip all blank space."
               ;; The entire range was blank.
               (setq is-blank t))))))
 
-    ;; If all chars where blank, skip any other blanks
+    ;; If all chars were blank, skip any other blanks
     ;; (even if this crosses other kinds of syntax).
     (when is-blank
       (skip-chars-backward "[:blank:]\n" lim)
@@ -3321,7 +3318,7 @@ When only blank space was skipped, skip all blank space."
               ;; The entire range was blank.
               (setq is-blank t))))))
 
-    ;; If all chars where blank, skip any other blanks
+    ;; If all chars were blank, skip any other blanks
     ;; (even if this crosses other kinds of syntax).
     (when is-blank
       (skip-chars-forward "[:blank:]\n" lim)
@@ -3330,8 +3327,7 @@ When only blank space was skipped, skip all blank space."
     result))
 
 (defun meep--region-syntax-or-symbol-forward (syntax &optional lim)
-  "Wrap `skip-syntax-forward' skipping SYNTAX in LIM.
-Also skip any symbol bounds."
+  "Like `skip-syntax-forward' for SYNTAX with LIM, but also skip symbol bounds."
   (let ((bounds-end (cdr (bounds-of-thing-at-point 'symbol))))
     (cond
      ((and bounds-end (< (point) bounds-end))
@@ -3341,8 +3337,7 @@ Also skip any symbol bounds."
       (meep--skip-syntax-forward-or-blank syntax lim)))))
 
 (defun meep--region-syntax-or-symbol-backward (syntax &optional lim)
-  "Wrap `skip-syntax-backward' skipping SYNTAX in LIM.
-Also skip any symbol bounds."
+  "Like `skip-syntax-backward' for SYNTAX with LIM, but also skip symbol bounds."
   (let ((bounds-beg (car (bounds-of-thing-at-point 'symbol))))
     (cond
      ((and bounds-beg (> (point) bounds-beg))
@@ -3677,9 +3672,9 @@ Also skip any symbol bounds."
 (defun meep-region-syntax-expand (arg)
   "Expand on matching syntax table elements ARG times.
 
-When there is no active region, active and expand the region.
-This can be used to quickly mark symbols or blocks of contiguous syntax
-including of blank-space."
+When there is no active region, activate and expand the region.
+This can be used to quickly mark symbols or blocks of contiguous syntax,
+including blank-space."
   (interactive "p")
   (cond
    ((< arg 0)
@@ -3705,7 +3700,7 @@ including of blank-space."
 (defvar meep--numeric-last-prefix-arg nil)
 
 (defun meep--last-command ()
-  "A version of `last-command' that isn't masked by numeric arguments."
+  "Like `last-command' but not masked by numeric arguments."
   (declare (important-return-value t))
   (cond
    ;; The symbol check is needed as keys may be bound to a lambda,
@@ -3716,7 +3711,7 @@ including of blank-space."
     last-command)))
 
 (defun meep--last-prefix-arg ()
-  "A version of `last-prefix-arg' that isn't masked by numeric arguments."
+  "Like `last-prefix-arg' but not masked by numeric arguments."
   (declare (important-return-value t))
   (cond
    ;; The symbol check is needed as keys may be bound to a lambda,
@@ -3732,7 +3727,7 @@ including of blank-space."
 
 This must be bound to keys 0..9 or the minus key."
   (interactive)
-  ;; Copied from `digit-command'
+  ;; Copied from `digit-command'.
   (let* ((char
           (cond
            ((integerp last-command-event)
@@ -3767,7 +3762,7 @@ This must be bound to keys 0..9 or the minus key."
       ;; TODO: explore how negative should be applied to the existing "digit".
       ;; TODO: check fn using the previous prefix arg.
       (let ((current-prefix-arg digit)
-            ;; Ensures an action can be adjusted without setting the mark.
+            ;; Ensure an action can be adjusted without setting the mark.
             (meep-mark-set-on-motion-override t))
         (call-interactively local-last-command)))))
 
@@ -3783,7 +3778,7 @@ This must be bound to keys 0..9 or the minus key."
 
 ;;;###autoload
 (defun meep-register-kmacro-start-or-end ()
-  "Begin defining a macro."
+  "Start or stop recording a keyboard macro to a register."
   (interactive)
   (cond
    ;; End recording.
@@ -3799,7 +3794,7 @@ This must be bound to keys 0..9 or the minus key."
 
 ;;;###autoload
 (defun meep-register-jump-to (arg)
-  "Jump to the register, may jump to a location or call a macro ARG times."
+  "Jump to a register or execute a macro stored in a register, ARG times."
   (interactive "p")
   (let* ((reg (register-read-with-preview "Use register: "))
          (val (get-register reg)))
@@ -3815,14 +3810,14 @@ This must be bound to keys 0..9 or the minus key."
 
 
 ;; ---------------------------------------------------------------------------
-;; I-search Wrapper
+;; ISEARCH Wrapper
 ;;
 ;; Support searching in both directions as well as
 ;; searching based on the active region.
 
 ;; Wrapped search.
 (defcustom meep-isearch-activate-mark t
-  "I-search activates the mark (transient).
+  "ISEARCH activates the mark (transient).
 So motion drops the selection.
 
 Useful for pasting while stepping over search results."
@@ -3859,14 +3854,14 @@ When HAD-REGION is non-nil, mark the region."
 
 ;;;###autoload
 (defun meep-isearch-regexp-next ()
-  "Search forward a REGEXP."
+  "Search forward for a regexp."
   (interactive)
   (add-hook 'isearch-mode-end-hook #'meep--isearch-done-hook 0 t)
   (call-interactively #'isearch-forward-regexp))
 
 ;;;###autoload
 (defun meep-isearch-regexp-prev ()
-  "Search backward a REGEXP."
+  "Search backward for a regexp."
   (interactive)
   (add-hook 'isearch-mode-end-hook #'meep--isearch-done-hook 0 t)
   (call-interactively #'isearch-backward-regexp))
@@ -3911,7 +3906,7 @@ When HAD-REGION is non-nil, mark the region."
 
 
 (defun meep--isearch-extract-regex-from-bounds (text-bounds)
-  "Extract regex from a TEXT-BOUNDS purpose of searching."
+  "Extract a regexp from TEXT-BOUNDS for the purpose of searching."
 
   (let ((text (buffer-substring-no-properties (car text-bounds) (cdr text-bounds)))
         (beg nil)
@@ -3919,7 +3914,7 @@ When HAD-REGION is non-nil, mark the region."
         (beg-test-list (list "\\_<" "\\<" "\\b"))
         (end-test-list (list "\\_>" "\\>" "\\b")))
 
-    ;; NOTE: exactly how to do this isn't clear, looking-at commands work well-enough.
+    ;; NOTE: exactly how to do this isn't clear, looking-at commands work well enough.
     (save-excursion
       (goto-char (car text-bounds))
       (while beg-test-list
@@ -3966,7 +3961,7 @@ When HAD-REGION is non-nil, mark the region."
     (let ((text (meep--isearch-extract-regex-from-bounds text-bounds)))
       (push text regexp-search-ring)
       ;; This function defines the search as being "regex",
-      ;; so it's important I-search's variable is set accordingly.
+      ;; so it's important ISEARCH's variable is set accordingly.
       (setq isearch-regexp t)
 
       ;; Inline `isearch-yank-string' because it expects non regex text,
@@ -3981,14 +3976,14 @@ When HAD-REGION is non-nil, mark the region."
 
 ;;;###autoload
 (defun meep-isearch-at-point-next (arg)
-  "Search forwards for the symbol or region at the current point.
+  "Search forwards for the symbol or region at point.
 Repeat the search ARG times."
   (interactive "p")
   (meep--isearch-at-point-impl arg))
 
 ;;;###autoload
 (defun meep-isearch-at-point-prev (arg)
-  "Search backwards for the symbol or region at the current point.
+  "Search backwards for the symbol or region at point.
 Repeat the search ARG times."
   (interactive "p")
   (meep--isearch-at-point-impl (- arg)))
@@ -4037,7 +4032,7 @@ Repeat the search ARG times."
   `(meep--respect-goal-column-impl (lambda () ,@body)))
 
 (defun meep--delete-from-motion-fn (fn)
-  "Kill based on a motion from calling FN."
+  "Delete text to point after calling FN."
   (let ((pos-orig (point))
         (pos-next
          (save-excursion
@@ -4048,28 +4043,28 @@ Repeat the search ARG times."
 ;; NOTE: this is mainly useful for binding in insert mode.
 ;;;###autoload
 (defun meep-delete-symbol-next (arg)
-  "Kill the symbol forwards ARG times."
+  "Delete the symbol forwards ARG times."
   (interactive "*p")
   (meep--delete-from-motion-fn (lambda () (forward-thing 'symbol arg))))
 
 ;; NOTE: this is mainly useful for binding in insert mode.
 ;;;###autoload
 (defun meep-delete-symbol-prev (arg)
-  "Kill the symbol backwards ARG times."
+  "Delete the symbol backwards ARG times."
   (interactive "*p")
   (meep--delete-from-motion-fn (lambda () (forward-thing 'symbol (- arg)))))
 
 ;; NOTE: this is mainly useful for binding in insert mode.
 ;;;###autoload
 (defun meep-delete-same-syntax-next (arg)
-  "Kill the syntax-spans forwards ARG times."
+  "Delete characters with the same syntax class forwards, ARG times."
   (interactive "*p")
   (meep--delete-from-motion-fn (lambda () (meep--move-same-syntax-impl arg t (cons nil nil) nil))))
 
 ;; NOTE: this is mainly useful for binding in insert mode.
 ;;;###autoload
 (defun meep-delete-same-syntax-prev (arg)
-  "Kill the syntax-spans backwards ARG times."
+  "Delete characters with the same syntax class backwards, ARG times."
   (interactive "*p")
   (meep--delete-from-motion-fn
    (lambda () (meep--move-same-syntax-impl (- arg) t (cons nil nil) nil))))
@@ -4077,7 +4072,7 @@ Repeat the search ARG times."
 ;; NOTE: this is mainly useful for binding in insert mode.
 ;;;###autoload
 (defun meep-delete-same-syntax-or-symbol-next (arg)
-  "Kill the syntax-spans or symbols forwards ARG times."
+  "Delete characters with the same syntax class or symbols forwards, ARG times."
   (interactive "*p")
   (meep--delete-from-motion-fn
    (lambda () (meep--move-same-syntax-impl arg t (cons nil nil) 'symbol))))
@@ -4085,7 +4080,7 @@ Repeat the search ARG times."
 ;; NOTE: this is mainly useful for binding in insert mode.
 ;;;###autoload
 (defun meep-delete-same-syntax-or-symbol-prev (arg)
-  "Kill the syntax-spans or symbols backwards ARG times."
+  "Delete characters with the same syntax class or symbols backwards, ARG times."
   (interactive "*p")
   (meep--delete-from-motion-fn
    (lambda () (meep--move-same-syntax-impl (- arg) t (cons nil nil) 'symbol))))
@@ -4118,7 +4113,7 @@ This deletion is not sent to the `kill-ring'."
 ;; Note that this is only accumulated on successive calls.
 
 (defvar meep-delete-char-ring nil
-  "Deleted characters.
+  "Ring of deleted characters.
 Used by `meep-delete-char-ring-next', `meep-delete-char-ring-prev' &
 `meep-delete-char-ring-yank'.")
 
@@ -4174,7 +4169,7 @@ When KEEP is non-nil, don't modify the char-ring."
       (unless keep
         (setq meep-delete-char-ring char-ring))))
    (t
-    (message "Delete char ring empty"))))
+    (message "Delete char-ring empty"))))
 
 ;;;###autoload
 (defun meep-delete-char-ring-yank (arg)
@@ -4370,8 +4365,8 @@ Insert ARG times."
 ;; Text Editing: Surround Insert/Delete
 
 (defun meep--char-surround-insert-impl (ch arg line-wise)
-  "Surround the region by CH ARG times.
-When LINE-WISE is non-nil, surround each line otherwise use region bounds."
+  "Surround the region with CH, repeated ARG times.
+When LINE-WISE is non-nil, surround each line, otherwise use region bounds."
   ;; Sanitize numeric prefix.
   (when (< arg 0)
     (setq arg (abs arg)))
@@ -4466,7 +4461,7 @@ When LINE-WISE is non-nil, surround each line otherwise use region bounds."
       (unless (eq buffer-len-old buffer-len-new)
         ;; A small nicety, if the point is on the beginning,
         ;; keep it "inside" the surrounding characters.
-        ;; Only the left hand side needs updating.
+        ;; Only the left-hand side needs updating.
         (let* ((m (mark-marker))
                (p-pos (point))
                ;; Can be nil (the mark may have no position).
@@ -4492,7 +4487,7 @@ When there is no active region, surround the current point."
   "Read a character CH and surround the selected lines with it.
 Insert ARG times.
 
-When multiple lines are are in the active region,
+When multiple lines are in the active region,
 surround each line individually.
 When there is no active region, surround the current line."
   (interactive "*cSurround Lines by Char:\np")
@@ -4503,7 +4498,7 @@ When there is no active region, surround the current line."
 ;; Text Editing: Join Lines
 ;;
 ;; Line joining with support for left-trimming code-comments,
-;; so this may be used to conveniently joining lines in code.
+;; so this may be used to conveniently join lines in code.
 ;;
 ;; For an example of languages using ``#`` prefixed comments (Python or Shell):
 ;;
@@ -4529,7 +4524,7 @@ When there is no active region, surround the current line."
 ;;
 ;; .. code-block:: c
 ;;
-;;    /* Example. Block. Next line. */
+;;    /* Example block. next line. */
 
 (defun meep--join-maybe-skip-comment-prefix (limit)
   "Skip forward over comment chars and any following blank-space.
@@ -4562,7 +4557,7 @@ Don't skip past LIMIT."
 
     ;; Collapse block comments for C style languages.
     (when (and (bound-and-true-p c-buffer-is-cc-mode)
-               ;; Less trouble then checking all the derived modes.
+               ;; Less trouble than checking all the derived modes.
                (bound-and-true-p c-block-comment-prefix))
       ;; Blank space has already been skipped, so trim it here.
       ;; The alternative could be to step backwards,
@@ -4619,7 +4614,7 @@ Don't skip past LIMIT."
     result))
 
 (defun meep--join-range (bol eol use-comment-strip)
-  "Join new lines between BOL & EOL.
+  "Join newlines between BOL & EOL.
 When USE-COMMENT-STRIP is non-nil, strip comments."
   (cond
    ;; Detect end of buffer.
@@ -4641,7 +4636,7 @@ When USE-COMMENT-STRIP is non-nil, strip comments."
         (cons eol-ws bol-ws-next))))))
 
 (defun meep--join-delete-region-maybe-space (beg end add-space)
-  "Join newline in the region from BEG to END.
+  "Join newlines in the region from BEG to END.
 When ADD-SPACE is true, ensure a space separator."
   (let ((result 0))
     (unless (eq beg end)
@@ -4778,7 +4773,7 @@ USE-COMMENT-STRIP, strips comments between lines."
 
 ;;;###autoload
 (defun meep-space-shrink-contextual ()
-  "Blank space removal.
+  "Remove blank space contextually.
 - When on a blank line, remove surrounding blank lines.
 - When on a blank character remove multiple blank characters.
 - Otherwise, when over a paragraph, trim the bounds to a single blank line.
@@ -4821,7 +4816,7 @@ Return non-nil when a change was made."
          (t
           nil))))
 
-     ;; No space or single space single space.
+     ;; No space or single space.
      ((or (eq (cdr line-bounds) (car line-bounds))
           (and (eq 1 (- (cdr line-bounds) (car line-bounds)))
                (eq ?\s (char-after (car line-bounds)))))
@@ -4858,8 +4853,8 @@ Return non-nil when a change was made."
 ;; These can be supported later.
 
 (defun meep--transpose-char-wise (n last-motion-info)
-  "Character-wise transpose N times, treated as a special case.
-General last motion info: LAST-MOTION-INFO."
+  "Transpose characters N times.
+LAST-MOTION-INFO contains the motion information."
   ;; TODO: support multiple times.
   (ignore n)
   (let ((result nil)
@@ -4886,8 +4881,8 @@ General last motion info: LAST-MOTION-INFO."
     result))
 
 (defun meep--transpose-line-wise (n last-motion-info)
-  "Line-wise transpose N times, treated as a special case.
-General last motion info: LAST-MOTION-INFO."
+  "Transpose lines N times.
+LAST-MOTION-INFO contains the motion information."
   ;; TODO: support multiple times.
   (ignore n)
   ;; TODO: implement this directly without `transpose-lines',
@@ -4922,8 +4917,8 @@ General last motion info: LAST-MOTION-INFO."
     result))
 
 (defun meep--transpose-any-motion (n last-motion-info)
-  "Any-motion wise transpose N times.
-General last motion info: LAST-MOTION-INFO."
+  "Transpose based on any motion, N times.
+LAST-MOTION-INFO contains the motion information."
   ;; TODO: support multiple times.
   (ignore n)
   (let* ((range-a (cons (car last-motion-info) (point)))
@@ -4991,7 +4986,7 @@ General last motion info: LAST-MOTION-INFO."
 This can be used to transpose words if the previous motion was over words.
 Transposing lines and characters is also supported.
 
-Note using ARG to declare the number of times has not yet been implemented."
+Note that using ARG to specify repetition count is not yet implemented."
   (interactive "*p")
   ;; TODO: support repeating this command N times as well as `repeat-fu'.
   (let ((last-motion-info (meep--last-motion-calc-whole-mark-pos t)))
@@ -5058,10 +5053,10 @@ Note using ARG to declare the number of times has not yet been implemented."
 
 ;; NOTE: this isn't used by the default key-map
 ;; but is supported by other popular modal editing systems.
-;; Inserts after the cursor OR on the opposite end of the region.
+;; Insert after the cursor OR on the opposite end of the region.
 ;;;###autoload
 (defun meep-insert-append ()
-  "Enter insert mode."
+  "Enter insert mode after the cursor, or at the opposite end of the region."
   (interactive)
   (cond
    ((region-active-p)
@@ -5073,7 +5068,7 @@ Note using ARG to declare the number of times has not yet been implemented."
 
 ;;;###autoload
 (defun meep-insert-at-last ()
-  "Enter insert mode where insert mode was last exited."
+  "Enter insert mode at the position it was last exited."
   (interactive)
   (let ((pos-last-insert (meep--register-position-or-message meep-state-insert-register)))
     (cond
@@ -5084,7 +5079,8 @@ Note using ARG to declare the number of times has not yet been implemented."
       nil))))
 
 (defun meep--insert-overwrite-disable-on-exit ()
-  "A callback to disable overwrite mode."
+  "Disable overwrite mode when leaving INSERT state.
+Intended to be called by a hook."
   (overwrite-mode -1)
   ;; Don't check if it's valid since this hook can only be installed if the symbol is found.
   (let ((hook-sym (bray-state-get-hook-exit meep-state-insert)))
@@ -5217,7 +5213,8 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
     (bray-state-set meep-state-insert))))
 
 (defun meep--insert-into-last-impl (move)
-  "Insert text into the last insert point, MOVE deletes the original."
+  "Insert text into the last insert point.
+When MOVE is non-nil, delete the original text."
   (let ((pos-last-insert (meep--register-position-or-message meep-state-insert-register)))
     (cond
      ((null pos-last-insert)
@@ -5252,7 +5249,7 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
 (defun meep-insert-into-last-copy ()
   "Insert text into last insert point (copying it).
 
-When there is no active region, the symbol at the point is used."
+When there is no active region, the symbol at point is used."
   (interactive "*")
   (meep--insert-into-last-impl nil))
 
@@ -5260,7 +5257,7 @@ When there is no active region, the symbol at the point is used."
 (defun meep-insert-into-last-move ()
   "Insert text into last insert point (moving it).
 
-When there is no active region, the symbol at the point is used."
+When there is no active region, the symbol at point is used."
   (interactive "*")
   (meep--insert-into-last-impl t))
 
@@ -5301,7 +5298,7 @@ When there is no active region, the symbol at the point is used."
 ;; ---------------------------------------------------------------------------
 ;; Clipboard: System Only
 ;;
-;; These commands only wrap the "systems" clipboard,
+;; These commands only wrap the system's clipboard,
 ;; without mixing the kill-ring or primary clipboard - for predictable results.
 
 (defun meep--clipboard-only-cut-or-copy-impl (beg end do-cut)
@@ -5328,19 +5325,19 @@ When DO-CUT is non-nil, cut instead of copying."
 
 ;;;###autoload
 (defun meep-clipboard-only-copy ()
-  "Copy the region using the clipboard-only."
+  "Copy the region to the system clipboard."
   (interactive)
   (meep--clipboard-only-cut-or-copy-impl (region-beginning) (region-end) nil))
 
 ;;;###autoload
 (defun meep-clipboard-only-cut ()
-  "Cut the region using the clipboard-only."
+  "Cut the region to the system clipboard."
   (interactive "*")
   (meep--clipboard-only-cut-or-copy-impl (region-beginning) (region-end) t))
 
 ;;;###autoload
 (defun meep-clipboard-only-cut-line ()
-  "Cut the whole line using the clipboard-only."
+  "Cut the whole line to the system clipboard."
   (interactive "*")
   ;; Note that this command writes to the system clipboard.
   ;; (kill-whole-line)
@@ -5348,7 +5345,7 @@ When DO-CUT is non-nil, cut instead of copying."
    (meep--clipboard-only-cut-or-copy-impl (pos-bol) (min (1+ (pos-eol)) (point-max)) t)))
 
 (defun meep--clipboard-only-yank-impl ()
-  "Yank-replace from clipboard-only."
+  "Yank-replace from the system clipboard."
   (let ((text (funcall interprogram-paste-function)))
     ;; This is strange that emacs cannot access its own selection.
     ;; Copy sets this value, could investigate this further.
@@ -5434,7 +5431,7 @@ When DO-CUT is non-nil, cut instead of copying."
 
 ;;;###autoload
 (defun meep-clipboard-only-yank-with-indent ()
-  "Yank from the clipboard-only, replacing the region (indenting the content)."
+  "Yank from the system clipboard, replacing the region (indenting the content)."
   (interactive "*")
   (let ((yank-transform-functions
          (list
@@ -5447,7 +5444,7 @@ When DO-CUT is non-nil, cut instead of copying."
 
 ;;;###autoload
 (defun meep-clipboard-only-yank ()
-  "Yank from the clipboard-only, replacing the region (as lines)."
+  "Yank from the system clipboard, replacing the region."
   (interactive "*")
   (meep--clipboard-only-yank-impl))
 
@@ -5468,12 +5465,12 @@ When DO-CUT is non-nil, cut instead of copying."
 ;;
 ;; Note that rect-wise regions are also stored in the kill-ring and paste from the top-left.
 
-;; Currently only used to differentiate each kind regions (line-wise & rect-wise).
+;; Currently only used to differentiate region types (line-wise & rect-wise).
 (defun meep--yank-handler-line-wise (&rest args)
-  "Line wise wrapper for ARGS."
+  "Line-wise yank-handler, forward ARGS to `insert'."
   (apply #'insert args))
 (defun meep--yank-handler-rect-wise (&rest args)
-  "Rectangle wise wrapper for ARGS."
+  "Rectangle-wise yank-handler, forward ARGS to `insert'."
   (apply #'insert args))
 (defconst meep--yank-handler-from-region-type-alist
   '((line-wise . meep--yank-handler-line-wise) (rect-wise . meep--yank-handler-rect-wise)))
@@ -5489,8 +5486,8 @@ When DO-CUT is non-nil, cut instead of copying."
   (car (rassq yank-handler meep--yank-handler-from-region-type-alist)))
 
 (defun meep--wrap-current-kill (n &optional do-not-move)
-  "Wrap `current-kill', only ever use the kill ring.
-Forward N & DO-NOT-MOVE."
+  "Like `current-kill' but only use the kill ring.
+N & DO-NOT-MOVE are passed to `current-kill'."
   (declare (important-return-value t))
   (let ((interprogram-paste-function nil))
     (current-kill n do-not-move)))
@@ -5573,8 +5570,8 @@ When ROTATE-AS-STACK is non-nil, step to the next item in the kill ring."
       (error "Unexpected region type %S (this is a bug)" region-type)))))
 
 (defun meep--clipboard-killring-yank-impl-interactive (arg do-not-move rotate-as-stack)
-  "Handle interactive part of yanking, interpret raw ARG.
-Forward DO-NOT-MOVE & ROTATE-AS-STACK."
+  "Handle interactive part of yanking, interpreting raw ARG.
+DO-NOT-MOVE & ROTATE-AS-STACK are passed to the implementation."
   (cond
    ;; Simplifies logic below if this is caught early.
    ((null kill-ring)
@@ -5591,12 +5588,12 @@ Forward DO-NOT-MOVE & ROTATE-AS-STACK."
     (meep--clipboard-killring-yank-impl arg do-not-move rotate-as-stack))))
 
 (defun meep--clipboard-killring-cut-or-copy (beg end region-type do-cut)
-  "An equivalent to `kill-region' that respects MEEP clipboard settings.
+  "Like `kill-region' but respects MEEP clipboard settings.
 Arguments BEG & END define the region.
 When DO-CUT is non-nil, delete the region.
 
-When REGION-TYPE is non-nil, store the region type in the kill ring,
-this may be used when yanking."
+When REGION-TYPE is non-nil, store the region type in the kill ring.
+This may be used when yanking."
   (cond
    ((eq beg end)
     (message "%s empty region, doing nothing."
@@ -5677,16 +5674,16 @@ The region need not be active."
 ;; TODO: a pop like emacs which cycles.
 ;;;###autoload
 (defun meep-clipboard-killring-yank-pop-stack (arg)
-  "Yank from the ARG'th item from the `kill-ring' which is rotated.
+  "Yank the ARG'th item from the `kill-ring', rotating it.
 
-Rotating the kill ring means that you may kill multiple items,
+Rotating the kill ring means you may kill multiple items,
 then conveniently yank those items afterwards."
   (interactive "*P")
   (meep--clipboard-killring-yank-impl-interactive arg nil t))
 
 ;;;###autoload
 (defun meep-clipboard-killring-yank (arg)
-  "Yank from the ARG'th item from the `kill-ring'.
+  "Yank the ARG'th item from the `kill-ring'.
 The region is replaced (when active)."
   (interactive "*P")
   (meep--clipboard-killring-yank-impl-interactive arg t nil))
@@ -5728,18 +5725,18 @@ The region is replaced (when active)."
 (defvar meep--clipboard-register-current nil)
 
 (defvar meep-clipboard-register-map (make-sparse-keymap)
-  "Clipboard to use for the register-clipboard.
+  "Key-map for register clipboard actions.
 
-Used by `meep-clipboard-register-map'.")
+Used by `meep-clipboard-register-actions'.")
 
 (defun meep-clipboard-register-actions ()
   "Set the pre-defined register to use for `meep-clipboard-register-*' commands.
 
-Uses the `meep-clipboard-register-map' key-map."
+Use the `meep-clipboard-register-map' key-map."
   (interactive)
   (setq meep--clipboard-register-current (register-read-with-preview "Clipboard register: "))
   (set-transient-map meep-clipboard-register-map
-                     nil ; Don't keep the keymap it active.
+                     nil ; Don't keep the keymap active.
                      nil ; Don't run anything when exiting.
                      "Clipboard keys: %k or any other to exit"))
 
@@ -6038,7 +6035,7 @@ Uses the `meep-clipboard-register-map' key-map."
 Note that this only changes behavior when MEEP is used
 \(when `meep-enabled-p' succeeds)."
   ;; Check if MEEP is enabled, so this doesn't change behavior when the same operations
-  ;; are used elsewhere (mini-buffer or similar).
+  ;; are used elsewhere (minibuffer or similar).
   (cond
    ((meep-enabled-p)
     (meep--with-mark-on-motion-maybe-set
@@ -6048,7 +6045,7 @@ Note that this only changes behavior when MEEP is used
 
 ;;;###autoload
 (defun meep-command-mark-on-motion-advice-add (cmd)
-  "Add advice to CMD, so it sets the mark-on-motion.
+  "Add advice to CMD to set mark-on-motion.
 This can be explicitly overridden (when repeating).
 Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
   (advice-add cmd :around #'meep--command-mark-on-motion-advice)
@@ -6090,7 +6087,7 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 
 ;;;###autoload
 (defun meep-command-prop-get (cmd prop)
-  "Get CMD property for PROP or nil."
+  "Return the PROP property for CMD or nil."
   (declare (important-return-value t))
   (let* ((sym 'meep)
          (plist (get cmd sym)))
@@ -6098,7 +6095,7 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 
 ;;;###autoload
 (defun meep-command-prop-remove (cmd prop)
-  "Remove CMD property for PROP, remove the `meep' property if it's empty."
+  "Remove PROP from CMD's properties, removing the `meep' property if empty."
   (let* ((sym 'meep)
          (plist (get cmd sym)))
     (when plist
@@ -6269,14 +6266,14 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
   (eq t (meep-command-prop-get cmd :mark-on-motion)))
 ;;;###autoload
 (defun meep-command-is-mark-set-on-motion-any (cmd)
-  "Check if CMD is any motion."
+  "Return t if CMD is any type of mark-on-motion command."
   (declare (important-return-value t))
   (or (meep-command-is-mark-set-on-motion cmd)
       (meep-command-is-mark-set-on-motion-adjust cmd)
       (meep-command-is-mark-set-on-motion-no-repeat cmd)))
 ;;;###autoload
 (defun meep-command-is-mark-activate (cmd)
-  "Return t if CMD doesn't use mark on motion (unless the region is active)."
+  "Return t if CMD activates the mark."
   (declare (important-return-value t))
   (eq t (meep-command-prop-get cmd :mark-activate)))
 ;;;###autoload
@@ -6308,9 +6305,9 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 
 ;;;###autoload
 (defun meep-bootstrap-once ()
-  "Run this to initialize MEEP.
+  "Initialize MEEP.
 
-This may be used for `use-package' commands, to defer loading MEEP until it's needed."
+This may be used with `use-package' to defer loading MEEP until needed."
   (ignore))
 
 (provide 'meep)
