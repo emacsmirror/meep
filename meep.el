@@ -96,6 +96,10 @@ This must be set by commands that pass the:
 ;; ---------------------------------------------------------------------------
 ;; Internal Functions: Generic Helpers
 
+(defun meep--assert-unreachable ()
+  "Raise an error."
+  (error "Assertion, unreachable"))
+
 (defmacro meep--assert (condition)
   "Assert CONDITION is non-nil."
   `(unless ,condition
@@ -3390,7 +3394,7 @@ When only blank space was skipped, skip all blank space."
     -1)
    (t
     ;; Should never reach this (all chars must be accounted for).
-    (meep--assert-failed))))
+    (meep--assert-unreachable))))
 
 (defun meep--region-syntax-expand-impl (n)
   "Expand matching syntax table N times."
