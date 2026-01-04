@@ -1,41 +1,40 @@
-
 ##############
 MEEP for Emacs
 ##############
 
-MEEP is a modal editing system for emacs.
+MEEP is a modal editing system for Emacs.
 
-Available via `melpa <https://melpa.org/#/meep>`__.
+Available via `MELPA <https://melpa.org/#/meep>`__.
 
 
 Motivation
 ==========
 
 The main motivation for MEEP was to provide a modal editing environment
-that can co-exist with Emacs default key bindings.
+that can co-exist with Emacs' default key-bindings.
 
-Support VIM-like Workflow
-   Common operations which are possible in VIM should be possible in MEEP
+VIM-like Workflow
+   Common operations that are possible in VIM should be possible in MEEP
    with a similar number of key-strokes.
 Low Friction Integration
-   Use of a modal editing shouldn't impose additional constraints (where possible)
-   or complicate use of 3rd party packages.
+   Use of modal editing shouldn't impose additional constraints (where possible)
+   or complicate the use of third-party packages.
 Low Complexity
    Avoid "clever" solutions that often end up causing unforeseen complications.
 
-For the most part MEEP is just a collection of commands that could be called independently of each other.
+For the most part, MEEP is just a collection of commands that can be called independently of each other.
 
 
 Other Pages
 ===========
 
 - `Overview <https://codeberg.org/ideasman42/emacs-meep/src/branch/main/docs/overview.rst>`__:
-  for extended information on the design & implementation.
+  for extended information on the design and implementation.
 - `Comparisons <https://codeberg.org/ideasman42/emacs-meep/src/branch/main/docs/comparisons.rst>`__:
   for the rationale and comparisons with other modal-editing systems.
 - `Command Reference <https://codeberg.org/ideasman42/emacs-meep/src/branch/main/docs/reference.rst>`__:
   for a list of commands and options.
-- `Default Keymap <https://codeberg.org/ideasman42/emacs-meep/raw/branch/main/init/default/init.el>`__:
+- `Default Key-map <https://codeberg.org/ideasman42/emacs-meep/raw/branch/main/init/default/init.el>`__:
   for reference and an example key-map.
 - `Hacking <https://codeberg.org/ideasman42/emacs-meep/src/branch/main/docs/hacking.rst>`__:
   notes for working on the code.
@@ -47,7 +46,7 @@ Features
 ========
 
 - Persistent selection (as its own state with its own key-map).
-- Repeat multiple commands (edits, insertions, changes, etc).
+- Repeat multiple commands (edits, insertions, changes, etc.).
 - Rectangle selection support (cut/paste/swap/replace/change/surround).
 - Find character on line (VIM style).
 - Record and replay macros (VIM style).
@@ -58,22 +57,22 @@ Features
 Development Status
 ==================
 
-It is expected that MEEP should be usable for your text editing needs,
-some functionality is being developed and refined.
+MEEP should be usable for your text editing needs.
+Some functionality is being developed and refined.
 
-While large breaking changes are avoided but some minor changes may occur during development.
+While large breaking changes are avoided, some minor changes may occur during development.
 
 
 How it Works
 ============
 
-Instead of defining text-objects, most "motions" commands set the mark.
-This means commands afterwards can operate on the *region*, without activating it.
+Instead of defining text-objects, most motion commands set the mark.
+This means subsequent commands can operate on the *region*, without activating it.
 
-At first this may seem counter intuitive (since the region isn't visible)
+At first this may seem counter-intuitive (since the region isn't visible),
 but it doesn't take long to get used to this.
 
-Allowing for common actions such as change-word or cut-paragraph to be performed efficiently.
+This allows common actions such as change-word or cut-paragraph to be performed efficiently.
 
 
 Trying it Out
@@ -89,34 +88,34 @@ To try out MEEP without installing it, you may use the bundled example ``init.el
 Default Key-map
 ---------------
 
-A diagram for the default layout can be found in the example configuration, see:
+A diagram for the default layout can be found in the example configuration:
 `init.el <https://codeberg.org/ideasman42/emacs-meep/raw/branch/main/init/default/init.el>`__.
 
 
 Installing
 ==========
 
-While it is possible to install this package and access commands
-a typical installation is expected to be integrated into your ``init.el`` file.
+While it is possible to install this package and access commands,
+you would typically integrate it into your ``init.el`` file.
 
-For reference see the minimal example:
+For reference, see the minimal example:
 `init.el <https://codeberg.org/ideasman42/emacs-meep/raw/branch/main/init/minimal/init.el>`__.
 
-Which shows how MEEP commands can be used with Bray for a modal editing configuration.
+This shows how MEEP commands can be used with Bray for a modal editing configuration.
 
 
 Integration
 ===========
 
-If you wish to use "motion" commands from other packages with MEEP.
-A utility functions is ``meep-command-mark-on-motion-advice-add`` (as well as an associated remove function).
+To integrate motion commands from other packages with MEEP,
+use the utility function ``meep-command-mark-on-motion-advice-add`` (as well as an associated remove function).
 
-If you wish to repeat these motions by entering a number afterwards or selecting the whole item with
-``meep-exchange-point-and-mark-motion``, then these commands must accept a numeric argument
-(already a common convention).
+If you wish to repeat these motions by entering a number afterward,
+or select the whole item with ``meep-exchange-point-and-mark-motion``,
+these commands must accept a numeric argument (already a common convention).
 
-Note that without any integration, motion command from other packages can still be used,
-they just wont mark text to operate on.
+Note that without any integration, motion commands from other packages can still be used;
+they just won't mark text to operate on.
 
 
 Customization
@@ -125,7 +124,7 @@ Customization
 It's recommended to start out with one of the provided key-maps.
 
 See the
-`command reference <https://codeberg.org/ideasman42/emacs-meep/src/branch/main/docs/reference.rst>`__
+`Command Reference <https://codeberg.org/ideasman42/emacs-meep/src/branch/main/docs/reference.rst>`__
 for a list of custom options.
 
 
@@ -144,6 +143,6 @@ Other Packages
 These packages work well with MEEP.
 
 - `Avy <https://github.com/abo-abo/avy>`__:
-  For jumping to text by characters.
+  for character-based jumping.
 - `Shift numbers <https://codeberg.org/ideasman42/emacs-shift-number>`__:
   for incrementing/decrementing numbers.
