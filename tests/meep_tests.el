@@ -1875,7 +1875,7 @@ Verifies: error signaled for line count mismatch."
           (simulate-input-for-meep
             '(:state visual :command meep-region-swap))
         'user-error
-        "Rectangle line count mismatch (3 & 2)")
+        "Rectangle line count mismatch (3 and 2)")
       (should (equal text-initial (buffer-string))))))
 
 (ert-deftest region-swap-error-rectangle-overlapping ()

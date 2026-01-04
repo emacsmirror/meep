@@ -4,18 +4,18 @@
 
 ;;; Commentary:
 
-;; See: `../../emacs-run-local.sh' for running emacs with this as an INIT file.
+;; See: `../../emacs-run-local.sh' for running Emacs with this as an INIT file.
 ;; See: `meep-tests.py' for launching this script for tests.
 
 ;; Detect if this is running in a test environment.
-;; Otherwise we can assume this is an example for trying out meep.
+;; Otherwise we can assume this is an example for trying out MEEP.
 (defconst my-meep-is-test-env (null (string-empty-p (or (getenv "MEEP_TEST_ENV") "")))
-  "True when running tests")
+  "True when running tests.")
 
 ;; ----------------------------------------------------------------------------
 ;; Key-map
 ;;
-;; Symbols suffixes are as follows:
+;; Symbol suffixes are as follows:
 ;;
 ;; - Command
 ;;   ... no modifiers.
@@ -141,19 +141,19 @@
 
       ;; Left Hand: Row 2.
 
-      ;; NOTE: a more comprehensive surround map is really needed.
-      ;; This is only character level surround insertion.
+      ;; NOTE: A more comprehensive surround map is really needed.
+      ;; This is only character-level surround insertion.
       '("a" . meep-keypad)
       '("A" . my-key-free)
 
-      ;; "s" is currently `my-ex' don't map it.
+      ;; "s" is currently `my-ex'; don't map it.
       (cons (concat my-ex "s") 'meep-insert-at-last)
 
       '("d" . meep-region-toggle)
       '("D" . meep-region-expand-to-line-bounds)
       (cons (concat my-ex "d") 'rectangle-mark-mode)
 
-      ;; "f" is currently `my-find' don't map it.
+      ;; "f" is currently `my-find'; don't map it.
 
       '("F" . my-key-free)
 
@@ -172,7 +172,7 @@
       (cons (concat my-ex "c") 'meep-space-shrink-contextual)
 
       '("v" . meep-transpose)
-      '("V" . meep-clipboard-killring-cut-line) ; Odd-one out, locate for convenience.
+      '("V" . meep-clipboard-killring-cut-line) ; Odd one out, located for convenience.
 
       '("b" . meep-insert-change)
       '("B" . meep-insert-change-lines)
@@ -293,7 +293,7 @@
   ;; Since tests should not interfere with them.
   (dolist (key
            (list
-            ;; electric indent mode, gets in way of evil-style keys for plugins
+            ;; Electric indent mode, gets in the way of evil-style keys for plugins.
             "\C-j" "\C-k" "\C-m" "\C-w"
             "\C-e" ;; Was `move-end-of-line'
             "\C-a" ;; Was `move-beginning-of-line'
@@ -310,8 +310,8 @@
             "\M-e" ;; Was `forward-sentence'.
             "\C-t" ;; Was `transpose-chars'.
             "\C-\M-t" ;; Was `transpose-sexps'.
-            "\M-z" ;; Was zap-to-char (native emacs).
-            "\M-\ " ;; Was just-one-space (native emacs).
+            "\M-z" ;; Was zap-to-char (native Emacs).
+            "\M-\ " ;; Was just-one-space (native Emacs).
             "\C-_" ;; Was undo.
             "\C-v" ;; Was `scroll-up-command'.
             "\C-M-j" ;; Was `mark-defun'.
@@ -374,7 +374,7 @@
 (when my-meep-is-test-env
   ;; Just avoid added overhead.
   (global-eldoc-mode 0)
-  ;; This cause a pre-command hook to run that prints a message before each macro.
+  ;; This causes a pre-command hook to run that prints a message before each macro.
   ;; Harmless but noisy and unnecessary for tests.
   (tooltip-mode 0)
 
@@ -413,7 +413,7 @@
   (princ (apply #'format args) #'external-debugging-output))
 
 
-;; Setup packages we depend on.
+;; Set up packages we depend on.
 (unless my-meep-is-test-env
 
   ;; Load locally.
@@ -422,7 +422,7 @@
     (require 'meep))
 
   ;; Defer loading packages by default. Why?
-  ;; .. faster startup for packages which are only activated on certain modes or key bindings.
+  ;; Faster startup for packages which are only activated on certain modes or key-bindings.
   (setq use-package-always-defer t)
 
   (with-eval-after-load 'package
@@ -432,13 +432,13 @@
   (package-initialize)
 
   ;; Add the ability to upgrade all packages. Why?
-  ;; .. adds a quick way to upgrade everything at once.
+  ;; Adds a quick way to upgrade everything at once.
   (use-package package-utils
     :commands (package-utils-upgrade-all-and-recompile)
     :ensure t)
 
-  ;; Nice theme from VIM Why?
-  ;; .. personal preference.
+  ;; Nice theme from VIM. Why?
+  ;; Personal preference.
   (use-package inkpot-theme
     :demand t
     :ensure t
@@ -492,7 +492,7 @@
     (when (bray-state-derived-p 'normal)
       (bray-state-stack-push 'visual)))
   (defun meep-mark-hook-deactivate ()
-    "Activate visual state."
+    "Deactivate visual state."
     (when (bray-state-derived-p 'visual)
       (bray-state-stack-pop)))
 
@@ -521,7 +521,7 @@
      (deactivate-mark)
 
      ;; Testing this out!
-     ;; VIM style '^' register for when we leave insert mode.
+     ;; VIM-style '^' register for when we leave insert mode.
      (let ((reg ?^))
        (let ((reg-val (get-register reg)))
          (cond
@@ -536,7 +536,7 @@
   (defvar meep-state-keymap-visual (make-keymap))
   (defvar meep-state-keymap-insert (make-keymap))
 
-  ;; Optional, a quick way to mask insertion.
+  ;; Optional: a quick way to mask insertion.
   (define-key meep-state-keymap-motion [remap self-insert-command] 'my-key-free)
 
   (setq bray-state-definitions
