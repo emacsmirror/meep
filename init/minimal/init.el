@@ -4,13 +4,13 @@
 
 ;;; Commentary:
 
-;; A minimal configuration with primitive VIM like key bindings.
+;; A minimal configuration with primitive VIM-like key-bindings.
 
 ;; ----------------------------------------------------------------------------
 ;; Key-map
 ;;
-;; Primitive VIM like, HJKL motion.
-;; Note that MEEP and VIM operate on different principles
+;; Primitive VIM-like HJKL motion.
+;; Note that MEEP and VIM operate on different principles;
 ;; this is mainly an example for users to start out with
 ;; who are familiar with VIM.
 ;;
@@ -130,12 +130,12 @@
 ;; ----------------------------------------------------------------------------
 ;; Packages
 
-;; Setup packages we depend on.
+;; Set up packages we depend on.
 
 (defvar my-meep-load-path (file-name-concat (file-name-directory load-file-name) ".." ".."))
 
 ;; Defer loading packages by default. Why?
-;; .. faster startup for packages which are only activated on certain modes or key bindings.
+;; Faster startup for packages which are only activated on certain modes or key-bindings.
 (setq use-package-always-defer t)
 
 (with-eval-after-load 'package
@@ -151,7 +151,7 @@
 (use-package meep
   :commands (meep-bootstrap-once)
   :ensure nil
-  ;; NOTE: point to local path OR, remove once this is in a package-repository.
+  ;; NOTE: Point to local path, or remove once this is in a package repository.
   :load-path my-meep-load-path)
 
 (use-package repeat-fu
@@ -179,7 +179,7 @@
     (when (bray-state-derived-p 'normal)
       (bray-state-stack-push 'visual)))
   (defun meep-mark-hook-deactivate ()
-    "Activate visual state."
+    "Deactivate visual state."
     (when (bray-state-derived-p 'visual)
       (bray-state-stack-pop)))
 
@@ -206,7 +206,7 @@
    (lambda ()
      (deactivate-mark)
 
-     ;; VIM style '^' register for when we leave insert mode.
+     ;; VIM-style '^' register for when we leave insert mode.
      (let ((reg meep-state-insert-register))
        (let ((reg-val (get-register reg)))
          (cond
@@ -221,7 +221,7 @@
   (defvar meep-state-keymap-visual (make-keymap))
   (defvar meep-state-keymap-insert (make-keymap))
 
-  ;; Optional, a quick way to mask insertion.
+  ;; Optional: a quick way to mask insertion.
   (keymap-set meep-state-keymap-motion [remap self-insert-command] 'undefined)
 
   (setq bray-state-definitions
