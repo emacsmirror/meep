@@ -10,7 +10,7 @@ Custom Variables
 ----------------
 
 ``meep-mark-set-on-motion``: ``t``
-   Motion sets the mark.
+   When non-nil, motion commands set the mark.
 
 ``meep-state-insert-register``: ``94``
    The register set when leaving insert mode.
@@ -50,7 +50,7 @@ Custom Variables
    - When a line-wise region is used:
      The same number of lines after point is used (ignoring line length).
    - When a rectangle-wise region is used:
-     The text after & lines below are used to create the implied selection.
+     The text after and lines below are used to create the implied selection.
 
 ``meep-isearch-activate-mark``: ``t``
    ISEARCH activates the mark (transient).
@@ -63,7 +63,7 @@ Other Variables
 ---------------
 
 ``meep-state-region-elem``: ``nil``
-   Supported values are nil or the symbol 'line-wise.
+   Supported values are nil or ``line-wise``.
 
    Note that line-wise navigation is not enforced;
    this is a hint that commands may use.
@@ -86,12 +86,12 @@ Other Variables
    navigation to move to an outer scope.
 
    Only used between successive
-   ``meep-move-by-sexp-over-next`` & ``meep-move-by-sexp-over-prev`` calls.
+   ``meep-move-by-sexp-over-next`` and ``meep-move-by-sexp-over-prev`` calls.
 
 ``meep-delete-char-ring``: ``nil``
    Ring of deleted characters.
-   Used by ``meep-delete-char-ring-next``, ``meep-delete-char-ring-prev`` &
-   ``meep-delete-char-ring-yank``.
+   Used by ``meep-delete-char-ring-next``, ``meep-delete-char-ring-prev``,
+   and ``meep-delete-char-ring-yank``.
 
 ``meep-clipboard-register-map``: ``(keymap)``
    Key-map for register clipboard actions.
@@ -114,7 +114,7 @@ Commands may have a `meep' property which is expected to be a PLIST of propertie
 
      This is used so a motion can be adjusted,
      without breaking the chain of commands used to repeat an action.
-     So it's possible to perform a motion & any number of adjustments before an edit-command.
+     So it's possible to perform a motion and any number of adjustments before an edit-command.
 
      When repeating the motion, adjustments and edit will all be repeated.
      Single character motion commands take advantage of this.
@@ -173,12 +173,12 @@ Skip over the same syntax or entire symbols.
 ``(meep-move-same-syntax-or-symbol-next ARG)``
    Move forward over characters with the same syntax class or symbols, ARG times.
 
-Motion: Same Syntax & Space
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Motion: Same Syntax and Space
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Skip over the same syntax with changes to behavior for surrounding space,
 where space at the bounds of text is skipped over, matching
-how this is handled for skipping words & symbols.
+how this is handled for skipping words and symbols.
 
 ``(meep-move-same-syntax-and-space-prev ARG)``
    Move back a syntax-and-space, ARG times.
@@ -303,8 +303,8 @@ jump to the start of the surrounding characters (if found).
    Move to the matching character.
    When not at the bounds, jump to the start.
 
-Motion: Find & Till
-^^^^^^^^^^^^^^^^^^^
+Motion: Find and Till
+^^^^^^^^^^^^^^^^^^^^^
 
 ``(meep-move-find-char-on-line-at-next ARG CH)``
    Find the next ARG char CH, read from minibuffer.
@@ -477,7 +477,7 @@ Selection/Region: Secondary Selection
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``(meep-region-swap)``
-   Swap the contents of the primary & secondary region.
+   Swap the contents of the primary and secondary region.
 
    When ``meep-region-swap-imply-region`` is non-nil,
    only the secondary region needs to be set.
@@ -720,7 +720,7 @@ State: Insert
    Enter insert mode at the position it was last exited.
 
 ``(meep-insert-overwrite)``
-   Enter insert mode & enable ``overwrite-mode`` while inserting.
+   Enter insert mode and enable ``overwrite-mode`` while inserting.
 
 ``(meep-insert-change)``
    Change the region, entering insert mode.
@@ -781,7 +781,7 @@ These commands wrap the kill-ring, without mixing the system clipboard.
 Note that line-wise cut/copy is stored in the kill-ring.
 Yanking (pasting) a line-wise region yanks from the line beginning.
 
-So line-wise kill & yank can be used to operate on lines without the need
+So line-wise kill and yank can be used to operate on lines without the need
 to place the point at the beginning of the line.
 
 If you wish to override this behavior, you may activate the region with an empty range,
