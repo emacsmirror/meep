@@ -179,6 +179,7 @@ def readme_patch_docstrings(data: str) -> str | int:
         ),
         "--eval", (
             """(readme_update """
+            """(list 'meep) """
             """"^meep-[a-z]" 'var-custom """
             """(list 'meep-mode-hook))"""
         ),
@@ -193,6 +194,7 @@ def readme_patch_docstrings(data: str) -> str | int:
         ),
         "--eval", (
             """(readme_update """
+            """(list 'meep) """
             """"^meep-[a-z]" 'var """
             """(list 'meep-mode-off-hook """
             """      'meep-mode-on-hook """
@@ -207,6 +209,7 @@ def readme_patch_docstrings(data: str) -> str | int:
         ),
         "--eval", (
             """(readme_update """
+            """(list 'meep) """
             """"^meep-[a-z]" 'fun-interactive """
             """(list 'meep-mode """
             """))"""
@@ -218,6 +221,7 @@ def readme_patch_docstrings(data: str) -> str | int:
         # ),
         # "--eval", (
         #     """(readme_update """
+        #     """(list 'meep) """
         #     """"^meep-[a-z]" 'fun """
         #     """(list 'meep-command-test-skip"""
         #     """      'meep-command-test-skip-active"""

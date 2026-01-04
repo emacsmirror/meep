@@ -15,7 +15,7 @@
 
 ;;; Call:
 
-;; (readme_update "^package-name-[a-z]+" 'fun (list 'package-name-to-exclude))
+;; (readme_update (list 'package-name) "^package-name-[a-z]+" 'fun (list 'package-name-to-exclude))
 
 ;; TODO.
 
@@ -25,8 +25,9 @@
   "Print function using ARGS."
   (princ (apply #'format args)))
 
-(defun readme_update (prefix ty exclude)
+(defun readme_update (modules prefix ty exclude)
   "Print doc-strings matching PREFIX (regex).
+Only include symbols from MODULES (a list of module symbols).
 Of TY in symbol, excluding symbols in EXCLUDE.
 
 Valid values for TY include:
@@ -41,16 +42,19 @@ Valid values for TY include:
        (let ((sym-str (symbol-name sym)))
          (when (string-match-p prefix sym-str)
            (unless (memq sym exclude)
-             (when (cond
-                    ((eq ty 'fun-interactive)
-                     (and (fboundp sym) (commandp sym)))
-                    ((eq ty 'fun)
-                     (and (fboundp sym) (null (commandp sym))))
-                    ((eq ty 'var)
-                     (and (null (fboundp sym)) (null (get sym 'custom-type))))
-                    ((eq ty 'var-custom)
-                     (and (null (fboundp sym)) (get sym 'custom-type))))
-               (push sym vars)))))))
+             (when-let* ((sym-file (symbol-file sym))
+                         (sym-module (intern (file-name-base sym-file)))
+                         (_ (memq sym-module modules)))
+               (when (cond
+                      ((eq ty 'fun-interactive)
+                       (and (fboundp sym) (commandp sym)))
+                      ((eq ty 'fun)
+                       (and (fboundp sym) (null (commandp sym))))
+                      ((eq ty 'var)
+                       (and (null (fboundp sym)) (null (get sym 'custom-type))))
+                      ((eq ty 'var-custom)
+                       (and (null (fboundp sym)) (get sym 'custom-type))))
+                 (push sym vars))))))))
 
     ;; Sort by their order in the buffer.
     ;; TODO: sort by filename as well using `string-lessp'.
