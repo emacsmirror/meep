@@ -55,7 +55,7 @@ Make Targets
 
 While MEEP doesn't need to be "built", there are some convenience targets for development.
 
-Note that these targets expect ``../bray`` and ``../repeat-fu`` to be checked out along side MEEP.
+Note that these targets expect ``../bray`` and ``../repeat-fu`` to be checked out alongside MEEP.
 
 Testing
    Tests can be run using ``make test`` or ``make watch_test``.

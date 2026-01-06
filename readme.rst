@@ -111,7 +111,7 @@ To integrate motion commands from other packages with MEEP,
 use the utility function ``meep-command-mark-on-motion-advice-add`` (as well as an associated remove function).
 
 If you wish to repeat these motions by entering a number afterward,
-or select the whole item with ``meep-exchange-point-and-mark-motion``,
+or select the whole item with ``meep-region-activate-and-reverse-motion``,
 these commands must accept a numeric argument (already a common convention).
 
 Note that without any integration, motion commands from other packages can still be used;
