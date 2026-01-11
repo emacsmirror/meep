@@ -80,16 +80,29 @@ Also suppresses minibuffer prompts from interactive specs."
          (clear-message-function #'ignore)
          (orig-message (symbol-function 'message))
          (orig-read-char (symbol-function 'read-char))
-         (orig-read-char-from-minibuffer (symbol-function 'read-char-from-minibuffer)))
+         (orig-read-char-from-minibuffer (symbol-function 'read-char-from-minibuffer))
+         ;; Save tooltip-mode state to restore later.
+         ;; When enabled, `execute-kbd-macro' calls `tooltip-hide' which calls
+         ;; `(message "")' to clear the echo area, polluting captured messages.
+         (orig-tooltip-mode (bound-and-true-p tooltip-mode)))
      (unwind-protect
          (progn
            (fset 'message #'meep-test--message-capture)
            (fset 'read-char #'meep-test--read-char-no-prompt)
            (fset 'read-char-from-minibuffer #'meep-test--read-char-from-minibuffer-no-prompt)
+           (when (fboundp 'tooltip-mode)
+             (tooltip-mode 0))
            ,@body)
        (fset 'message orig-message)
        (fset 'read-char orig-read-char)
-       (fset 'read-char-from-minibuffer orig-read-char-from-minibuffer))))
+       (fset 'read-char-from-minibuffer orig-read-char-from-minibuffer)
+       (when (fboundp 'tooltip-mode)
+         (tooltip-mode
+          (cond
+           (orig-tooltip-mode
+            1)
+           (t
+            0)))))))
 
 (defmacro should-error-with-message (form error-type expected-message)
   "Assert FORM signals an error of ERROR-TYPE with EXPECTED-MESSAGE."
@@ -2362,14 +2375,13 @@ Verifies: characters before and after cursor swap."
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
-      ;; Position on 'C'.
+      ;; Cursor: ABC
+      ;;         ^
+      ;; Move forward twice to position on 'C', then backward and transpose.
+      ;; All in single block to preserve last-command chain.
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next))
-      ;; Cursor: ABC
-      ;;           ^
-      ;; Move backward one char and transpose in same block.
-      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-prev)
         '(:state normal :command meep-transpose))
       ;; Result: ACB (B and C swapped)
@@ -2377,6 +2389,472 @@ Verifies: characters before and after cursor swap."
       (should (equal text-expected (buffer-string)))
       (should (equal 'normal (bray-state)))
       (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-char-next-repeat ()
+  "Transpose characters twice after forward char motion.
+
+Move forward one char, then transpose twice.
+Verifies: character moves right twice through repeated transpose."
+  ;;   ABCD  ->  BACD  ->  BCAD
+  (let ((text-initial "ABCD")
+        (text-expected "BCAD")
+        (point-expected '(1 . 2)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor: ABCD
+      ;;         ^
+      ;; Move forward one char and transpose twice.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: BCAD (A moved right twice)
+      ;;            ^
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-char-prev-repeat ()
+  "Transpose characters twice after backward char motion.
+
+Move backward one char, then transpose twice.
+Verifies: character moves left twice through repeated transpose."
+  ;;   ABCD  ->  ABDC  ->  ADBC
+  (let ((text-initial "ABCD")
+        (text-expected "ADBC")
+        (point-expected '(1 . 1)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Position on D (last character).
+      (goto-char (1- (point-max)))
+      ;; Cursor: ABCD
+      ;;            ^
+      ;; Move backward one char and transpose twice.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-prev)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: ADBC (D moved left twice)
+      ;;          ^
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-char-next-at-buffer-end ()
+  "Transpose stops when reaching buffer end.
+
+Move forward one char, then transpose four times.
+First three succeed, fourth does nothing and prints a message."
+  ;;   ABCD
+  ;;   -> BACD  (first transpose works)
+  ;;   -> BCAD  (second transpose works)
+  ;;   -> BCDA  (third transpose works)
+  ;;   -> BCDA  (fourth transpose does nothing - at end)
+  (let ((text-initial "ABCD")
+        (text-expected "BCDA"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move forward one char and transpose four times.
+      ;; First three succeed, fourth fails at buffer limit.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Buffer has expected state (confirms first three transposes worked,
+      ;; fourth did nothing).
+      (should (equal text-expected (buffer-string)))
+      ;; Exactly one message was printed by the failing transpose.
+      (should (equal '("Transpose: no element to swap with") (meep-test-messages)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-char-prev-at-buffer-start ()
+  "Transpose stops when reaching buffer start.
+
+Position on last char, move backward one char, then transpose four times.
+First three succeed, fourth does nothing and prints a message."
+  ;;   ABCD
+  ;;   -> ABDC  (first transpose works)
+  ;;   -> ADBC  (second transpose works)
+  ;;   -> DABC  (third transpose works)
+  ;;   -> DABC  (fourth transpose does nothing - at start)
+  (let ((text-initial "ABCD")
+        (text-expected "DABC"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Position on last character (D).
+      (goto-char (1- (point-max)))
+      ;; Move backward one char and transpose four times.
+      ;; First three succeed, fourth fails at buffer limit.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-prev)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Buffer has expected state (confirms first three transposes worked,
+      ;; fourth did nothing).
+      (should (equal text-expected (buffer-string)))
+      ;; Exactly one message was printed by the failing transpose.
+      (should (equal '("Transpose: no element to swap with") (meep-test-messages)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-word-next-repeat ()
+  "Transpose words twice after forward word motion.
+
+Move to second word, then transpose twice.
+Verifies: word moves right twice through repeated transpose."
+  ;;   one two three four five
+  ;;   -> two one three four five
+  ;;   -> two three one four five
+  (let ((text-initial "one two three four five")
+        (text-expected "two three one four five")
+        ;; Cursor ends at start of next word after the transposed region.
+        (point-expected '(1 . 14)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor: one two three four five
+      ;;         ^
+      ;; Move to second word and transpose twice.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-word-next)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: two three one four five
+      ;;                   ^
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-word-next-prefix-arg ()
+  "Transpose words with prefix argument.
+
+Move to second word, then transpose with prefix arg 2.
+Verifies: word moves right twice with single command."
+  (let ((text-initial "one two three four five")
+        (text-expected "two three one four five")
+        (point-expected '(1 . 14)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to second word, then transpose with C-u 2 prefix.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-word-next)
+        [?\C-u ?2]
+        '(:state normal :command meep-transpose))
+      ;; Result: two three one four five (same as calling transpose twice).
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-word-next-at-buffer-end ()
+  "Transpose stops when reaching buffer end.
+
+Move to second word, then transpose three times.
+First two succeed, third does nothing and prints a message."
+  ;;   one two three four
+  ;;   -> two one three four  (first transpose works)
+  ;;   -> two three one four  (second transpose works)
+  ;;   -> two three one four  (third transpose does nothing - motion can't advance)
+  (let ((text-initial "one two three four")
+        (text-expected "two three one four"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to second word and transpose three times.
+      ;; First two succeed, third fails at buffer limit.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-word-next)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Buffer has expected state (confirms first two transposes worked,
+      ;; third did nothing).
+      (should (equal text-expected (buffer-string)))
+      ;; Exactly one message was printed by the failing transpose.
+      (should (equal '("Transpose: no element to swap with") (meep-test-messages)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-word-prev-at-buffer-start ()
+  "Transpose stops when reaching buffer start.
+
+Move to third word, then move backward and transpose three times.
+First two succeed, third does nothing and prints a message."
+  ;;   one two three four
+  ;;   -> one three two four  (first transpose works)
+  ;;   -> three one two four  (second transpose works)
+  ;;   -> three one two four  (third transpose does nothing - at start)
+  (let ((text-initial "one two three four")
+        (text-expected "three one two four"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Position at end of buffer.
+      (goto-char (point-max))
+      ;; Move backward to third word, then transpose three times.
+      ;; First two succeed, third fails at buffer limit.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-word-prev)
+        '(:state normal :command meep-move-word-prev)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Buffer has expected state (confirms first two transposes worked,
+      ;; third did nothing).
+      (should (equal text-expected (buffer-string)))
+      ;; Exactly one message was printed by the failing transpose.
+      (should (equal '("Transpose: no element to swap with") (meep-test-messages)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-word-prev-repeat ()
+  "Transpose words twice after backward word motion.
+
+Move to last word, then move backward and transpose twice.
+Verifies: word moves left twice through repeated transpose."
+  ;;   one two three four five
+  ;;   -> one two three five four
+  ;;   -> one two five three four
+  (let ((text-initial "one two three four five")
+        (text-expected "one two five three four"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Position at end of buffer.
+      (goto-char (point-max))
+      ;; Cursor: one two three four five
+      ;;                                ^
+      ;; Move backward one word and transpose twice.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-word-prev)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: one two five three four (five moved left twice)
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-word-next-end-repeat ()
+  "Transpose words twice after forward word-end motion.
+
+Move to end of current word, then transpose twice.
+Verifies: word moves right twice through repeated transpose.
+Note: This tests a different code path than `transpose-word-next-repeat'
+where point jumps to word-end rather than word-start."
+  ;;   one two three four five
+  ;;   -> two one three four five
+  ;;   -> two three one four five
+  (let ((text-initial "one two three four five")
+        (text-expected "two three one four five"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor at start of first word.
+      ;; Cursor: one two three four five
+      ;;         ^
+      ;; Move to end of current word and transpose twice.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-word-next-end)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: two three one four five (one moved right twice)
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-word-prev-end-repeat ()
+  "Transpose words twice after backward word-end motion.
+
+Move to end of previous word, then transpose twice.
+Verifies: word moves left twice through repeated transpose.
+Note: This tests a different code path than `transpose-word-prev-repeat'
+where point jumps to word-end rather than word-start."
+  ;;   one two three four five
+  ;;   -> one two three five four
+  ;;   -> one two five three four
+  (let ((text-initial "one two three four five")
+        (text-expected "one two five three four"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Position at end of buffer.
+      (goto-char (point-max))
+      ;; Cursor: one two three four five
+      ;;                                ^
+      ;; Move to end of previous word and transpose twice.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-word-prev-end)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: one two five three four (five moved left twice)
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-paragraph-next-repeat ()
+  "Transpose paragraphs twice after forward paragraph motion.
+
+Move to second paragraph, then transpose twice.
+Verifies: paragraph moves down twice through repeated transpose."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "\n"
+          "BBB\n"
+          "\n"
+          "CCC\n"))
+        (text-expected
+         ;; Note: paragraph transpose includes separators, resulting in
+         ;; slightly different whitespace arrangement.
+         ;; format-next-line: off
+         (concat
+          "\n"
+          "BBB\n"
+          "\n"
+          "CCC\n"
+          "AAA\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor at start of first paragraph (AAA).
+      ;; Move to second paragraph and transpose twice.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-paragraph-next)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: AAA moved down twice.
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-paragraph-prev-repeat ()
+  "Transpose paragraphs twice after backward paragraph motion.
+
+Move to last paragraph, then move backward and transpose twice.
+Verifies: paragraph moves up twice through repeated transpose."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "\n"
+          "BBB\n"
+          "\n"
+          "CCC\n"))
+        ;; Note: paragraph transpose includes separators, resulting in
+        ;; slightly different whitespace arrangement.
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "\n"
+          "CCC\n"
+          "AAA\n"
+          "\n"
+          "BBB\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Position at end of buffer (after CCC paragraph).
+      (goto-char (point-max))
+      ;; Move backward one paragraph and transpose twice.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-paragraph-prev)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: CCC moved up twice.
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-paragraph-next-at-buffer-end ()
+  "Transpose stops when reaching buffer end.
+
+Move to second paragraph, then transpose four times.
+First three succeed, fourth does nothing and prints a message."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "\n"
+          "BBB\n"
+          "\n"
+          "CCC\n"
+          "\n"
+          "DDD\n"))
+        (text-expected
+         ;; Note: paragraph transpose includes separators.
+         ;; format-next-line: off
+         (concat
+          "\n"
+          "BBB\n"
+          "\n"
+          "CCC\n"
+          "\n"
+          "DDD\n"
+          "AAA\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to second paragraph and transpose four times.
+      ;; First three succeed, fourth fails at buffer limit.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-paragraph-next)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Buffer has expected state (confirms first three transposes worked,
+      ;; fourth did nothing).
+      (should (equal text-expected (buffer-string)))
+      ;; Exactly one message was printed by the failing transpose.
+      (should (equal '("Transpose: no element to swap with") (meep-test-messages)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-paragraph-prev-at-buffer-start ()
+  "Transpose stops when reaching buffer start.
+
+Position at end, move backward one paragraph, then transpose four times.
+First three succeed, fourth does nothing and prints a message."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "\n"
+          "BBB\n"
+          "\n"
+          "CCC\n"
+          "\n"
+          "DDD\n"))
+        (text-expected
+         ;; Note: paragraph transpose includes separators.
+         ;; format-next-line: off
+         (concat
+          "\n"
+          "DDD\n"
+          "AAA\n"
+          "\n"
+          "BBB\n"
+          "\n"
+          "CCC\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Position at end of buffer.
+      (goto-char (point-max))
+      ;; Move backward one paragraph and transpose four times.
+      ;; First three succeed, fourth fails at buffer limit.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-paragraph-prev)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Buffer has expected state (confirms first three transposes worked,
+      ;; fourth did nothing).
+      (should (equal text-expected (buffer-string)))
+      ;; Exactly one message was printed by the failing transpose.
+      (should (equal '("Transpose: no element to swap with") (meep-test-messages)))
+      (should (equal 'normal (bray-state))))))
 
 (ert-deftest transpose-line-next ()
   "Transpose lines after forward line motion.
@@ -2410,6 +2888,56 @@ Verifies: current line and previous line swap."
       (should (equal 'normal (bray-state)))
       (should (equal point-expected (meep-test-point-line-column))))))
 
+(ert-deftest transpose-line-next-mark-position ()
+  "Transpose lines after forward line motion places mark at end of previous line.
+
+Move down one line, then transpose.
+Verifies: mark is at the end of the previous line (before newline)."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBB\n"
+          "CCC\n"))
+        (mark-expected '(1 . 3))) ;; Line 1, column 3 (end of "BBB")
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor line 1: AAA
+      ;;                ^
+      ;; Move down one line and transpose.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-transpose))
+      ;; After transpose: BBB is on line 1, AAA is on line 2.
+      ;; Mark should be at end of line 1 (end of "BBB").
+      (should (equal mark-expected (meep-test-mark-line-column))))))
+
+(ert-deftest transpose-line-prev-mark-position ()
+  "Transpose lines after backward line motion places mark at beginning of next line.
+
+Move to end of line, then up one line, then transpose.
+Verifies: mark is at the beginning of the next line."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBB\n"
+          "CCC\n"))
+        (mark-expected '(2 . 0))) ;; Line 2, column 0 (beginning of "AAA")
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to line 2, then to end of line, then up one line and transpose.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-end)
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-transpose))
+      ;; After transpose: BBB is on line 1, AAA is on line 2.
+      ;; Mark should be at beginning of line 2.
+      (should (equal mark-expected (meep-test-mark-line-column))))))
+
 (ert-deftest transpose-line-prev ()
   "Transpose lines after backward line motion.
 
@@ -2431,13 +2959,12 @@ Verifies: current line and next line swap."
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
-      ;; Move to line 2.
-      (simulate-input-for-meep
-        '(:state normal :command meep-move-line-next))
-      ;; Cursor line 2: BBB
+      ;; Cursor line 1: AAA
       ;;                ^
-      ;; Move up one line and transpose in same block.
+      ;; Move down to line 2, then up and transpose.
+      ;; All in single block to preserve last-command chain.
       (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
         '(:state normal :command meep-move-line-prev)
         '(:state normal :command meep-transpose))
       ;; Result: AAA swapped with BBB.
@@ -2469,6 +2996,359 @@ Verifies: buffer unchanged, informative message displayed."
       (let ((msgs (meep-test-messages)))
         (should (seq-some (lambda (m) (string-match-p "no mark found" m)) msgs))
         (should (member "Transpose could not find a last-motion" msgs))))))
+
+(ert-deftest transpose-line-next-repeat ()
+  "Transpose lines twice after forward line motion.
+
+Move down one line, then transpose twice.
+Verifies: line moves down twice through repeated transpose."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBB\n"
+          "CCC\n"
+          "DDD\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "BBB\n"
+          "CCC\n"
+          "AAA\n"
+          "DDD\n"))
+        (point-expected '(3 . 0)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor line 1: AAA
+      ;;                ^
+      ;; Move down one line and transpose twice.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: AAA moved down twice (BBB up, then CCC up).
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-line-next-repeat-different-lengths ()
+  "Transpose lines of different lengths twice.
+
+Move down one line, then transpose twice with lines of varying lengths.
+Verifies: correct positioning after swapping lines of different sizes."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBBBBB\n"
+          "CCC\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "BBBBBB\n"
+          "CCC\n"
+          "AAA\n"))
+        (point-expected '(3 . 0)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor line 1: AAA (3 chars)
+      ;;                ^
+      ;; Move down to BBBBBB (6 chars), then transpose twice.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: AAA moved down twice (BBBBBB up, then CCC up).
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-line-next-no-trailing-newline ()
+  "Transpose lines when buffer has no trailing newline.
+
+Move down one line, then transpose twice in a buffer without trailing newline.
+Verifies: line moves to end of buffer correctly without trailing newline."
+  (let ((text-initial "A\nBB\nCCC")
+        (text-expected "BB\nCCC\nA")
+        (point-expected '(3 . 0)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor line 1: A
+      ;;                ^
+      ;; Move down one line and transpose twice.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: A moved down twice to become last line (no trailing newline).
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-line-next-after-line-end ()
+  "Transpose lines after moving to line end first.
+
+Move to end of line, then down one line, then transpose.
+Verifies: lines swap correctly and cursor column matches original mark column."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "A\n"
+          "BB\n"
+          "CCC\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "BB\n"
+          "A\n"
+          "CCC\n"))
+        ;; Cursor should be at end of line (column 1, matching original mark column).
+        (point-expected '(2 . 1)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor at line 1 beginning: A
+      ;;                             ^
+      ;; Move to end of line (column 1), then down, then transpose.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-end)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-transpose))
+      ;; Result: lines 1 and 2 swapped, cursor at column 1 (end of "A").
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-line-next-prefix-arg ()
+  "Transpose lines with prefix argument.
+
+Move down one line, then transpose with prefix arg 2.
+Verifies: line moves down twice with single command."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBB\n"
+          "CCC\n"
+          "DDD\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "BBB\n"
+          "CCC\n"
+          "AAA\n"
+          "DDD\n"))
+        (point-expected '(3 . 0)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor line 1: AAA
+      ;;                ^
+      ;; Move down one line, then transpose with C-u 2 prefix.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        [?\C-u ?2]
+        '(:state normal :command meep-transpose))
+      ;; Result: AAA moved down twice (same as calling transpose twice).
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-line-prev-prefix-arg ()
+  "Transpose lines with prefix argument after backward motion.
+
+Move to last line, move up one line, then transpose with prefix arg 2.
+Verifies: line moves up twice with single command (same as two transposes)."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBB\n"
+          "CCC\n"
+          "DDD\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "DDD\n"
+          "BBB\n"
+          "CCC\n"))
+        (point-expected '(2 . 0)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to last line (DDD).
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-prev)
+        ;; Move up one line, then transpose with C-u 2 prefix.
+        '(:state normal :command meep-move-line-prev)
+        [?\C-u ?2]
+        '(:state normal :command meep-transpose))
+      ;; Result: DDD moved up twice (same as calling transpose twice).
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-line-prev-repeat ()
+  "Transpose lines twice after backward line motion.
+
+Move to last line, then move up and transpose twice.
+Verifies: line moves up twice through repeated transpose."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBB\n"
+          "CCC\n"
+          "DDD\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "DDD\n"
+          "BBB\n"
+          "CCC\n"))
+        (point-expected '(2 . 0)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to last line (DDD).
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-prev)
+        ;; Move up one line and transpose twice.
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: DDD moved up twice (CCC down, then BBB down).
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-line-prev-repeat-different-lengths ()
+  "Transpose lines of different lengths twice (backward motion).
+
+Move to last line, then move up and transpose twice with lines of varying lengths.
+Verifies: correct positioning after swapping lines of different sizes."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBBBBB\n"
+          "CCC\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "CCC\n"
+          "AAA\n"
+          "BBBBBB\n"))
+        (point-expected '(1 . 0)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to last line (CCC).
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-prev)
+        ;; Move up one line and transpose twice.
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Result: CCC moved up twice (BBBBBB down, then AAA down).
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest transpose-line-next-at-buffer-end ()
+  "Transpose stops when reaching buffer end.
+
+Move down one line, then transpose four times.
+First three succeed, fourth does nothing and prints a message."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBB\n"
+          "CCC\n"
+          "DDD\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "BBB\n"
+          "CCC\n"
+          "DDD\n"
+          "AAA\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move down one line and transpose four times.
+      ;; First three succeed, fourth fails at buffer limit.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Buffer has expected state (confirms first three transposes worked,
+      ;; fourth did nothing).
+      (should (equal text-expected (buffer-string)))
+      ;; Point and mark must not move on failed transpose.
+      ;; After three successful transposes, point is at start of last line (AAA),
+      ;; mark is at end of previous line (DDD). Failed transpose must not change these.
+      (should (equal 13 (point))) ; Start of "AAA\n"
+      (should (equal 12 (mark))) ; End of "DDD\n"
+      ;; Exactly one message was printed by the failing transpose.
+      (should (equal '("Transpose: no element to swap with") (meep-test-messages)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-line-prev-at-buffer-start ()
+  "Transpose stops when reaching buffer start.
+
+Move to last line, then move up and transpose four times.
+First three succeed, fourth does nothing and prints a message."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBB\n"
+          "CCC\n"
+          "DDD\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "DDD\n"
+          "AAA\n"
+          "BBB\n"
+          "CCC\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to last line (DDD).
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-prev)
+        ;; Move up one line and transpose four times.
+        ;; First three succeed, fourth fails at buffer limit.
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose)
+        '(:state normal :command meep-transpose))
+      ;; Buffer has expected state (confirms first three transposes worked,
+      ;; fourth did nothing).
+      (should (equal text-expected (buffer-string)))
+      ;; Point and mark must not move on failed transpose.
+      ;; After three successful transposes, point is at start of first line (DDD),
+      ;; mark is at start of second line (AAA). Failed transpose must not change these.
+      (should (equal 1 (point))) ; Start of "DDD\n"
+      (should (equal 5 (mark))) ; Start of "AAA\n"
+      ;; Exactly one message was printed by the failing transpose.
+      (should (equal '("Transpose: no element to swap with") (meep-test-messages)))
+      (should (equal 'normal (bray-state))))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -4188,6 +5068,7 @@ Verifies: newline content selected correctly."
 Verifies: word boundaries work with multibyte characters."
   ;; Use Chinese characters which are reliably 3 bytes each in UTF-8.
   (let ((text-initial
+         ;; format-next-line: off
          (concat
           (string #x4e2d) (string #x6587) " " (string #x6d4b) (string #x8bd5) " "
           (string #x5b57) (string #x7b26)))) ; "中文 测试 字符"
