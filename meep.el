@@ -4848,83 +4848,163 @@ Return non-nil when a change was made."
 ;; ---------------------------------------------------------------------------
 ;; Text Editing: Transpose
 
-;; NOTE(@ideasman42): there are quite a few TODO's here,
-;; typically I'd like to complete the feature fully before adding it
-;; however I can't work on this full-time, and the basic functionality
-;; (transposing symbols/lines mainly) is useful enough that I feel it better
-;; to include the functionality in its current state.
-;; While it's nice to support transposing N times AND to support repeating the action.
-;; These can be supported later.
 
-(defun meep--transpose-char-wise (n last-motion-info)
-  "Transpose characters N times.
-LAST-MOTION-INFO contains the motion information."
-  ;; TODO: support multiple times.
-  (ignore n)
-  (let ((result nil)
-        (local-last-command (car (cdr last-motion-info)))
-        (local-last-pos (car last-motion-info)))
+;; Special handling is only needed because character motions do *not* set the mark.
+;; This function adjusts the motion to behave as if it did.
+(defun meep--transpose-with-adjusted-motion-char-wise (last-motion-info body-fn)
+  "Wrapper for char-wise transpose using LAST-MOTION-INFO and BODY-FN."
+  (let* ((orig-cmd (cadr last-motion-info))
+         (mark-pos (car last-motion-info))
+         (dir
+          (cond
+           ((> mark-pos (point))
+            -1)
+           (t
+            1)))
+         ;; For backward motion, flip positions and use char-next.
+         (adjusted-info
+          (cond
+           ((< dir 0)
+            (cons (point) (cons 'meep-move-char-next (cddr last-motion-info))))
+           (t
+            last-motion-info)))
+         (result nil))
+    ;; For backward motion, move to mark position before executing body.
+    (when (< dir 0)
+      (goto-char mark-pos))
+    ;; Execute body with adjusted positions.
+    (setq result (funcall body-fn adjusted-info))
     (cond
-     ((eq local-last-command 'meep-move-char-next)
-      (let* ((offset (- local-last-pos (point))) ; Negative.
-             (region (cons (+ (point) offset) (+ (point) offset 1)))
-             (ch-prev (buffer-substring-no-properties (car region) (cdr region))))
-        (delete-region (car region) (cdr region))
-        (forward-char 1)
-        (insert-before-markers ch-prev)
-        (forward-char -1))
-      (setq result t))
-     ((eq local-last-command 'meep-move-char-prev)
-      (let* ((offset (- local-last-pos (point))) ; Positive.
-             (region (cons (+ (point) offset) (+ (point) offset 1)))
-             (ch-next (buffer-substring-no-properties (car region) (cdr region))))
-        (delete-region (car region) (cdr region))
-        (insert-before-markers ch-next)
-        (forward-char -1))
-      (setq result t)))
-    result))
+     ((eq result t)
+      ;; Adjust cursor to be ON the swapped character.
+      ;; Forward: move back 1 to be on the char that moved forward.
+      ;; Backward: move back 2 to be on the char that moved backward.
+      (backward-char
+       (cond
+        ((< dir 0)
+         2)
+        (t
+         1)))
+      (cons orig-cmd (point)))
+     (t
+      result))))
 
-(defun meep--transpose-line-wise (n last-motion-info)
-  "Transpose lines N times.
-LAST-MOTION-INFO contains the motion information."
-  ;; TODO: support multiple times.
-  (ignore n)
-  ;; TODO: implement this directly without `transpose-lines',
-  ;; since we may meet buffer limits when moving the cursor
-  ;; and it makes transposing multiple times more difficult.
-  (let ((result nil)
-        (local-last-command (car (cdr last-motion-info)))
-        (offset nil))
+;; Special handling is only needed because we want transpose from line motion
+;; to behave as though both the point and the mark are positioned
+;; at the line beginning - even if they are not.
+;;
+;; NOTE: that this statement is not entirely accurate,
+;; there is a minor difference, when transposing to the next line,
+;; without any special handing - the (point) would end up on the line *after*
+;; the line that was transposed. While technically correct in some sense
+;; (given the way transpose relies on wrapping motion in a generic way),
+;; it is also not so useful if the point is *not* on the line we are moving
+;; since we may want to operate on that line afterwards (indent it or so).
+(defun meep--transpose-with-adjusted-motion-line-wise (last-motion-info body-fn)
+  "Wrapper for line-wise transpose using LAST-MOTION-INFO and BODY-FN."
+  (let* ((orig-cmd (cadr last-motion-info))
+         (mark-pos (car last-motion-info))
+         (mark-col-bol
+          (save-excursion
+            (goto-char mark-pos)
+            (cons (current-column) (pos-bol))))
+         (mark-col (car mark-col-bol))
+         (mark-bol (cdr mark-col-bol))
+         (point-bol (pos-bol))
+         (dir
+          (cond
+           ((> mark-bol point-bol)
+            -1)
+           (t
+            1)))
+         ;; The first line's bol stays valid after swap (earlier position).
+         (first-bol (min mark-bol point-bol))
+         ;; The second line's bol (later position) is where body executes.
+         (second-bol (max mark-bol point-bol))
+         ;; Check if last line has no trailing newline (needed for swap fix).
+         (no-trailing-newline (not (eq (char-before (point-max)) ?\n)))
+         ;; Create adjusted-info for the body.
+         (adjusted-info
+          (cond
+           ((< dir 0)
+            ;; Backward: flipped positions and line-next command.
+            (cons first-bol (cons 'meep-move-line-next (cddr last-motion-info))))
+           (t
+            ;; Forward: mark at bol, original command.
+            (cons first-bol (cdr last-motion-info)))))
+         (result nil))
+    ;; Move point to the second line for body execution.
+    (goto-char second-bol)
+    ;; If buffer lacks trailing newline, add one temporarily so both lines
+    ;; have consistent newline endings during swap.
+    (when no-trailing-newline
+      (save-excursion
+        (goto-char (point-max))
+        (insert "\n")))
+    ;; Execute body with adjusted positions.
+    ;; Clear goal-column so line motions go to column 0.
+    (let ((goal-column 0))
+      (setq result (funcall body-fn adjusted-info)))
+    ;; Restore cursor position using relative navigation from first-bol.
+    ;; After swap, first-bol is still valid (earlier line's bol doesn't shift).
     (cond
-     ((eq local-last-command 'meep-move-line-next)
-      (save-excursion
-        (goto-char (mark))
-        (setq offset (- (point) (pos-bol))))
-      (goto-char (pos-bol))
-      (transpose-lines 1)
-      (forward-line -1)
-      (goto-char (+ (pos-bol) offset))
+     ((eq result t)
+      ;; Remove temporary trailing newline if we added one.
+      (when no-trailing-newline
+        (meep--assert (eq (char-before (point-max)) ?\n))
+        (delete-region (1- (point-max)) (point-max)))
+      (goto-char first-bol)
+      (cond
+       ((< dir 0)
+        ;; Backward: point at first line (point's original), mark at second line.
+        (meep--set-marker
+         (save-excursion
+           (forward-line 1)
+           (point)))
+        (move-to-column mark-col))
+       (t
+        ;; Forward: point at second line, mark at end of first line.
+        (forward-line 1)
+        (move-to-column mark-col)
+        (meep--set-marker
+         (save-excursion
+           (goto-char first-bol)
+           (pos-eol)))))
+      ;; Return repeat info: (PRE-MOTION . REPEAT-MARK-POS).
+      (cons orig-cmd (point)))
+     (t
+      ;; Remove temporary trailing newline if we added one.
+      (when no-trailing-newline
+        (meep--assert (eq (char-before (point-max)) ?\n))
+        (delete-region (1- (point-max)) (point-max)))
+      result))))
 
-      (setq result t))
-     ((eq local-last-command 'meep-move-line-prev)
-      (save-excursion
-        (goto-char (mark))
-        (setq offset (- (point) (pos-bol))))
-      (goto-char (pos-bol))
-      (forward-line 1)
-      (transpose-lines 1)
-      (forward-line -2)
-      (goto-char (+ (pos-bol) offset))
+(defmacro meep--transpose-with-adjusted-motion (last-motion-info-sym &rest body)
+  "Execute BODY with LAST-MOTION-INFO-SYM adjusted for line/char motions.
+Dispatches to motion-specific wrappers that normalize direction and cursor."
+  (declare (indent 1))
+  (let ((body-fn (make-symbol "body-fn"))
+        (result (make-symbol "result")))
+    `(let ((,body-fn (lambda (,last-motion-info-sym) ,@body)))
+       (cond
+        ((memq (cadr ,last-motion-info-sym) '(meep-move-line-next meep-move-line-prev))
+         (meep--transpose-with-adjusted-motion-line-wise ,last-motion-info-sym ,body-fn))
+        ((memq (cadr ,last-motion-info-sym) '(meep-move-char-next meep-move-char-prev))
+         (meep--transpose-with-adjusted-motion-char-wise ,last-motion-info-sym ,body-fn))
+        (t
+         ;; Other motions: execute body unchanged, wrap success in repeat info.
+         (let ((,result (funcall ,body-fn ,last-motion-info-sym)))
+           (cond
+            ((eq ,result t)
+             ;; Return repeat info: (nil . REPEAT-MARK-POS).
+             ;; No pre-motion needed, use current mark as repeat position.
+             (cons nil (mark)))
+            (t
+             ,result))))))))
 
-      (setq result t)))
-
-    result))
-
-(defun meep--transpose-any-motion (n last-motion-info)
-  "Transpose based on any motion, N times.
-LAST-MOTION-INFO contains the motion information."
-  ;; TODO: support multiple times.
-  (ignore n)
+(defun meep--transpose-any-motion (last-motion-info)
+  "Transpose based on any motion using LAST-MOTION-INFO.
+Returns t if transpose succeeded, \\='transpose-abort if at boundary, nil if not applicable."
   (let* ((range-a (cons (car last-motion-info) (point)))
          (range-b (cons nil nil))
          (local-last-command (car (cdr last-motion-info)))
@@ -4941,78 +5021,206 @@ LAST-MOTION-INFO contains the motion information."
             -1)
            (t
             1)))
-         (dir (* mark-dir last-dir)))
+         (dir (* mark-dir last-dir))
+         (abort nil))
 
-    ;; TODO: backwards logic.
-    (let ((current-prefix-arg last-dir))
-      (call-interactively local-last-command))
+    ;; Execute motion to find the end of the next element.
+    ;; Catch buffer boundary errors (e.g., from char motion).
+    (condition-case nil
+        (let ((current-prefix-arg last-dir))
+          (call-interactively local-last-command))
+      ((beginning-of-buffer end-of-buffer)
+       (message "Transpose: no element to swap with")
+       (goto-char (cdr range-a))
+       (setq abort t)))
     (setcdr range-b (point))
-    (let ((current-prefix-arg (- last-dir)))
-      (call-interactively local-last-command))
 
     (cond
-     ((eq dir 1)
-      ;; Unlikely but it's not impossible for reversing to go back too far.
-      ;; So clamp it by the previous bounds.
-      (setcar range-b (max (point) (cdr range-a)))
-
-      (let ((str-a (buffer-substring-no-properties (car range-a) (cdr range-a)))
-            (str-b (buffer-substring-no-properties (car range-b) (cdr range-b))))
-        (meep--replace-in-region str-a (car range-b) (cdr range-b))
-        (meep--replace-in-region str-b (car range-a) (cdr range-a)))
-
-      (goto-char (cdr range-b))
-      (setq deactivate-mark nil)
-      (meep--set-marker (- (point) (- (cdr range-a) (car range-a))))
-      t)
-
+     (abort
+      'transpose-abort)
+     ;; Check if motion failed to advance (nothing to swap with).
+     ;; This happens at buffer limits where there's no next element.
+     ((and (eq dir 1) (<= (point) (cdr range-a)))
+      ;; Motion didn't advance past original position - nothing to swap with.
+      (message "Transpose: no element to swap with")
+      (goto-char (cdr range-a))
+      'transpose-abort)
+     ((and (eq dir -1) (>= (point) (cdr range-a)))
+      ;; Motion didn't retreat past original position - nothing to swap with.
+      (message "Transpose: no element to swap with")
+      (goto-char (cdr range-a))
+      'transpose-abort)
      (t
-      ;; Unlikely but it's not impossible for reversing to go back too far.
-      ;; So clamp it by the previous bounds.
-      (setcar range-b (min (point) (cdr range-a)))
+      ;; Execute reverse motion to find the start of the next element.
+      (let ((current-prefix-arg (- last-dir)))
+        (call-interactively local-last-command))
 
-      (setq range-a (cons (cdr range-a) (car range-a)))
-      (setq range-b (cons (cdr range-b) (car range-b)))
+      (cond
+       ((eq dir 1)
+        ;; Unlikely but it's not impossible for reversing to go back too far.
+        ;; So clamp it by the previous bounds.
+        (setcar range-b (max (point) (cdr range-a)))
 
-      (let ((str-a (buffer-substring-no-properties (car range-a) (cdr range-a)))
-            (str-b (buffer-substring-no-properties (car range-b) (cdr range-b))))
-        (meep--replace-in-region str-b (car range-a) (cdr range-a))
-        (meep--replace-in-region str-a (car range-b) (cdr range-b)))
+        (let ((str-a (buffer-substring-no-properties (car range-a) (cdr range-a)))
+              (str-b (buffer-substring-no-properties (car range-b) (cdr range-b))))
+          (meep--replace-in-region str-a (car range-b) (cdr range-b))
+          (meep--replace-in-region str-b (car range-a) (cdr range-a)))
 
-      (goto-char (car range-b))
-      (setq deactivate-mark nil)
-      (meep--set-marker (+ (point) (- (cdr range-a) (car range-a))))
-      t))))
+        (goto-char (cdr range-b))
+        (setq deactivate-mark nil)
+        (meep--set-marker (- (point) (- (cdr range-a) (car range-a))))
+        t)
+
+       (t
+        ;; Unlikely but it's not impossible for reversing to go back too far.
+        ;; So clamp it by the previous bounds.
+        (setcar range-b (min (point) (cdr range-a)))
+
+        (setq range-a (cons (cdr range-a) (car range-a)))
+        (setq range-b (cons (cdr range-b) (car range-b)))
+
+        (let ((str-a (buffer-substring-no-properties (car range-a) (cdr range-a)))
+              (str-b (buffer-substring-no-properties (car range-b) (cdr range-b))))
+          (meep--replace-in-region str-b (car range-a) (cdr range-a))
+          (meep--replace-in-region str-a (car range-b) (cdr range-b)))
+
+        (goto-char (car range-b))
+        (setq deactivate-mark nil)
+        (meep--set-marker (+ (point) (- (cdr range-a) (car range-a))))
+        t))))))
+
+(defvar-local meep--transpose-repeat-motion-info nil
+  "Synthetic motion info for transpose repeat.
+Structure: (PRE-MOTION . MOTION-INFO) where PRE-MOTION is a command
+to call before the next transpose (or nil), and MOTION-INFO is
+\(MARK-POS . (COMMAND . PREFIX-ARG)).")
+
+(defun meep--transpose-repeat-store (pre-motion mark-pos last-motion-info)
+  "Store repeat info for transpose.
+PRE-MOTION is a command to call before repeat (or nil).
+MARK-POS is the mark position to use (or nil to keep original).
+LAST-MOTION-INFO is the original motion info."
+  (let ((cmd (car (cdr last-motion-info)))
+        (prefix-arg (cdr (cdr last-motion-info))))
+    (setq meep--transpose-repeat-motion-info
+          (cons pre-motion (cons (or mark-pos (car last-motion-info)) (cons cmd prefix-arg))))))
+
+(defun meep--transpose-repeat-clear ()
+  "Clear the transpose repeat state."
+  (setq meep--transpose-repeat-motion-info nil))
+
+(defun meep--transpose-repeat-get-motion-info ()
+  "Get motion info from repeat state, executing pre-motion if needed.
+Returns motion-info on success, \\='transpose-abort if pre-motion failed."
+  (let ((pre-motion (car meep--transpose-repeat-motion-info))
+        (motion-info (cdr meep--transpose-repeat-motion-info)))
+    (cond
+     (pre-motion
+      ;; Execute pre-motion to set up cursor and mark.
+      (let ((pre-result (meep--transpose-execute-pre-motion pre-motion)))
+        (cond
+         ((eq pre-result 'transpose-abort)
+          'transpose-abort)
+         (t
+          motion-info))))
+     (t
+      motion-info))))
+
+(defun meep--transpose-execute-pre-motion (pre-motion)
+  "Execute PRE-MOTION before transpose repeat.
+Returns t on success, \\='transpose-abort if at buffer boundary.
+On abort, point and mark are restored to their original positions."
+  (let ((point-before (point))
+        (mark-before (mark)))
+    (meep--set-marker (point))
+    (condition-case nil
+        (progn
+          (deactivate-mark)
+          ;; Prevent motion from overwriting the mark we just set.
+          ;; Clear prefix arg so it doesn't leak to the motion.
+          (let ((meep-mark-set-on-motion-override t)
+                (current-prefix-arg nil))
+            (call-interactively pre-motion))
+          (cond
+           ;; Point moved: success.
+           ((/= (point) point-before)
+            t)
+           ;; Point didn't move: motion failed.
+           (t
+            (meep--set-marker mark-before)
+            (message "Transpose: no element to swap with")
+            'transpose-abort)))
+      ((beginning-of-buffer end-of-buffer)
+       (goto-char point-before)
+       (meep--set-marker mark-before)
+       (message "Transpose: no element to swap with")
+       'transpose-abort))))
 
 ;;;###autoload
 (defun meep-transpose (arg)
-  "Transpose the previous motion.
+  "Transpose the previous motion ARG times.
 This can be used to transpose words if the previous motion was over words.
-Transposing lines and characters is also supported.
-
-Note that using ARG to specify repetition count is not yet implemented."
+Transposing lines and characters is also supported."
   (interactive "*p")
-  ;; TODO: support repeating this command N times as well as `repeat-fu'.
-  (let ((last-motion-info (meep--last-motion-calc-whole-mark-pos t)))
-    (cond
-     ((null last-motion-info)
-      (message "Transpose could not find a last-motion")
-      nil)
-     ;; Use an alternative code-path for char-wise transpose.
-     ;; Do this because char motions don't set the mark,
-     ;; so using the "motion" doesn't work usefully in this case.
-     ((meep--transpose-char-wise arg last-motion-info)
-      t)
-     ;; Use an alternative code-path for line-wise transpose.
-     ;; Do this because repeating the motion doesn't work all that well,
-     ;; especially if the motion isn't at line bounds.
-     ;; In this case prefer a straightforward line-flip.
-     ((meep--transpose-line-wise arg last-motion-info)
-      t)
-     ((meep--transpose-any-motion arg last-motion-info)
-      t)
-     (t
-      nil))))
+  (let ((count (max 1 (or arg 1)))
+        (i 0)
+        (done nil)
+        (changed nil))
+    (while (and (< i count) (not done))
+      ;; Use save-mark-and-excursion to restore on failure.
+      ;; On success, capture final positions and apply after macro exits.
+      (let ((success-point nil)
+            (success-mark nil))
+        (save-mark-and-excursion
+          (let ((last-motion-info
+                 (cond
+                  ;; When repeating transpose (via prefix arg or command repeat),
+                  ;; use synthetic motion info.
+                  ((and (or (> i 0) (eq last-command 'meep-transpose))
+                        meep--transpose-repeat-motion-info)
+                   (meep--transpose-repeat-get-motion-info))
+                  (t
+                   (meep--last-motion-calc-whole-mark-pos t)))))
+            (cond
+             ((eq last-motion-info 'transpose-abort)
+              (setq done t))
+             ((null last-motion-info)
+              (message "Transpose could not find a last-motion")
+              (meep--transpose-repeat-clear)
+              (setq done t))
+             (t
+              ;; Transpose using the generic path.
+              ;; The macro adjusts positions for line-wise and char-wise motions,
+              ;; and returns (PRE-MOTION . MARK-POS) on success.
+              (let ((result
+                     (let ((r
+                            (meep--transpose-with-adjusted-motion last-motion-info
+                              (meep--transpose-any-motion last-motion-info))))
+                       (cond
+                        ((eq r 'transpose-abort)
+                         r)
+                        ((consp r)
+                         (meep--transpose-repeat-store (car r) (cdr r) last-motion-info)
+                         t)))))
+                (cond
+                 ((eq result 'transpose-abort)
+                  ;; save-mark-and-excursion will restore positions.
+                  (setq done t))
+                 ((null result)
+                  (message "Transpose not supported for this motion")
+                  (meep--transpose-repeat-clear)
+                  (setq done t))
+                 (t
+                  ;; Success: capture positions before macro restores them.
+                  (setq success-point (point))
+                  (setq success-mark (mark))
+                  (setq changed t)
+                  (setq i (1+ i)))))))))
+        ;; Apply success positions after save-mark-and-excursion restores.
+        (when success-point
+          (goto-char success-point)
+          (meep--set-marker success-mark))))
+    changed))
 
 
 ;; ---------------------------------------------------------------------------

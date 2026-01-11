@@ -695,11 +695,9 @@ Text Editing: Transpose
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 ``(meep-transpose ARG)``
-   Transpose the previous motion.
+   Transpose the previous motion ARG times.
    This can be used to transpose words if the previous motion was over words.
    Transposing lines and characters is also supported.
-
-   Note that using ARG to specify repetition count is not yet implemented.
 
 Text Editing: Tab Wrapper
 ^^^^^^^^^^^^^^^^^^^^^^^^^
