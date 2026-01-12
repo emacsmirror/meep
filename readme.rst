@@ -142,6 +142,11 @@ Other Packages
 
 These packages work well with MEEP.
 
+- `Show Inactive Region <https://codeberg.org/ideasman42/emacs-show-inactive-region>`__:
+  Support for pulsing the *inactive* region when it changes.
+
+  This can be useful when becoming used to MEEP's use of the inactive region,
+  or you may wish to keep this enabled, although it's advised to disable while inserting text.
 - `Avy <https://github.com/abo-abo/avy>`__:
   for character-based jumping.
 - `Shift numbers <https://codeberg.org/ideasman42/emacs-shift-number>`__:
