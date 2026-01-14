@@ -257,7 +257,8 @@
       '("[" . meep-move-to-bounds-of-thing-beginning)
       '("]" . meep-move-to-bounds-of-thing-end)
 
-      '("<tab>" . meep-indent-rigidly)
+      ;; NOTE: This must not be <tab> otherwise pressing tab twice doesn't re-indent.
+      '("TAB" . meep-indent-rigidly)
 
       '("S-<delete>" . meep-join-line-next)
       '("S-<backspace>" . meep-join-line-prev)

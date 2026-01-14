@@ -5228,7 +5228,9 @@ Transposing lines and characters is also supported."
 
 ;;;###autoload
 (defun meep-indent-rigidly ()
-  "Indent the active region or the current line."
+  "Indent the active region or the current line.
+
+You may wish to bind this TAB, so pressing TAB twice re-indents."
   (interactive "*")
   ;; A wrapper for `indent-rigidly' which uses the current line when there is no active region.
   (unless (region-active-p)

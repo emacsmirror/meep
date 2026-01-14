@@ -705,6 +705,8 @@ Text Editing: Tab Wrapper
 ``(meep-indent-rigidly)``
    Indent the active region or the current line.
 
+   You may wish to bind this TAB, so pressing TAB twice re-indents.
+
 State: Insert
 ^^^^^^^^^^^^^
 
