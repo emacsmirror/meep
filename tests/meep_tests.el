@@ -6108,6 +6108,33 @@ Verifies: buffer unchanged, informative message displayed."
       ;; Verify informative message was displayed.
       (should (equal '("Join line beginning: no preceding line found") (meep-test-messages))))))
 
+(ert-deftest join-line-next-python-comment-with-inline-comment ()
+  "Join Python comment lines where the second line has an inline comment.
+
+Verifies: only the comment prefix is stripped, not content before an inline comment."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "# A B\n"
+          "# C D # E")))
+    (with-meep-test text-initial
+      (python-mode)
+      (bray-mode 1)
+      ;; Cursor line 1: # A B
+      ;;               ^
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      (should (equal 'normal (bray-state)))
+      (should (equal ?# (char-after)))
+      ;; Join with next line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-join-line-next))
+      ;; Result: "# A B C D # E" (only the leading comment prefix stripped).
+      (should (equal 'normal (bray-state)))
+      (should (equal "# A B C D # E" (buffer-string)))
+      ;; Point at join position.
+      (should (equal '(1 . 6) (meep-test-point-line-column)))
+      (should (equal ?C (char-after))))))
+
 ;; ---------------------------------------------------------------------------
 ;; Delete
 
