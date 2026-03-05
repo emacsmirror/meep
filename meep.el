@@ -4532,7 +4532,7 @@ When there is no active region, surround the current line."
 
 (defun meep--join-maybe-skip-comment-prefix (limit)
   "Skip forward over comment chars and any following blank-space.
-Don't skip past LIMIT."
+Don't skip past LIMIT (the end of the current line)."
   (let ((state (syntax-ppss))
         (comment-start-quote (regexp-quote comment-start))
         (ok t)
@@ -4583,9 +4583,17 @@ Don't skip past LIMIT."
                 (skip-chars-forward "[:blank:]" limit))))))))
 
     (when comment-start-skip
-      (save-match-data
-        (when (re-search-forward comment-start-skip limit t)
-          (skip-chars-forward "[:blank:]" limit))))))
+      (let ((pos-prev (point)))
+        (save-match-data
+          (when (save-excursion (re-search-forward comment-start-skip limit t))
+            ;; Only skip when the match is at point
+            ;; (blank-space was already skipped above).
+            ;; Without this, an inline comment such as "C D # E"
+            ;; would match the "# " before "E",
+            ;; causing the content before it to be lost.
+            (when (eq pos-prev (match-beginning 0))
+              (goto-char (match-end 0))
+              (skip-chars-forward "[:blank:]" limit))))))))
 
 (defun meep--join-range-is-eol-comment (eol-ws bol-ws-next)
   "Detect if EOL-WS and BOL-WS-NEXT are comments that can be joined."
