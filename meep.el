@@ -2266,7 +2266,18 @@ BOUNDS-LIMIT constrains the search bounds."
             (goto-char (car bounds-init))
             (when (search-backward (car ch-str-pair) (car bounds-limit) t n)
               (setq beg (point))
-              (setq bounds (cons beg end))))))
+              ;; Verify `beg' is an opening delimiter using parity:
+              ;; toggle for each delimiter from the line start to `beg',
+              ;; even (t) means `beg' opens a pair (valid),
+              ;; odd (nil) means `beg' closes a pair (false match).
+              ;; NOTE: only delimiters on the same line are counted,
+              ;; so this check doesn't support multi-line strings.
+              (let ((is-open t))
+                (goto-char (pos-bol))
+                (while (search-forward (car ch-str-pair) beg t)
+                  (setq is-open (not is-open)))
+                (when is-open
+                  (setq bounds (cons beg end))))))))
       bounds))
    (t
     (meep--region-mark-bounds-find-matching-brackets bounds-init bounds-limit ch-str-pair))))
