@@ -5192,6 +5192,32 @@ Verifies: contextual detection works with quote delimiters."
       (should (equal '(1 . 6) (meep-test-mark-line-column)))
       (should (equal "b c" (meep-test-region-as-string))))))
 
+(ert-deftest selection-mark-bounds-of-char-contextual-outer-with-quotes ()
+  "Mark outer bounds using contextual detection.
+
+Verifies: pressing Return auto-detects enclosing delimiter."
+  (let ((text-initial "(\"b\" c \"d\")"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move inside parens (5 times).
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state normal :command meep-move-char-next))
+      ;; Cursor: ("b" c "d")
+      ;;              ^
+      (should (equal ?c (char-after)))
+      ;; Mark inner with Return (contextual detection).
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-bounds-of-char-inner)
+        [return])
+      ;; Should mark the whole thing (except for the parens) instead at time of writing marks
+      ;; between the two strings.
+      (should (equal 'visual (bray-state)))
+      (should (equal '(1 . 1) (meep-test-point-line-column)))
+      (should (equal '(1 . 10) (meep-test-mark-line-column)))
+      (should (equal "\"b\" c \"d\"" (meep-test-region-as-string))))))
+
 ;; Expand to line bounds edge cases
 
 (ert-deftest selection-expand-to-line-bounds-first-line ()
