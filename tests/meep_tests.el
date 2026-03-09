@@ -1315,8 +1315,7 @@ Verifies: basic forward delete stores in ring, yank restores."
       ;;          ^
       ;; Move past ']', ' ', '(' to inside parens.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-delete-char-ring-yank))
       (should (equal text-expected (buffer-string))))))
@@ -1342,8 +1341,7 @@ Verifies: backward delete stores in ring same as forward."
       ;;          ^
       ;; Move past ']', ' ', '(' to inside parens.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-delete-char-ring-yank))
       (should (equal text-expected (buffer-string))))))
@@ -1371,11 +1369,9 @@ Verifies: ring preserves order, result is 'abc' not 'cba'."
       ;;          ^
       ;; Move past ']', ' ', '(' to inside parens, yank all three.
       (simulate-input-for-meep
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-delete-char-ring-yank)
-        '(:state normal :command meep-delete-char-ring-yank)
+        [?\C-u ?3]
         '(:state normal :command meep-delete-char-ring-yank))
       (should (equal text-expected (buffer-string))))))
 
@@ -1394,22 +1390,17 @@ Verifies: ring preserves text order regardless of delete direction."
       ;;             ^  (on ']')
       ;; Delete 'c', 'b', 'a' backward.
       (simulate-input-for-meep
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-delete-char-ring-prev)
-        '(:state normal :command meep-delete-char-ring-prev)
+        [?\C-u ?3]
         '(:state normal :command meep-delete-char-ring-prev))
       ;; Cursor: [] ()
       ;;          ^
       ;; Move past ']', ' ', '(' to inside parens, yank all three.
       (simulate-input-for-meep
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-delete-char-ring-yank)
-        '(:state normal :command meep-delete-char-ring-yank)
+        [?\C-u ?3]
         '(:state normal :command meep-delete-char-ring-yank))
       (should (equal text-expected (buffer-string))))))
 
@@ -1448,8 +1439,7 @@ second yank does nothing (ring exhausted)."
       ;; Move past ']', ' ', '(' to inside parens.
       ;; First yank restores 'b', second yank does nothing (ring empty).
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-delete-char-ring-yank)
         '(:state normal :command meep-delete-char-ring-yank))
@@ -1504,10 +1494,7 @@ Verifies: contents exchange positions, returns to normal state."
       ;; Cursor: .[ABC]__[XYZ].
       ;;               ^  (after [ABC])
       (simulate-input-for-meep
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
+        [?\C-u ?5]
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-region-to-secondary-selection))
       ;; Now select [XYZ] (positions 8-13).
@@ -1520,10 +1507,7 @@ Verifies: contents exchange positions, returns to normal state."
       ;; Cursor: .[ABC]__[XYZ].
       ;;                      ^  (after [XYZ])
       (simulate-input-for-meep
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
+        [?\C-u ?5]
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-region-swap))
       (should (equal text-expected (buffer-string)))
@@ -1554,10 +1538,7 @@ Verifies: implied region matches secondary's column width."
       ;; Cursor: .[ABC]__[XYZ].
       ;;               ^
       (simulate-input-for-meep
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
+        [?\C-u ?5]
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-region-to-secondary-selection))
       ;; Move to start of [XYZ] without selecting.
@@ -1751,10 +1732,7 @@ Verifies: error signaled, buffer unchanged."
       ;; Cursor: .[ABC]__[XYZ].
       ;;               ^
       (simulate-input-for-meep
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
+        [?\C-u ?5]
         '(:state visual :command meep-move-char-next))
       ;; Attempt swap without secondary selection.
       (should-error-with-message
@@ -1781,9 +1759,7 @@ Verifies: error signaled for overlapping regions, buffer unchanged."
       ;; Cursor: [ABCXYZ]
       ;;             ^
       (simulate-input-for-meep
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-region-to-secondary-selection))
       ;; Select CXYZ] (positions 3-8), overlapping with secondary.
@@ -1795,10 +1771,7 @@ Verifies: error signaled for overlapping regions, buffer unchanged."
       ;; Cursor: [ABCXYZ]
       ;;                ^
       (simulate-input-for-meep
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
+        [?\C-u ?5]
         '(:state visual :command meep-move-char-next))
       ;; Attempt swap with overlapping regions.
       (should-error-with-message
@@ -1828,8 +1801,7 @@ Verifies: error signaled when implied region would extend past buffer end."
         '(:state normal :command meep-move-line-beginning)
         '(:state normal :command meep-region-toggle))
       (simulate-input-for-meep
-        '(:state visual :command meep-move-line-next)
-        '(:state visual :command meep-move-line-next)
+        [?\C-u ?3]
         '(:state visual :command meep-move-line-next)
         '(:state visual :command meep-region-to-secondary-selection))
       ;; Move to line 4 - only 1 line available, but implied region needs 3.
@@ -1862,26 +1834,20 @@ Verifies: error signaled for line count mismatch."
         '(:state normal :command meep-move-char-next)
         '(:state normal :command rectangle-mark-mode))
       (simulate-input-for-meep
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-move-line-next)
         '(:state visual :command meep-region-to-secondary-selection))
       ;; Select [WX]/[YZ]/[UV] rectangle (3 lines).
       (simulate-input-for-meep
         '(:state normal :command meep-move-line-prev)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command rectangle-mark-mode))
       (simulate-input-for-meep
+        [?\C-u ?4]
         '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-line-next)
+        [?\C-u ?2]
         '(:state visual :command meep-move-line-next))
       ;; Attempt swap with mismatched line counts.
       (should-error-with-message
@@ -1909,8 +1875,7 @@ Verifies: error signaled for overlapping rectangle regions."
         '(:state normal :command meep-move-char-next)
         '(:state normal :command rectangle-mark-mode))
       (simulate-input-for-meep
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-move-line-next)
         '(:state visual :command meep-region-to-secondary-selection))
@@ -1921,8 +1886,7 @@ Verifies: error signaled for overlapping rectangle regions."
         '(:state normal :command meep-move-char-prev)
         '(:state normal :command rectangle-mark-mode))
       (simulate-input-for-meep
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-move-line-next))
       ;; Attempt swap with overlapping rectangles.
@@ -2461,8 +2425,7 @@ First three succeed, fourth does nothing and prints a message."
       ;; First three succeed, fourth fails at buffer limit.
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-transpose)
-        '(:state normal :command meep-transpose)
+        [?\C-u ?3]
         '(:state normal :command meep-transpose)
         '(:state normal :command meep-transpose))
       ;; Buffer has expected state (confirms first three transposes worked,
@@ -2493,8 +2456,7 @@ First three succeed, fourth does nothing and prints a message."
       ;; First three succeed, fourth fails at buffer limit.
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-prev)
-        '(:state normal :command meep-transpose)
-        '(:state normal :command meep-transpose)
+        [?\C-u ?3]
         '(:state normal :command meep-transpose)
         '(:state normal :command meep-transpose))
       ;; Buffer has expected state (confirms first three transposes worked,
@@ -2799,8 +2761,7 @@ First three succeed, fourth does nothing and prints a message."
       ;; First three succeed, fourth fails at buffer limit.
       (simulate-input-for-meep
         '(:state normal :command meep-move-paragraph-next)
-        '(:state normal :command meep-transpose)
-        '(:state normal :command meep-transpose)
+        [?\C-u ?3]
         '(:state normal :command meep-transpose)
         '(:state normal :command meep-transpose))
       ;; Buffer has expected state (confirms first three transposes worked,
@@ -2845,8 +2806,7 @@ First three succeed, fourth does nothing and prints a message."
       ;; First three succeed, fourth fails at buffer limit.
       (simulate-input-for-meep
         '(:state normal :command meep-move-paragraph-prev)
-        '(:state normal :command meep-transpose)
-        '(:state normal :command meep-transpose)
+        [?\C-u ?3]
         '(:state normal :command meep-transpose)
         '(:state normal :command meep-transpose))
       ;; Buffer has expected state (confirms first three transposes worked,
@@ -3289,8 +3249,7 @@ First three succeed, fourth does nothing and prints a message."
       ;; First three succeed, fourth fails at buffer limit.
       (simulate-input-for-meep
         '(:state normal :command meep-move-line-next)
-        '(:state normal :command meep-transpose)
-        '(:state normal :command meep-transpose)
+        [?\C-u ?3]
         '(:state normal :command meep-transpose)
         '(:state normal :command meep-transpose))
       ;; Buffer has expected state (confirms first three transposes worked,
@@ -3334,8 +3293,7 @@ First three succeed, fourth does nothing and prints a message."
         ;; Move up one line and transpose four times.
         ;; First three succeed, fourth fails at buffer limit.
         '(:state normal :command meep-move-line-prev)
-        '(:state normal :command meep-transpose)
-        '(:state normal :command meep-transpose)
+        [?\C-u ?3]
         '(:state normal :command meep-transpose)
         '(:state normal :command meep-transpose))
       ;; Buffer has expected state (confirms first three transposes worked,
@@ -3477,8 +3435,7 @@ Verifies: region covers the word under cursor."
       (bray-mode 1)
       ;; Move into middle of 'cd'.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: ab cd ef
@@ -3501,8 +3458,7 @@ Verifies: second expansion includes whitespace."
       (bray-mode 1)
       ;; Move into 'cd'.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: ab cd ef
@@ -3596,11 +3552,7 @@ Verifies: expansion handles buffer boundary."
       (bray-mode 1)
       ;; Move to end of buffer.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?6]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: abc def
@@ -3624,8 +3576,7 @@ Verifies: contraction returns to previous expansion level."
       (bray-mode 1)
       ;; Move into 'cd'.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: ab cd ef
@@ -3656,8 +3607,7 @@ Verifies: expand then contract returns to previous selection."
       (bray-mode 1)
       ;; Move into 'cd'.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: ab cd ef
@@ -3693,8 +3643,7 @@ Verifies: contraction at minimum deactivates region gracefully."
       (bray-mode 1)
       ;; Move into 'cd'.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: ab cd ef
@@ -3724,9 +3673,7 @@ Verifies: selects content inside delimiters, excluding delimiters."
       (bray-mode 1)
       ;; Move inside the parentheses.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 (b1 c2) d3
@@ -3751,9 +3698,7 @@ Verifies: selects content including delimiters."
       (bray-mode 1)
       ;; Move inside the parentheses.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 (b1 c2) d3
@@ -3778,9 +3723,7 @@ Verifies: selects content inside quotes, excluding quotes."
       (bray-mode 1)
       ;; Move inside the quotes.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 "b1 c2" d3
@@ -3805,9 +3748,7 @@ Verifies: selects content including quotes."
       (bray-mode 1)
       ;; Move inside the quotes.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 "b1 c2" d3
@@ -3832,9 +3773,7 @@ Verifies: selects content inside brackets, excluding brackets."
       (bray-mode 1)
       ;; Move inside the brackets.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 [b1 c2] d3
@@ -3859,12 +3798,7 @@ Verifies: selects innermost matching pair."
       (bray-mode 1)
       ;; Move inside the inner parentheses.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?7]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 (b1 (c2) d3) e4
@@ -3889,9 +3823,7 @@ Verifies: selects innermost matching outer pair."
       (bray-mode 1)
       ;; Move between outer and inner parens (at b1).
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 (b1 (c2) d3) e4
@@ -4125,9 +4057,7 @@ Verifies: {} delimiters work correctly."
       (bray-mode 1)
       ;; Move inside the braces.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 {b1 c2} d3
@@ -4150,9 +4080,7 @@ Verifies: <> delimiters work correctly."
       (bray-mode 1)
       ;; Move inside the brackets.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 <b1 c2> d3
@@ -4202,8 +4130,7 @@ Verifies: handles () with nothing inside."
       (bray-mode 1)
       ;; Move to between the parens.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 () b1
@@ -4228,8 +4155,7 @@ Verifies: handles (x) correctly."
       (bray-mode 1)
       ;; Move inside the parens.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 (x) b1
@@ -4252,8 +4178,7 @@ Verifies: handles no-match case gracefully."
       (bray-mode 1)
       ;; Cursor in middle of text, no parens anywhere.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: ab cd ef
@@ -4278,9 +4203,7 @@ Verifies: searching for [ when inside () fails gracefully."
       (bray-mode 1)
       ;; Move inside parentheses.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 (b1 c2) d3
@@ -4305,9 +4228,7 @@ Verifies: handles only opening paren gracefully."
       (bray-mode 1)
       ;; Move after opening paren.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 (b1 c2 d3
@@ -4422,9 +4343,7 @@ Verifies: activate-or-reverse works after mark-bounds."
       (bray-mode 1)
       ;; Move inside parens.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 (b1 c2) d3
@@ -4457,9 +4376,7 @@ Verifies: {} delimiters work correctly with outer."
       (bray-mode 1)
       ;; Move inside the braces.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 {b1 c2} d3
@@ -4482,9 +4399,7 @@ Verifies: <> delimiters work correctly with outer."
       (bray-mode 1)
       ;; Move inside the brackets.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 <b1 c2> d3
@@ -4507,9 +4422,7 @@ Verifies: [] delimiters work correctly with outer."
       (bray-mode 1)
       ;; Move inside the brackets.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 [b1 c2] d3
@@ -4532,9 +4445,7 @@ Verifies: '' delimiters work correctly with outer."
       (bray-mode 1)
       ;; Move inside the quotes.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 'b1 c2' d3
@@ -4557,13 +4468,7 @@ Verifies: works when cursor is on closing delimiter."
       (bray-mode 1)
       ;; Move to the closing paren.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?8]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 (b1 c2) d3
@@ -4586,9 +4491,7 @@ Verifies: '' delimiters work correctly."
       (bray-mode 1)
       ;; Move inside the quotes.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 'b1 c2' d3
@@ -4611,8 +4514,7 @@ Verifies: handles () with nothing inside for outer."
       (bray-mode 1)
       ;; Move to between the parens.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a0 () b1
@@ -4716,8 +4618,7 @@ Verifies: expand/contract/expand sequence works correctly."
       (bray-mode 1)
       ;; Move into 'cd'.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: ab cd ef
@@ -4763,8 +4664,7 @@ Verifies: expansion continues beyond word to include more context."
       (bray-mode 1)
       ;; Move into 'cd'.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: ab cd ef
@@ -4803,8 +4703,7 @@ Verifies: inner selection finds enclosing delimiter of specified type."
       (bray-mode 1)
       ;; Move inside [b] (to 'b').
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a ([b] c) d
@@ -4828,8 +4727,7 @@ Verifies: outer selection finds enclosing delimiter of specified type."
       (bray-mode 1)
       ;; Move inside (b) (to 'b').
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a {(b) c} d
@@ -4992,9 +4890,7 @@ Verifies: works when cursor is at last content character."
       (bray-mode 1)
       ;; Move to just before closing paren (at 'c').
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a (b c) d
@@ -5019,8 +4915,7 @@ Verifies: whitespace content selected correctly."
       (bray-mode 1)
       ;; Move inside parens (to whitespace).
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a (   ) b
@@ -5101,8 +4996,7 @@ Verifies: point and mark positions correct with multibyte content."
       (bray-mode 1)
       ;; Move inside parens.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: a (中文字) b
@@ -5362,8 +5256,7 @@ Verifies: contract deactivates region when expansion state is lost."
       (bray-mode 1)
       ;; Move into 'cd'.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: ab cd ef
@@ -5398,8 +5291,7 @@ Verifies: expansion stops when buffer bounds are reached."
       (bray-mode 1)
       ;; Move into 'cd'.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: ab cd ef
@@ -5429,8 +5321,7 @@ Verifies: expansion is a no-op at maximum extent."
       (bray-mode 1)
       ;; Move into 'cd'.
       (simulate-input-for-meep
-        '(:state normal :command meep-move-char-next)
-        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-char-next))
       ;; Cursor: ab cd ef
