@@ -2533,15 +2533,10 @@ When INNER is non-nil, move to the inner bound."
 When INNER is non-nil, move to the inner bound."
   (interactive "^p")
   (let ((bounds (cons (pos-bol) (pos-eol))))
-    (cond
-     (bounds
-      (when inner
-        (let ((skip "[:blank:]"))
-          (setq bounds (meep--bounds-contract-by-chars bounds skip skip))))
-      (meep--move-to-bounds-endpoint bounds arg))
-     (t
-      (message "Not found: bounds of line")
-      nil))))
+    (when inner
+      (let ((skip "[:blank:]"))
+        (setq bounds (meep--bounds-contract-by-chars bounds skip skip))))
+    (meep--move-to-bounds-endpoint bounds arg)))
 
 ;;;###autoload
 (defun meep-move-to-bounds-of-line-inner (arg)
