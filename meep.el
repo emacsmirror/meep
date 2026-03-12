@@ -84,13 +84,11 @@ This must be set by commands that pass the:
 (defmacro meep--incf (place &optional delta)
   "Increment PLACE by DELTA or 1."
   (declare (debug (gv-place &optional form)))
-  (gv-letplace (getter setter) place
-    (funcall setter `(+ ,getter ,(or delta 1)))))
+  (gv-letplace (getter setter) place (funcall setter `(+ ,getter ,(or delta 1)))))
 (defmacro meep--decf (place &optional delta)
   "Decrement PLACE by DELTA or 1."
   (declare (debug (gv-place &optional form)))
-  (gv-letplace (getter setter) place
-    (funcall setter `(- ,getter ,(or delta 1)))))
+  (gv-letplace (getter setter) place (funcall setter `(- ,getter ,(or delta 1)))))
 
 
 ;; ---------------------------------------------------------------------------
