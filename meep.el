@@ -1172,53 +1172,38 @@ When STEP-OVER is non-nil, don't step into expressions."
 
     changed))
 
-(defun meep--is-point-after-bracket-open (bracket-chars)
-  "Return t if point is after an opening bracket in BRACKET-CHARS."
+(defsubst meep--is-bracket-at-p-impl (pos syntax-class bracket-chars)
+  "Return t if POS has SYNTAX-CLASS and char at POS is in BRACKET-CHARS.
+SYNTAX-CLASS is 4 for open parenthesis, 5 for close parenthesis."
   (declare (important-return-value t))
-  (let ((syn (syntax-after (1- (point)))))
+  (let ((syn (syntax-after pos)))
     (cond
      ((and syn
-           (eq (syntax-class syn) 4) ; Open parenthesis.
-           (or (null bracket-chars) (memq (char-before (point)) bracket-chars)))
+           (eq (syntax-class syn) syntax-class)
+           (or (null bracket-chars) (memq (char-after pos) bracket-chars)))
       t)
      (t
       nil))))
+
+(defun meep--is-point-after-bracket-open (bracket-chars)
+  "Return t if point is after an opening bracket in BRACKET-CHARS."
+  (declare (important-return-value t))
+  (meep--is-bracket-at-p-impl (1- (point)) 4 bracket-chars)) ; Open parenthesis.
 
 (defun meep--is-point-after-bracket-close (bracket-chars)
   "Return t if point is after a closing bracket in BRACKET-CHARS."
   (declare (important-return-value t))
-  (let ((syn (syntax-after (1- (point)))))
-    (cond
-     ((and syn
-           (eq (syntax-class syn) 5) ; Close parenthesis.
-           (or (null bracket-chars) (memq (char-before (point)) bracket-chars)))
-      t)
-     (t
-      nil))))
+  (meep--is-bracket-at-p-impl (1- (point)) 5 bracket-chars)) ; Close parenthesis.
 
 (defun meep--is-point-before-bracket-open (bracket-chars)
   "Return t if point is before an opening bracket in BRACKET-CHARS."
   (declare (important-return-value t))
-  (let ((syn (syntax-after (point))))
-    (cond
-     ((and syn
-           (eq (syntax-class syn) 4) ; Open parenthesis.
-           (or (null bracket-chars) (memq (char-after (point)) bracket-chars)))
-      t)
-     (t
-      nil))))
+  (meep--is-bracket-at-p-impl (point) 4 bracket-chars)) ; Open parenthesis.
 
 (defun meep--is-point-before-bracket-close (bracket-chars)
   "Return t if point is before a closing bracket in BRACKET-CHARS."
   (declare (important-return-value t))
-  (let ((syn (syntax-after (point))))
-    (cond
-     ((and syn
-           (eq (syntax-class syn) 5) ; Close parenthesis.
-           (or (null bracket-chars) (memq (char-after (point)) bracket-chars)))
-      t)
-     (t
-      nil))))
+  (meep--is-bracket-at-p-impl (point) 5 bracket-chars)) ; Close parenthesis.
 
 (defun meep--move-by-sexp-any-impl (n step-over)
   "Jump to the next/previous SEXP by N.
