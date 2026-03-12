@@ -1363,7 +1363,7 @@ Only used between successive
 (defun meep--move-by-sexp-over-last-command-check ()
   "Return non-nil when the `last-command' moved over an S-expression."
   (declare (important-return-value t))
-  (memq last-command (list 'meep-move-by-sexp-over-next 'meep-move-by-sexp-over-prev)))
+  (memq last-command '(meep-move-by-sexp-over-next meep-move-by-sexp-over-prev)))
 
 ;;;###autoload
 (defun meep-move-by-sexp-over-next (arg)
@@ -3360,9 +3360,9 @@ When only blank space was skipped, skip all blank space."
     12)
 
    ;; Brackets and quotes.
-   ((memq ch (list ?\( ?\))) ; Open/close parenthesis characters.
+   ((memq ch '(?\( ?\))) ; Open/close parenthesis characters.
     11)
-   ((memq ch (list ?< ?>)) ; Comment start/end.
+   ((memq ch '(?< ?>)) ; Comment start/end.
     10)
    ((eq ?$ ch) ; Paired delimiters.
     9)
@@ -3394,8 +3394,7 @@ When only blank space was skipped, skip all blank space."
   "Expand matching syntax table N times."
   (when meep--region-syntax-asym
     (let ((local-last-command (meep--last-command)))
-      (unless (memq
-               local-last-command (list 'meep-region-syntax-expand 'meep-region-syntax-contract))
+      (unless (memq local-last-command '(meep-region-syntax-expand meep-region-syntax-contract))
         (setq meep--region-syntax-asym nil))))
   (let ((syn-as-str-fn (lambda (syn) (char-to-string (syntax-class-to-char (syntax-class syn)))))
         (found nil))
@@ -3430,7 +3429,7 @@ When only blank space was skipped, skip all blank space."
             (setq do-beg t)
             (setq do-end t))
            ;; It's handy for including/excluding surrounding brackets.
-           ((and (member beg-syn-str (list "(" ")")) (member end-syn-str (list "(" ")")))
+           ((and (member beg-syn-str '("(" ")")) (member end-syn-str '("(" ")")))
             (setq do-symmetry t)
             (setq do-beg t)
             (setq do-end t))
@@ -3573,8 +3572,7 @@ When only blank space was skipped, skip all blank space."
   "Contract matching syntax table N times."
   (when meep--region-syntax-asym
     (let ((local-last-command (meep--last-command)))
-      (unless (memq
-               local-last-command (list 'meep-region-syntax-expand 'meep-region-syntax-contract))
+      (unless (memq local-last-command '(meep-region-syntax-expand meep-region-syntax-contract))
         (setq meep--region-syntax-asym nil))))
   (let ((syn-as-str-fn (lambda (syn) (char-to-string (syntax-class-to-char (syntax-class syn)))))
         (found nil))
@@ -3609,7 +3607,7 @@ When only blank space was skipped, skip all blank space."
           (setq do-beg t)
           (setq do-end t))
          ;; It's handy for including/excluding surrounding brackets.
-         ((and (member beg-syn-str (list "(" ")")) (member end-syn-str (list "(" ")")))
+         ((and (member beg-syn-str '("(" ")")) (member end-syn-str '("(" ")")))
           (setq do-symmetry t)
           (setq do-beg t)
           (setq do-end t))
@@ -4119,7 +4117,7 @@ and `meep-delete-char-ring-yank'.")
   "Clear the delete character ring as needed."
   ;; Only accumulate successive calls,
   ;; otherwise this would either grow indefinitely or need to be "managed".
-  (unless (memq last-command (list 'meep-delete-char-ring-next 'meep-delete-char-ring-prev))
+  (unless (memq last-command '(meep-delete-char-ring-next meep-delete-char-ring-prev))
     (setq meep-delete-char-ring nil)))
 
 ;;;###autoload
