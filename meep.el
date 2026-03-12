@@ -2079,9 +2079,8 @@ When INNER is non-nil, contract to inner bounds."
 
 (defun meep--move-to-bounds-endpoint (bounds n)
   "Move to the start/end of BOUNDS (start when N is negative)."
-  ;; Note that it's important to always set the mark because unlike a typical motion,
-  ;; we want to be able to use `meep-region-activate-and-reverse-motion' even if this
-  ;; move-to-bounds action happens not to move the point, see: #8.
+  ;; Always set the mark so `meep-region-activate-and-reverse-motion' works
+  ;; even when the point doesn't move, see: #8.
   (meep--with-mark-on-motion-always-set
     (cond
      ((< n 0)
@@ -3806,7 +3805,6 @@ This must be bound to keys 0..9 or the minus key."
 ;; Support searching in both directions as well as
 ;; searching based on the active region.
 
-;; Wrapped search.
 (defcustom meep-isearch-activate-mark t
   "ISEARCH activates the mark (transient).
 So motion drops the selection.
