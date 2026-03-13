@@ -6266,24 +6266,6 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 
 
 ;; ---------------------------------------------------------------------------
-;; Old Commands
-;;
-;; These will eventually be removed.
-;; Report the new commands which should be used so users can upgrade.
-
-(defun meep-exchange-point-and-mark-motion ()
-  "Report that `meep-region-activate-and-reverse-motion' must be used instead."
-  (interactive)
-  (user-error
-   "This function has been renamed, use: `meep-region-activate-and-reverse-motion' instead"))
-
-(defun meep-exchange-point-and-mark ()
-  "Report that `meep-region-activate-and-reverse' must be used instead."
-  (interactive)
-  (user-error "This function has been renamed, use: `meep-region-activate-and-reverse' instead"))
-
-
-;; ---------------------------------------------------------------------------
 ;; Command Properties
 
 ;;;###autoload
