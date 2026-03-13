@@ -144,6 +144,7 @@ Also suppresses minibuffer prompts from interactive specs."
       meep-insert-line-end
       meep-insert-open-above
       meep-insert-open-below
+      meep-indent-rigidly
       meep-insert-overwrite
       meep-isearch-at-point-next
       meep-isearch-at-point-prev
@@ -7793,6 +7794,120 @@ Messages should be captured and not displayed."
       (user-error "User error message")
     'user-error
     "User error message"))
+
+(ert-deftest indent-rigidly-shift-left-with-existing-indent ()
+  "Shift an indented line further left using `meep-indent-rigidly'.
+
+Verifies: `meep-indent-rigidly' sets up the current line as the region
+and `indent-rigidly' shifts it left when existing indentation is present."
+  (let ((text-initial (concat "first\n" "        second")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to line 2.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next))
+      ;; Cursor on "        second" (8 spaces).
+      (should (equal '(2 . 0) (meep-test-point-line-column)))
+      ;; Shift left by 4 via TAB (meep-indent-rigidly).
+      ;; C-a exits the transient keymap (not in `indent-rigidly-map'),
+      ;; a NOP (globally unset in the test environment).
+      (simulate-input
+        [?\t left left left left ?\C-a])
+      (should (equal "first\n    second" (buffer-string)))
+      (should (equal '(2 . 0) (meep-test-point-line-column))))))
+
+(ert-deftest indent-rigidly-shift-line ()
+  "Shift a line right and left using `meep-indent-rigidly'.
+
+Verifies: right and left keys shift indentation
+via the transient keymap entered by `indent-rigidly'.
+Note: S-right/S-left are not testable in batch mode."
+  (let ((text-initial "hello"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Right by 3.
+      ;; C-a exits the transient keymap (not in `indent-rigidly-map'),
+      ;; a NOP (globally unset in the test environment).
+      (simulate-input
+        [?\t right right right ?\C-a])
+      (should (equal "   hello" (buffer-string)))
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      ;; Right by 3 more (6 total).
+      (simulate-input
+        [?\t right right right ?\C-a])
+      (should (equal "      hello" (buffer-string)))
+      ;; Left by 3 (3 remaining).
+      (simulate-input
+        [?\t left left left ?\C-a])
+      (should (equal "   hello" (buffer-string)))
+      ;; Left by 3 (back to 0).
+      (simulate-input
+        [?\t left left left ?\C-a])
+      (should (equal "hello" (buffer-string)))
+      (should (equal '(1 . 0) (meep-test-point-line-column))))))
+
+(ert-deftest indent-rigidly-shift-region ()
+  "Shift a multi-line region right using `meep-indent-rigidly'.
+
+Verifies: `meep-indent-rigidly' passes through to `indent-rigidly'
+when a region is already active."
+  (let ((text-initial "aaa\nbbb\nccc"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select lines 1-2 (move into line 2 so indent-rigidly includes it).
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-move-char-next))
+      (should (region-active-p))
+      ;; Shift right by 3.
+      ;; C-a exits the transient keymap (not in `indent-rigidly-map'),
+      ;; a NOP (globally unset in the test environment).
+      (simulate-input
+        [?\t right right right ?\C-a])
+      (should (equal "   aaa\n   bbb\nccc" (buffer-string))))))
+
+(ert-deftest indent-rigidly-error-empty-line ()
+  "Error when `meep-indent-rigidly' is called on an empty line."
+  (let ((text-initial "hello\n\nworld"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to the empty line 2.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next))
+      (should (equal '(2 . 0) (meep-test-point-line-column)))
+      (should-error-with-message
+          (simulate-input
+            [?\t])
+        'user-error
+        "The line is empty"))))
+
+(ert-deftest indent-rigidly-shift-line-mid-column ()
+  "Shift a line right when the cursor is mid-line.
+
+Verifies: `meep-indent-rigidly' sets the marker to bol
+when point is not at the beginning of the line."
+  (let ((text-initial "hello"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move cursor to mid-line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-move-char-next))
+      (should (equal '(1 . 2) (meep-test-point-line-column)))
+      ;; Shift right by 3.
+      ;; C-a exits the transient keymap (not in `indent-rigidly-map'),
+      ;; a NOP (globally unset in the test environment).
+      (simulate-input
+        [?\t right right right ?\C-a])
+      (should (equal "   hello" (buffer-string)))
+      ;; Column 2 + 3 spaces inserted before point = column 5.
+      (should (equal '(1 . 5) (meep-test-point-line-column))))))
 
 (provide 'meep_tests)
 ;; Local Variables:
