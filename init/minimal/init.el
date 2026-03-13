@@ -95,6 +95,9 @@
     '("<" . indent-rigidly-left-to-tab-stop)
     '(">" . indent-rigidly-right-to-tab-stop)
 
+    ;; NOTE: This must not be <tab> otherwise pressing tab twice doesn't re-indent.
+    '("TAB" . meep-indent-rigidly)
+
     '("." . repeat-fu-execute)
 
     ;; Insert mode.
