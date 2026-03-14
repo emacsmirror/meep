@@ -144,6 +144,7 @@ Also suppresses minibuffer prompts from interactive specs."
       meep-insert-line-end
       meep-insert-open-above
       meep-insert-open-below
+      meep-digit-argument-repeat
       meep-indent-rigidly
       meep-insert-overwrite
       meep-isearch-at-point-next
@@ -7908,6 +7909,36 @@ when point is not at the beginning of the line."
       (should (equal "   hello" (buffer-string)))
       ;; Column 2 + 3 spaces inserted before point = column 5.
       (should (equal '(1 . 5) (meep-test-point-line-column))))))
+
+(ert-deftest digit-argument-repeat-basic ()
+  "Repeat the last command using `meep-digit-argument-repeat'.
+
+Move right once, then press 5 to repeat the motion 5 more times."
+  (let ((text-initial "abcdefghij"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move right once (cursor on 'b'), then press 5 to repeat 5 times (cursor on 'g').
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        "5")
+      (should (equal '(1 . 6) (meep-test-point-line-column))))))
+
+(ert-deftest digit-argument-repeat-multiple ()
+  "Repeat the last command multiple times using `meep-digit-argument-repeat'.
+
+Move right once, then press 3 three times to repeat the motion 3+3+3 more times."
+  (let ((text-initial "abcdefghijklmnop"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move right once (cursor on 'b'), then press 3 three times (cursor on 'k').
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        "3"
+        "3"
+        "3")
+      (should (equal '(1 . 10) (meep-test-point-line-column))))))
 
 (provide 'meep_tests)
 ;; Local Variables:
