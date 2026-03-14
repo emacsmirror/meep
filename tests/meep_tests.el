@@ -6481,6 +6481,125 @@ Verifies: multiple trailing spaces shrunk to one."
       (should (equal '(1 . 6) (meep-test-point-line-column))))))
 
 
+(ert-deftest space-shrink-blank-lines ()
+  "Remove multiple blank lines when cursor is on a blank line.
+
+Verifies: multiple blank lines between paragraphs collapse to one."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "aaa\n"
+          "\n"
+          "\n"
+          "bbb")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to the first blank line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next))
+      (should (equal '(2 . 0) (meep-test-point-line-column)))
+      ;; Shrink blank lines.
+      (simulate-input-for-meep
+        '(:state normal :command meep-space-shrink-contextual))
+      (should (equal "aaa\n\nbbb" (buffer-string)))
+      (should (equal '(2 . 0) (meep-test-point-line-column))))))
+
+(ert-deftest space-shrink-many-blank-lines ()
+  "Remove many blank lines when cursor is on a blank line.
+
+Verifies: five blank lines collapse to one."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "aaa\n"
+          "\n"
+          "\n"
+          "\n"
+          "\n"
+          "\n"
+          "bbb")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to a blank line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next))
+      ;; Shrink blank lines.
+      (simulate-input-for-meep
+        '(:state normal :command meep-space-shrink-contextual))
+      (should (equal "aaa\n\nbbb" (buffer-string))))))
+
+(ert-deftest space-shrink-single-blank-line ()
+  "A single blank line between paragraphs is not removed.
+
+Verifies: calling on a single empty line makes no change."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "aaa\n"
+          "\n"
+          "bbb")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to the blank line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next))
+      (should (equal '(2 . 0) (meep-test-point-line-column)))
+      ;; Shrink: no change expected.
+      (simulate-input-for-meep
+        '(:state normal :command meep-space-shrink-contextual))
+      (should (equal "aaa\n\nbbb" (buffer-string)))
+      (should (equal '(2 . 0) (meep-test-point-line-column))))))
+
+(ert-deftest space-shrink-paragraph-boundary ()
+  "Trim blank lines at paragraph boundaries from non-blank content.
+
+Verifies: calling on a non-blank line trims blank line runs
+above and below to a single blank line each."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "\n"
+          "\n"
+          "\n"
+          "aaa\n"
+          "\n"
+          "\n"
+          "\n"
+          "bbb")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to 'aaa' (line 4).
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-next))
+      (should (equal ?a (char-after)))
+      ;; Shrink: trims blank lines above and below to one each.
+      (simulate-input-for-meep
+        '(:state normal :command meep-space-shrink-contextual))
+      (should (equal "\naaa\n\nbbb" (buffer-string))))))
+
+(ert-deftest space-shrink-tab-to-space ()
+  "Shrink a single tab to a single space.
+
+Verifies: a tab character is normalized to a space."
+  (let ((text-initial "hello\tworld"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to the tab.
+      (goto-char 6)
+      (should (equal ?\t (char-after)))
+      ;; Shrink.
+      (simulate-input-for-meep
+        '(:state normal :command meep-space-shrink-contextual))
+      (should (equal "hello world" (buffer-string)))
+      (should (equal ?w (char-after))))))
+
 ;; ---------------------------------------------------------------------------
 ;; Search Operations
 
