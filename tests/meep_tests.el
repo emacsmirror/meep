@@ -485,6 +485,7 @@ PLIST must contain exactly :state and :command keys."
     (meep-delete-same-syntax-or-symbol-next . (insert))
     (meep-delete-same-syntax-or-symbol-prev . (insert))
     ;; Insert commands.
+    (newline . (insert normal))
     (meep-insert-append . (normal))
     ;; Bounds commands.
     (meep-move-to-bounds-of-line . (normal))
@@ -803,9 +804,148 @@ Verifies: basic text insertion works correctly."
           ".####.\n"
           ".####.\n"
           "......\n")))
+    (dolist (use-real-insert '(nil t))
+      (let* ((meep-repeat-fu-replay use-real-insert)
+             ;; Real insert exits insert state; string-rectangle exits the minibuffer.
+             (exit-key
+              (cond
+               (use-real-insert
+                (meep-test-key-deferred 'insert 'bray-state-stack-pop))
+               (t
+                [return]))))
+        (with-meep-test text-initial
+          (text-mode)
+          (bray-mode 1)
+          (simulate-input-for-meep
+            '(:state normal :command meep-move-char-next)
+            '(:state normal :command meep-move-line-next)
+            '(:state normal :command rectangle-mark-mode)
+            '(:state visual :command meep-move-char-next)
+            "3"
+            '(:state visual :command meep-move-line-next)
+            '(:state visual :command meep-insert-change)
+            "####"
+            exit-key)
+          (should (equal 'normal (bray-state)))
+          (should (equal text-expected (buffer-string)))
+          ;; Point at end of inserted text on the last affected line.
+          (should (equal '(3 . 5) (meep-test-point-line-column))))))))
+
+(ert-deftest primitive-change-region-rectangle-reversed ()
+  "Ensure insert-change works with rectangle mark mode (point on first line)."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "......\n"
+          "......\n"
+          "......\n"
+          "......\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "......\n"
+          ".####.\n"
+          ".####.\n"
+          "......\n")))
+    (dolist (use-real-insert '(nil t))
+      (let* ((meep-repeat-fu-replay use-real-insert)
+             ;; Real insert exits insert state; string-rectangle exits the minibuffer.
+             (exit-key
+              (cond
+               (use-real-insert
+                (meep-test-key-deferred 'insert 'bray-state-stack-pop))
+               (t
+                [return])))
+
+             ;; Real insert edits the line at point (line 2);
+             ;; string-rectangle always leaves point on the last line.
+             (point-expected
+              (cond
+               (use-real-insert
+                '(2 . 5))
+               (t
+                '(3 . 5)))))
+        (with-meep-test text-initial
+          (text-mode)
+          (bray-mode 1)
+          ;; Select rectangle from bottom-right to top-left (point on first line).
+          (simulate-input-for-meep
+            '(:state normal :command meep-move-char-next)
+            '(:state normal :command meep-move-line-next)
+            '(:state normal :command meep-move-line-next)
+            '(:state normal :command rectangle-mark-mode)
+            '(:state visual :command meep-move-char-next)
+            "3"
+            '(:state visual :command meep-move-line-prev)
+            '(:state visual :command meep-insert-change)
+            "####"
+            exit-key)
+          (should (equal 'normal (bray-state)))
+          (should (equal text-expected (buffer-string)))
+          (should (equal point-expected (meep-test-point-line-column))))))))
+
+(ert-deftest primitive-change-region-rectangle-real-insert-newline ()
+  "Ensure real insert with newline replays correctly (top-to-bottom)."
+  (let ((meep-repeat-fu-replay t)
+        (text-initial
+         ;; format-next-line: off
+         (concat
+          "......\n"
+          "......\n"
+          "......\n"
+          "......\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "......\n"
+          ".##\n"
+          "##.\n"
+          ".##\n"
+          "##.\n"
+          "......\n")))
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
+      ;; Select rectangle: point on first line (top-to-bottom replay).
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command rectangle-mark-mode)
+        '(:state visual :command meep-move-char-next)
+        "3"
+        '(:state visual :command meep-move-line-prev)
+        '(:state visual :command meep-insert-change)
+        "##"
+        '(:state insert :command newline)
+        "##"
+        '(:state insert :command bray-state-stack-pop))
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest primitive-change-region-rectangle-real-insert-newline-reversed ()
+  "Ensure real insert with newline replays correctly (bottom-to-top)."
+  (let ((meep-repeat-fu-replay t)
+        (text-initial
+         ;; format-next-line: off
+         (concat
+          "......\n"
+          "......\n"
+          "......\n"
+          "......\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "......\n"
+          ".##\n"
+          "##.\n"
+          ".##\n"
+          "##.\n"
+          "......\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select rectangle: point on last line (bottom-to-top replay).
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-line-next)
@@ -814,10 +954,50 @@ Verifies: basic text insertion works correctly."
         "3"
         '(:state visual :command meep-move-line-next)
         '(:state visual :command meep-insert-change)
-        "####"
-        [return])
+        "##"
+        '(:state insert :command newline)
+        "##"
+        '(:state insert :command bray-state-stack-pop))
       (should (equal 'normal (bray-state)))
       (should (equal text-expected (buffer-string))))))
+
+(ert-deftest primitive-change-region-rectangle-real-insert-undo ()
+  "Ensure undo reverts the entire rectangle edit (delete + edit + replay) in one step."
+  (let ((meep-repeat-fu-replay t)
+        (text-initial
+         ;; format-next-line: off
+         (concat
+          "......\n"
+          "......\n"
+          "......\n"
+          "......\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "......\n"
+          ".####.\n"
+          ".####.\n"
+          "......\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select rectangle: point on first line (top-to-bottom replay).
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command rectangle-mark-mode)
+        '(:state visual :command meep-move-char-next)
+        "3"
+        '(:state visual :command meep-move-line-prev)
+        '(:state visual :command meep-insert-change)
+        "####"
+        '(:state insert :command bray-state-stack-pop))
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string)))
+      ;; A single undo should revert the entire operation.
+      (undo)
+      (should (equal text-initial (buffer-string))))))
 
 ;; Clipboard Tests
 ;;

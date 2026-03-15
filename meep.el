@@ -38,6 +38,9 @@
 (declare-function apply-on-rectangle "rect")
 (declare-function kmacro-ring-head "kmacro")
 
+;; For `meep-repeat-fu-replay'.
+(declare-function repeat-fu-listener-register "repeat-fu")
+(declare-function repeat-fu-listener-unregister-and-collect "repeat-fu")
 
 ;; ---------------------------------------------------------------------------
 ;; Custom Variables
@@ -55,6 +58,16 @@
 
 Used by `meep-insert-at-last' which will enter insert mode at this location."
   :type 'register)
+
+(defcustom meep-repeat-fu-replay t
+  "When non-nil, use real insert mode for rectangle editing.
+Instead of `string-rectangle', enter insert mode on the first line
+and record keystrokes.  On exit, replay the recorded keystrokes
+on all other lines in the rectangle.
+
+Requires `repeat-fu-mode' to be active; falls back to
+`string-rectangle' when it is not."
+  :type 'boolean)
 
 (defvar-local meep-state-region-elem nil
   "Supported values are nil or `line-wise'.
@@ -5306,6 +5319,242 @@ Intended to be called by a hook."
      (t
       (message "No exit hook found for state: %S" meep-state-insert)))))
 
+
+;; ---------------------------------------------------------------------------
+;; Rectangle Edit with Repeat-FU Replay
+
+;; Plist storing rectangle replay state, made buffer-local on demand, killed on exit.
+;; - :column
+;;   Target column for replay (the left edge of the rectangle).
+;; - :line-direction
+;;   +1 (top-to-bottom) or -1 (bottom-to-top) replay order.
+;; - :line-marker
+;;   Marker at the first replay target line, set during enter so it tracks
+;;   through any buffer modifications the user makes in insert mode.
+;;   Advanced to successive lines during replay.
+;; - :undo-tail
+;;   Tail of `buffer-undo-list' before the operation, for undo fusing.
+;; - :mark-marker
+;;   Marker at the rectangle boundary, used to detect the last replay line
+;;   and to restore the mark on exit.
+;; - :listener
+;;   Opaque token from `repeat-fu-listener-register' for recording
+;;   keystrokes during insert mode, replayed on remaining lines on exit.
+(defvar meep--rectangle-edit-data nil)
+
+(defun meep--rectangle-edit-undo-fuse (undo-tail)
+  "Remove all undo boundaries between the head of `buffer-undo-list' and UNDO-TAIL.
+This fuses multiple undo steps into a single atomic undo operation."
+  ;; Strip leading nil boundaries.
+  (while (and (consp buffer-undo-list)
+              (not (eq buffer-undo-list undo-tail))
+              (null (car buffer-undo-list)))
+    (setq buffer-undo-list (cdr buffer-undo-list)))
+  ;; Strip internal nil boundaries, stopping before UNDO-TAIL.
+  (let ((tail buffer-undo-list))
+    (while (and (consp tail) (consp (cdr tail)) (not (eq (cdr tail) undo-tail)))
+      (cond
+       ((null (cadr tail))
+        (setcdr tail (cddr tail)))
+       (t
+        (setq tail (cdr tail)))))))
+
+(defun meep--rectangle-edit-replay-lines (macro col line-direction line-marker mark-marker)
+  "Replay MACRO on remaining rectangle lines.
+COL is the target column.  LINE-DIRECTION is +1 or -1.
+LINE-MARKER and MARK-MARKER delimit the replay range."
+  (let ((error-count 0)
+        (attempted-edit-count 0)
+        (continue
+         ;; Guard: skip replay for single-line rectangles.
+         ;; Unlikely but not an error.
+         (let ((mark-bol
+                (save-excursion
+                  (goto-char mark-marker)
+                  (pos-bol))))
+           (cond
+            ((> line-direction 0)
+             (<= (marker-position line-marker) mark-bol))
+            (t
+             (>= (marker-position line-marker) mark-bol))))))
+    (while continue
+      (goto-char line-marker)
+      (move-to-column col t)
+      ;; Advance marker to the next target before executing.
+      ;; For top-to-bottom this lets the marker track through
+      ;; any lines the macro adds or removes.
+      (cond
+       ((= (pos-bol)
+           (save-excursion
+             (goto-char mark-marker)
+             (pos-bol)))
+        ;; Last target line, stop after executing.
+        (setq continue nil))
+       (t
+        (save-excursion
+          (cond
+           ((not (zerop (forward-line line-direction)))
+            ;; Ran out of lines (macro deleted some), stop after executing.
+            (setq continue nil))
+           (t
+            (set-marker line-marker (point)))))))
+      (meep--incf attempted-edit-count)
+      (condition-case err
+          (execute-kbd-macro macro)
+        (error
+         (meep--incf error-count)
+         ;; Still logged to `*Messages*', just avoids echo area flickering.
+         (let ((inhibit-message t))
+           (message "meep: rectangle replay error at edit %d: %s"
+                    attempted-edit-count
+                    (error-message-string err))))))
+    (when (> error-count 0)
+      (message "Warning: found %d error(s) editing %d line(s), see log for details."
+               error-count
+               attempted-edit-count))))
+
+(defun meep--rectangle-edit-replay-on-exit ()
+  "Replay recorded keystrokes on remaining rectangle lines."
+  (let ((data meep--rectangle-edit-data))
+    ;; Clean up state.
+    (kill-local-variable 'meep--rectangle-edit-data)
+    ;; Remove self from exit hook.
+    (let ((hook-sym (bray-state-get-hook-exit meep-state-insert)))
+      (when hook-sym
+        (remove-hook hook-sym #'meep--rectangle-edit-replay-on-exit t)))
+
+    ;; Collect and unregister the listener before the data guard
+    ;; so it is cleared even if data is unexpectedly nil.
+    (let ((macro (repeat-fu-listener-unregister-and-collect (plist-get data :listener))))
+      (when data
+        (let ((col (plist-get data :column))
+              (line-direction (plist-get data :line-direction))
+              (line-marker (plist-get data :line-marker))
+              (mark-marker (plist-get data :mark-marker))
+              (undo-tail (plist-get data :undo-tail)))
+          (when macro
+            ;; `repeat-fu-listener-unregister-and-collect' returns nil
+            ;; when no keys were recorded, never an empty vector.
+            (meep--assert (length> macro 0))
+            (save-mark-and-excursion
+              (meep--rectangle-edit-replay-lines
+               macro col line-direction line-marker mark-marker)))
+          ;; Clean up marker.
+          (meep--assert line-marker)
+          (set-marker line-marker nil)
+          ;; Fuse the entire operation (delete + edit + replay) into one undo step.
+          ;;
+          ;; Note: undo entries created by hooks that run after this
+          ;; (e.g. state transition hooks) won't be included in the fuse.
+          ;; Deferring to `post-command-hook' could capture those, but is unnecessarily
+          ;; intrusive since mode switching shouldn't modify the buffer.
+          ;; `buffer-undo-list' becoming `t' mid-edit is very unlikely,
+          ;; (disabling undo while you change a block)
+          ;; but shouldn't break things either.
+          (when (and undo-tail (not (eq buffer-undo-list t)))
+            (meep--rectangle-edit-undo-fuse undo-tail))
+          ;; Restore mark so the rectangle selection can be re-created.
+          (when (marker-position mark-marker)
+            (set-mark (marker-position mark-marker)))
+          (set-marker mark-marker nil))))))
+
+(defun meep--rectangle-edit-enter-real-insert (beg end)
+  "Enter real insert mode for rectangle editing between BEG and END.
+Record keystrokes on the edit line and replay on remaining lines on exit.
+When point is on the last line of the rectangle, edit that line;
+otherwise edit the first line.
+Callers must ensure `repeat-fu-mode' is active."
+  (let ((hook-sym (bray-state-get-hook-exit meep-state-insert)))
+    (cond
+     ((not hook-sym)
+      (message "No exit hook found for state: %S" meep-state-insert))
+     (t
+      (let* ((col-beg
+              (save-excursion
+                (goto-char beg)
+                (current-column)))
+             (col-end
+              (save-excursion
+                (goto-char end)
+                (current-column)))
+             (col (min col-beg col-end))
+             (edit-last-line
+              (>= (point)
+                  (save-excursion
+                    (goto-char end)
+                    (pos-bol))))
+             (line-direction
+              (cond
+               (edit-last-line
+                -1)
+               (t
+                1)))
+             (line-marker nil))
+
+        (when (local-variable-p 'meep--rectangle-edit-data)
+          (error "Rectangle edit already in progress"))
+
+        (setq line-marker (make-marker))
+
+        ;; Save undo position so the entire operation can be fused into one step on exit.
+        ;; Skip when undo is disabled (`buffer-undo-list' is t).
+        ;; Push a cursor-position entry first - `undo-boundary' is a no-op when
+        ;; `buffer-undo-list' is nil because it considers nil "already a boundary".
+        (unless (eq buffer-undo-list t)
+          (push (point) buffer-undo-list)
+          (undo-boundary))
+        (let ((undo-tail
+               (unless (eq buffer-undo-list t)
+                 buffer-undo-list)))
+
+          ;; Use a marker so `end' tracks through `delete-rectangle'
+          ;; (the integer position can shift onto the wrong line
+          ;; when characters are removed from lines above).
+          (when edit-last-line
+            (setq end (copy-marker end)))
+
+          ;; Delete the rectangle content.
+          (delete-rectangle beg end)
+
+          (deactivate-mark t)
+
+          ;; Go to the edit line.
+          (goto-char
+           (cond
+            (edit-last-line
+             end)
+            (t
+             beg)))
+
+          (when (markerp end)
+            (set-marker end nil))
+
+          ;; Place marker at the first replay target (the adjacent line).
+          (save-excursion
+            (forward-line line-direction)
+            (set-marker line-marker (point)))
+
+          (move-to-column col t)
+
+          ;; Store state (buffer-local for the duration of the edit).
+          (make-local-variable 'meep--rectangle-edit-data)
+          (setq meep--rectangle-edit-data
+                (list
+                 :column col
+                 :line-direction line-direction
+                 :line-marker line-marker
+                 :undo-tail undo-tail
+                 :mark-marker (copy-marker (mark-marker))
+                 ;; Begin listener (records keys starting from the next command).
+                 :listener (repeat-fu-listener-register)))
+
+          ;; Add exit hook before entering insert mode so an immediate exit
+          ;; (however unlikely) still triggers replay and cleanup.
+          (add-hook hook-sym #'meep--rectangle-edit-replay-on-exit 0 t)
+
+          ;; Enter insert mode.
+          (meep--insert-impl)))))))
+
 ;;;###autoload
 (defun meep-insert-change ()
   "Change the region, entering insert mode.
@@ -5313,8 +5562,12 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
   (interactive "*")
   (cond
    ((bound-and-true-p rectangle-mark-mode)
-    ;; Sort of odd but this is how emacs supports changing a region.
-    (call-interactively #'string-rectangle))
+    (cond
+     ((and meep-repeat-fu-replay (bound-and-true-p repeat-fu-mode))
+      (meep--rectangle-edit-enter-real-insert (region-beginning) (region-end)))
+     (t
+      ;; Sort of odd but this is how emacs supports changing a region.
+      (call-interactively #'string-rectangle))))
 
    (t
     ;; Avoid `meep--mark-on-motion-maybe-activate' because it actually activates.
@@ -5405,7 +5658,11 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
       (rectangle-mark-mode 1))
 
     ;; Run the actual replacement.
-    (call-interactively #'string-rectangle))
+    (cond
+     ((and meep-repeat-fu-replay (bound-and-true-p repeat-fu-mode))
+      (meep--rectangle-edit-enter-real-insert (region-beginning) (region-end)))
+     (t
+      (call-interactively #'string-rectangle))))
 
    (t
     ;; Inline `meep-move-line-non-space-beginning'
