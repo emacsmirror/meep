@@ -36,8 +36,8 @@
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;; | Repeat      | CopyKillRing| CutKillRing | YankKillRing| Surround... |  | MarkExpand  | SwapPtMark  | SwapPtMotion| MarkBoundsIn| ClipToReg   | JumpToReg   |
 ;; | Free:S      | CopyClip:S  | CutClip:S   | PasteClip:S | SurrLine:S..|  | MarkShrink:S|             |             | MarkBounds:S| PointToReg:S| MacroRec:S  |
-;; |             | CopyToIns/s | CutToIns/s  |YankKillCh/s |             |  |             |             |             |             |             |             |
-;; |             |             |             |             |             |  |             | AvyNext/f   | AvyPrev/f   |             |             | Fill&Move/s |
+;; |             | CopyToIns/s | CutToIns/s  |YankKillCh/s |             |  |             |             |             |             |             | Fill&Move/s |
+;; |             |             |             |             |             |  |             | AvyNext/f   | AvyPrev/f   |             |             |             |
 ;; |             |             |             |             |             |  |             |             |             |             |             |             |
 ;; |            q|            w|            e|            r|            t|  |            y|            u|            i|            o|            p|            \|
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
@@ -45,14 +45,14 @@
 ;; | Free:S      | Free:S      | SelLn:S     | Free:S      | InsChar:S   |  | HomeNoWs:S  | ParaDown:S  | ParaUp:S    | EndNoWs:S   | JumpSexp:S  | JumpStrCmt:S|
 ;; |             | InsPrev/s   | SelBlock/s  |             |             |  | InsBOL/s    | InsBelow/s  | InsAbove/s  | InsEOL/s    |             |             |
 ;; |             |             |             |             |             |  | Find<Ch/f   |FindRegxNxt/f|FindRegxPrv/f| Find>Ch/f   | GotoLine/f  |             |
-;; |             |             |             |             |             |  | Till<Ch:S/f |             |             | Till>Ch:S/f | GotoChar/f:S|             |
+;; |             |             |             |             |             |  | Till<Ch:S/f |             |             | Till>Ch:S/f | GotoChar:S/f|             |
 ;; |            a|            s|            d|            f|            g|  |            h|            j|            k|            l|            ;|            '|
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;; | Undo        | Insert      | DelChar     | Transpose   | Change      |  | SymBack     | FindNext    | FindPrev    | SymNext     |SymNextEnd   |
 ;; | Redo:S      | InsOver:S   | BkSpace:S   | DelLine:S   | ChangLine:S |  |SameSynPrev:S|             |             |SameSynNext:S|SameNextEnd:S|
-;; |             |             |ShrinkSpace/s|             |             |  | FindRpt</f  |             |             | FindRpt>/f  |             |
-;; |             |             |             |             |             |  | TillRpt<:S/f| Downcase/s  | Upcase/s    | TillRpt>:S/f|             |
-;; |             |             |             |             |             |  |             | WordNext/f  | WordPrev/f  |             |             |
+;; |             |             |ShrinkSpace/s|             |             |  |             | Downcase/s  | Upcase/s    |             |             |
+;; |             |             |             |             |             |  | FindRpt</f  | WordNext/f  | WordPrev/f  | FindRpt>/f  |             |
+;; |             |             |             |             |             |  | TillRpt<:S/f|             |             | TillRpt>:S/f|             |
 ;; |            z|            x|            c|            v|            b|  |            n|            m|            ,|            .|            /|
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+
 ;;
@@ -66,6 +66,13 @@
 ;; - [: BegOfThing.
 ;; - ]: EndOfThing.
 ;;
+;; - Home:   LineBeginning.
+;; - End:    LineEnd.
+;; - s Home: BufferBeginning.
+;; - s End:  BufferEnd.
+;;
+;; - 0-9: digit-argument-repeat.
+;; - -: digit-argument-repeat (negative).
 ;; - s 0-9: digit-argument.
 ;; - s -: negative-argument.
 
