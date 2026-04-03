@@ -8239,6 +8239,50 @@ Move right once, then press 3 three times to repeat the motion 3+3+3 more times.
         "3")
       (should (equal '(1 . 10) (meep-test-point-line-column))))))
 
+(ert-deftest repeat-fu-upcase-region ()
+  "Repeat upcase-region on a visual selection using repeat-fu.
+
+Select 3 middle words, upcase them, then move to the next line
+and repeat the action with repeat-fu-execute."
+  (require 'repeat-fu-preset-meep)
+  (let ((repeat-fu-backend (repeat-fu-preset-meep))
+        (text-initial
+         ;; format-next-line: off
+         (concat
+          "alpha beta gamma delta epsilon\n"
+          "alpha beta gamma delta epsilon\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "alpha BETA GAMMA DELTA epsilon\n"
+          "alpha BETA GAMMA DELTA epsilon\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select and upcase "beta gamma delta" on line 1,
+      ;; then navigate to "beta" on line 2.
+      ;; NOTE: all commands must be in a single `simulate-input-for-meep' call
+      ;; because splitting across two calls inserts a spurious nil-command entry
+      ;; into the repeat-fu command buffer at the `execute-kbd-macro' boundary,
+      ;; which breaks macro extraction.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-word-next)
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-word-next)
+        '(:state visual :command meep-move-word-next)
+        '(:state visual :command meep-move-word-next)
+        '(:state visual :command upcase-region)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-word-prev)
+        '(:state normal :command meep-move-word-prev)
+        '(:state normal :command meep-move-word-prev))
+      ;; Repeat the upcase action with repeat-fu.
+      ;; Called directly because repeat-fu internally uses `execute-kbd-macro'
+      ;; which cannot be nested inside `simulate-input-for-meep'.
+      (repeat-fu-execute 1)
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
 (provide 'meep_tests)
 ;; Local Variables:
 ;; fill-column: 99
