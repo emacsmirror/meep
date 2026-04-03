@@ -111,7 +111,7 @@
     ;; Visual mode.
     '("v" . meep-region-toggle)
     '("V" . meep-region-expand-to-line-bounds)
-    '("C-v" . rectangle-mark-mode))
+    '("C-v" . meep-region-toggle-rectangle))
 
   (my-meep-keymap-set-many meep-state-keymap-normal)
 

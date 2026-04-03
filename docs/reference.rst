@@ -17,6 +17,15 @@ Custom Variables
 
    Used by ``meep-insert-at-last`` which will enter insert mode at this location.
 
+``meep-repeat-fu-replay``: ``t``
+   When non-nil, use real insert mode for rectangle editing.
+   Instead of ``string-rectangle``, enter insert mode on the first line
+   and record keystrokes.  On exit, replay the recorded keystrokes
+   on all other lines in the rectangle.
+
+   Requires ``repeat-fu-mode`` to be active; falls back to
+   ``string-rectangle`` when it is not.
+
 ``meep-move-comment-skip-space``: ``t``
    When navigating comment bounds, skip leading/trailing space.
 
@@ -444,6 +453,12 @@ Selection/Region: Primitive
    If you wish to activate the region between the existing point and mark see:
    ``meep-region-activate-and-reverse`` and ``meep-region-activate-or-reverse``.
 
+``(meep-region-enable-rectangle)``
+   Enable rectangle mark mode.
+
+``(meep-region-toggle-rectangle)``
+   Toggle rectangle mark mode.
+
 ``(meep-region-activate-or-reverse)``
    Activate the region without moving the mark.
 
@@ -722,6 +737,9 @@ State: Insert
 ``(meep-insert-overwrite)``
    Enter insert mode and enable ``overwrite-mode`` while inserting.
 
+Rectangle Edit with Repeat-FU Replay
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 ``(meep-insert-change)``
    Change the region, entering insert mode.
    The region may be implied, see ``meep-command-is-mark-set-on-motion-any``.
@@ -841,18 +859,6 @@ Support entering a sequence of keys without the need to hold modifiers, see:
 
 ``(meep-keypad)``
    Begin entering a key sequence.
-
-Old Commands
-^^^^^^^^^^^^
-
-These will eventually be removed.
-Report the new commands which should be used so users can upgrade.
-
-``(meep-exchange-point-and-mark-motion)``
-   Report that ``meep-region-activate-and-reverse-motion`` must be used instead.
-
-``(meep-exchange-point-and-mark)``
-   Report that ``meep-region-activate-and-reverse`` must be used instead.
 
 .. END VARIABLES
 

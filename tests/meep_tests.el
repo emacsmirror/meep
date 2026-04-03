@@ -206,7 +206,7 @@ Also suppresses minibuffer prompts from interactive specs."
       meep-region-toggle
       meep-space-shrink-contextual
       meep-transpose
-      rectangle-mark-mode))
+      meep-region-toggle-rectangle))
     (insert
      .
      (meep-delete-char-next
@@ -250,7 +250,7 @@ Also suppresses minibuffer prompts from interactive specs."
       meep-region-syntax-contract
       meep-region-syntax-expand
       meep-region-to-secondary-selection
-      rectangle-mark-mode)))
+      meep-region-toggle-rectangle)))
   "Alist mapping states to lists of commands whose keys should be looked up.")
 
 (defun meep-test-get-keymaps-for-state (state)
@@ -779,7 +779,7 @@ Verifies: basic text insertion works correctly."
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-line-next)
-        '(:state normal :command rectangle-mark-mode)
+        '(:state normal :command meep-region-toggle-rectangle)
         '(:state visual :command meep-move-char-next)
         "3"
         '(:state visual :command meep-move-line-next)
@@ -819,7 +819,7 @@ Verifies: basic text insertion works correctly."
           (simulate-input-for-meep
             '(:state normal :command meep-move-char-next)
             '(:state normal :command meep-move-line-next)
-            '(:state normal :command rectangle-mark-mode)
+            '(:state normal :command meep-region-toggle-rectangle)
             '(:state visual :command meep-move-char-next)
             "3"
             '(:state visual :command meep-move-line-next)
@@ -873,7 +873,7 @@ Verifies: basic text insertion works correctly."
             '(:state normal :command meep-move-char-next)
             '(:state normal :command meep-move-line-next)
             '(:state normal :command meep-move-line-next)
-            '(:state normal :command rectangle-mark-mode)
+            '(:state normal :command meep-region-toggle-rectangle)
             '(:state visual :command meep-move-char-next)
             "3"
             '(:state visual :command meep-move-line-prev)
@@ -911,7 +911,7 @@ Verifies: basic text insertion works correctly."
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-line-next)
         '(:state normal :command meep-move-line-next)
-        '(:state normal :command rectangle-mark-mode)
+        '(:state normal :command meep-region-toggle-rectangle)
         '(:state visual :command meep-move-char-next)
         "3"
         '(:state visual :command meep-move-line-prev)
@@ -949,7 +949,7 @@ Verifies: basic text insertion works correctly."
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-line-next)
-        '(:state normal :command rectangle-mark-mode)
+        '(:state normal :command meep-region-toggle-rectangle)
         '(:state visual :command meep-move-char-next)
         "3"
         '(:state visual :command meep-move-line-next)
@@ -986,7 +986,7 @@ Verifies: basic text insertion works correctly."
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-move-line-next)
         '(:state normal :command meep-move-line-next)
-        '(:state normal :command rectangle-mark-mode)
+        '(:state normal :command meep-region-toggle-rectangle)
         '(:state visual :command meep-move-char-next)
         "3"
         '(:state visual :command meep-move-line-prev)
@@ -1254,7 +1254,7 @@ returns to normal state after copy."
       ;; Move to column 1, enter rectangle mode, extend to column 3, down 1 line.
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode)
+        '(:state normal :command meep-region-toggle-rectangle)
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-move-line-next)
@@ -1295,7 +1295,7 @@ returns to normal state after cut."
       ;; Select and cut the AB/CD rectangle.
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode)
+        '(:state normal :command meep-region-toggle-rectangle)
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-move-line-next)
@@ -1339,7 +1339,7 @@ returns to normal state after copy."
       (bray-mode 1)
       ;; Copy rectangle AB/CD from lines 1-2, columns 0-1.
       (simulate-input-for-meep
-        '(:state normal :command rectangle-mark-mode)
+        '(:state normal :command meep-region-toggle-rectangle)
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-move-line-next)
@@ -1389,7 +1389,7 @@ returns to normal state after copy."
       ;; Select single-column rectangle: column 1 of lines 1-3.
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode)
+        '(:state normal :command meep-region-toggle-rectangle)
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-move-line-next)
         '(:state visual :command meep-move-line-next)
@@ -2014,7 +2014,7 @@ Verifies: error signaled for line count mismatch."
       ;; Select [AB]/[CD] rectangle (2 lines), make secondary.
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       (simulate-input-for-meep
         [?\C-u ?4]
         '(:state visual :command meep-move-char-next)
@@ -2025,7 +2025,7 @@ Verifies: error signaled for line count mismatch."
         '(:state normal :command meep-move-line-prev)
         [?\C-u ?4]
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       (simulate-input-for-meep
         [?\C-u ?4]
         '(:state visual :command meep-move-char-next)
@@ -2055,7 +2055,7 @@ Verifies: error signaled for overlapping rectangle regions."
       ;; Select [ABC/[EFG rectangle (columns 1-4), make secondary.
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       (simulate-input-for-meep
         [?\C-u ?3]
         '(:state visual :command meep-move-char-next)
@@ -2066,7 +2066,7 @@ Verifies: error signaled for overlapping rectangle regions."
         '(:state normal :command meep-move-line-prev)
         '(:state normal :command meep-move-char-prev)
         '(:state normal :command meep-move-char-prev)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       (simulate-input-for-meep
         [?\C-u ?3]
         '(:state visual :command meep-move-char-next)
@@ -2202,7 +2202,7 @@ Verifies: rectangular blocks exchange positions."
       ;;                 ^
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       ;; Cursor line 2: .[AB].
       ;;                     ^
       (simulate-input-for-meep
@@ -2218,7 +2218,7 @@ Verifies: rectangular blocks exchange positions."
         "1"
         '(:state normal :command meep-move-line-beginning)
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       ;; Cursor line 5: .[YZ].
       ;;                     ^
       (simulate-input-for-meep
@@ -2268,7 +2268,7 @@ Verifies: rectangle shape inferred from secondary selection."
       ;;                 ^
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       ;; Cursor line 2: .[AB].
       ;;                     ^
       (simulate-input-for-meep
@@ -2323,7 +2323,7 @@ Verifies: side-by-side rectangles swap correctly."
       ;;                 ^
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       ;; Cursor line 3: .[AB].[YZ].
       ;;                     ^
       (simulate-input-for-meep
@@ -2339,7 +2339,7 @@ Verifies: side-by-side rectangles swap correctly."
         '(:state normal :command meep-move-line-prev)
         "1"
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       ;; Cursor line 3: .[AB].[YZ].
       ;;                          ^
       (simulate-input-for-meep
@@ -2388,7 +2388,7 @@ Verifies: second rectangle above first handled correctly."
       (simulate-input-for-meep
         '(:state normal :command meep-move-line-next)
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       ;; Cursor line 4: .[AB]......
       ;;                     ^
       (simulate-input-for-meep
@@ -2404,7 +2404,7 @@ Verifies: second rectangle above first handled correctly."
         '(:state normal :command meep-move-line-prev)
         "2"
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       ;; Cursor line 3: .[AB].[YZ].
       ;;                          ^
       (simulate-input-for-meep
@@ -2452,7 +2452,7 @@ Verifies: second rectangle below first handled correctly."
       ;;                 ^
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       ;; Cursor line 3: .[AB].[YZ].
       ;;                     ^
       (simulate-input-for-meep
@@ -2467,7 +2467,7 @@ Verifies: second rectangle below first handled correctly."
       (simulate-input-for-meep
         '(:state normal :command meep-move-line-prev)
         '(:state normal :command meep-move-char-next)
-        '(:state normal :command rectangle-mark-mode))
+        '(:state normal :command meep-region-toggle-rectangle))
       ;; Cursor line 4: ......[YZ].
       ;;                          ^
       (simulate-input-for-meep
@@ -8277,6 +8277,69 @@ and repeat the action with repeat-fu-execute."
         '(:state normal :command meep-move-word-prev)
         '(:state normal :command meep-move-word-prev))
       ;; Repeat the upcase action with repeat-fu.
+      ;; Called directly because repeat-fu internally uses `execute-kbd-macro'
+      ;; which cannot be nested inside `simulate-input-for-meep'.
+      (repeat-fu-execute 1)
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest repeat-fu-upcase-region-rectangle ()
+  "Repeat a rectangle upcase-region using repeat-fu.
+
+Select the middle 3 words as a rectangle on lines 1-2, upcase them,
+then move to line 3 and repeat the action on lines 3-4.
+Each line uses unique words so the test proves only the rectangle
+columns are affected, not entire lines."
+  (require 'repeat-fu-preset-meep)
+  (let ((repeat-fu-backend (repeat-fu-preset-meep))
+        (text-initial
+         ;; format-next-line: off
+         (concat
+          "apple berry grape dusty ember\n"
+          "acorn birch guava drift elbow\n"
+          "arbor bunch gourd ditto eager\n"
+          "adept bumpy grain dunce elope\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "apple BERRY GRAPE DUSTY ember\n"
+          "acorn BIRCH GUAVA DRIFT elbow\n"
+          "arbor BUNCH GOURD DITTO eager\n"
+          "adept BUMPY GRAIN DUNCE elope\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to "berry" on line 1, enable meep-region-toggle-rectangle,
+      ;; extend to cover columns 6-23 on lines 1-2, then upcase.
+      ;; Then navigate to the second word on line 3.
+      ;; NOTE: all commands must be in a single `simulate-input-for-meep' call
+      ;; because splitting across two calls inserts a spurious nil-command entry
+      ;; into the repeat-fu command buffer at the `execute-kbd-macro' boundary,
+      ;; which breaks macro extraction.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-word-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        '(:state visual :command meep-move-word-next)
+        '(:state visual :command meep-move-word-next)
+        '(:state visual :command meep-move-word-next)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command upcase-region)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-word-prev)
+        '(:state normal :command meep-move-word-prev)
+        '(:state normal :command meep-move-word-prev))
+      ;; Verify only lines 1-2 were affected and lines 3-4 are unchanged.
+      (should (equal 'normal (bray-state)))
+      (should
+       (equal
+        ;; format-next-line: off
+        (concat
+         "apple BERRY GRAPE DUSTY ember\n"
+         "acorn BIRCH GUAVA DRIFT elbow\n"
+         "arbor bunch gourd ditto eager\n"
+         "adept bumpy grain dunce elope\n")
+        (buffer-string)))
+      ;; Repeat the rectangle upcase on lines 3-4.
       ;; Called directly because repeat-fu internally uses `execute-kbd-macro'
       ;; which cannot be nested inside `simulate-input-for-meep'.
       (repeat-fu-execute 1)
