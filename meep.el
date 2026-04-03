@@ -2649,6 +2649,18 @@ If you wish to activate the region between the existing point and mark see:
     (activate-mark t)))
 
 ;;;###autoload
+(defun meep-region-enable-rectangle ()
+  "Enable rectangle mark mode."
+  (interactive)
+  (rectangle-mark-mode 1))
+
+;;;###autoload
+(defun meep-region-toggle-rectangle ()
+  "Toggle rectangle mark mode."
+  (interactive)
+  (rectangle-mark-mode))
+
+;;;###autoload
 (defun meep-region-activate-or-reverse ()
   "Activate the region without moving the mark.
 

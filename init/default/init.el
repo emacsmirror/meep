@@ -158,7 +158,7 @@
 
       '("d" . meep-region-toggle)
       '("D" . meep-region-expand-to-line-bounds)
-      (cons (concat my-ex "d") 'rectangle-mark-mode)
+      (cons (concat my-ex "d") 'meep-region-toggle-rectangle)
 
       ;; "f" is currently `my-find'; don't map it.
 
