@@ -3881,7 +3881,8 @@ When HAD-REGION is non-nil, mark the region."
   (call-interactively #'isearch-backward-regexp))
 
 (defun meep--isearch-repeat-impl (dir)
-  "Repeat search in direction DIR."
+  "Repeat search in direction DIR.
+Return non-nil on success."
   ;; Re-display can flicker.
   (let ((inhibit-redisplay t)
         ;; Opinionated, but ISEARCH is not that usable without these.
@@ -3889,23 +3890,24 @@ When HAD-REGION is non-nil, mark the region."
         (isearch-repeat-on-direction-change t)
         (had-region (region-active-p)))
 
-    (cond
-     ((< dir 0)
-      (isearch-repeat-backward (- dir)))
-     (t
-      (isearch-repeat-forward dir)))
-
-    (meep--isearch-handle-done had-region)))
+    (prog1 (cond
+            ((< dir 0)
+             (isearch-repeat-backward (- dir)))
+            (t
+             (isearch-repeat-forward dir)))
+      (meep--isearch-handle-done had-region))))
 
 ;;;###autoload
 (defun meep-isearch-repeat-next (arg)
-  "Repeat ISEARCH forwards ARG times."
+  "Repeat ISEARCH forwards ARG times.
+Return non-nil on success."
   (interactive "p")
   (meep--isearch-repeat-impl arg))
 
 ;;;###autoload
 (defun meep-isearch-repeat-prev (arg)
-  "Repeat ISEARCH backwards ARG times."
+  "Repeat ISEARCH backwards ARG times.
+Return non-nil on success."
   (interactive "p")
   (meep--isearch-repeat-impl (- arg)))
 
