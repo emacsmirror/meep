@@ -3890,14 +3890,26 @@ Return non-nil on success."
         ;; Opinionated, but ISEARCH is not that usable without these.
         (isearch-wrap-pause 'no-ding)
         (isearch-repeat-on-direction-change t)
-        (had-region (region-active-p)))
+        (had-region (region-active-p))
+        (pos-init (point)))
 
     (prog1 (cond
             ((< dir 0)
              (isearch-repeat-backward (- dir)))
             (t
              (isearch-repeat-forward dir)))
-      (meep--isearch-handle-done had-region))))
+      (meep--isearch-handle-done had-region)
+
+      ;; NOTE(@ideasman42): Without an explicit exit,
+      ;; this leaves a stale/ugly overlay that may wrap lines
+      ;; (based on a previous search that may have been edited out).
+      ;; This looks to be default behavior as of Emacs 30.1,
+      ;; although it seems like it could be arguably considered a bug.
+      (unless isearch-success
+        (let ((isearch-opoint (point)))
+          (isearch-exit))
+        ;; Moving the cursor on a failed search also seems strange, resore it.
+        (goto-char pos-init)))))
 
 ;;;###autoload
 (defun meep-isearch-repeat-next (arg)
