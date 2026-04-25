@@ -214,7 +214,7 @@ Motion: Line
    A negative ARG moves to the end.
 
 ``(meep-move-line-non-space-end ARG)``
-   Move to the end of the line, ignoring trailing whitespace.
+   Move to the end of the line, ignoring trailing blank-space
    A negative ARG moves to the beginning.
 
 ``(meep-move-line-prev ARG)``
@@ -562,9 +562,11 @@ searching based on the active region.
 
 ``(meep-isearch-repeat-next ARG)``
    Repeat ISEARCH forwards ARG times.
+   Return non-nil on success.
 
 ``(meep-isearch-repeat-prev ARG)``
    Repeat ISEARCH backwards ARG times.
+   Return non-nil on success.
 
 ``(meep-isearch-at-point-next ARG)``
    Search forwards for the symbol or region at point.

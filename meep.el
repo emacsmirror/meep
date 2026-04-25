@@ -914,7 +914,7 @@ A negative ARG moves to the end."
 
 ;;;###autoload
 (defun meep-move-line-non-space-end (arg)
-  "Move to the end of the line, ignoring trailing whitespace.
+  "Move to the end of the line, ignoring trailing blank-space
 A negative ARG moves to the beginning."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
@@ -2064,7 +2064,7 @@ When INNER is non-nil, contract to inner bounds."
     bounds))
 
 (defun meep--bounds-of-sentence (inner)
-  "Return the bounds of the sentence at point.
+  "Return bounds of the sentence at point, or nil.
 When INNER is non-nil, contract to inner bounds."
   (declare (important-return-value t))
   (when-let* ((bounds (bounds-of-thing-at-point 'sentence)))
@@ -2083,7 +2083,7 @@ When INNER is non-nil, contract to inner bounds."
     bounds))
 
 (defun meep--bounds-of-paragraph (inner)
-  "Return the bounds of the paragraph at point.
+  "Return bounds of the paragraph at point, or nil.
 When INNER is non-nil, contract to inner bounds."
   (declare (important-return-value t))
   (when-let* ((bounds (bounds-of-thing-at-point 'paragraph)))
@@ -5249,7 +5249,7 @@ Transposing lines and characters is also supported."
                   (setq success-point (point))
                   (setq success-mark (mark))
                   (setq changed t)
-                  (setq i (1+ i)))))))))
+                  (meep--incf i))))))))
         ;; Apply success positions after save-mark-and-excursion restores.
         (when success-point
           (goto-char success-point)
