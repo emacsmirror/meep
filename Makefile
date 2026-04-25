@@ -27,6 +27,7 @@ EMACS_BIN ?= emacs
 
 EL_FILES := \
 	./meep.el \
+	./meep-region-mark.el \
 	./tests/meep_tests.el \
 	./tests/meep_tests_internal.el \
 	./tests/emacs/init.el

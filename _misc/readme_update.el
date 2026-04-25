@@ -51,7 +51,12 @@ Valid values for TY include:
                       ((eq ty 'fun)
                        (and (fboundp sym) (null (commandp sym))))
                       ((eq ty 'var)
-                       (and (null (fboundp sym)) (null (get sym 'custom-type))))
+                       ;; Exclude feature symbols (`provide' creates a symbol
+                       ;; with no var binding, which would show as undocumented).
+                       (and (null (fboundp sym))
+                            (null (get sym 'custom-type))
+                            (null (featurep sym))
+                            (boundp sym)))
                       ((eq ty 'var-custom)
                        (and (null (fboundp sym)) (get sym 'custom-type))))
                  (push sym vars))))))))
@@ -65,14 +70,14 @@ Valid values for TY include:
       (setq vars
             (sort vars
                   #'(lambda (x y)
-                      (< (cdr-safe (or (find-function-noselect x t) 0))
-                         (cdr-safe (or (find-function-noselect y t) 0)))))))
+                      (< (or (cdr-safe (ignore-errors (find-function-noselect x t))) 0)
+                         (or (cdr-safe (ignore-errors (find-function-noselect y t))) 0))))))
      ((or (eq ty 'var) (eq ty 'var-custom))
       (setq vars
             (sort vars
                   #'(lambda (x y)
-                      (< (cdr-safe (or (find-variable-noselect x nil) 0))
-                         (cdr-safe (or (find-variable-noselect y nil) 0))))))))
+                      (< (or (cdr-safe (ignore-errors (find-variable-noselect x nil))) 0)
+                         (or (cdr-safe (ignore-errors (find-variable-noselect y nil))) 0)))))))
 
 
     (dolist (sym vars)
