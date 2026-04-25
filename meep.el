@@ -558,66 +558,13 @@ were to be made into the active region."
    (t
     (meep--mark-on-motion-bounds))))
 
-(defun meep--calc-beginning-of-next-thing (thing n)
-  "Move to the beginning of the next THING N times."
-  (declare (important-return-value t))
-  ;; Move to the start of the next thing.
-  ;; Otherwise the point moves to the end.
-  (let ((pos-orig (point)))
-    (save-excursion
-      (when-let* ((bounds (bounds-of-thing-at-point thing)))
-        (goto-char (cdr bounds)))
-      (forward-thing thing n)
-      (cond
-       ((eq pos-orig (point))
-        ;; Nothing moved.
-        nil)
-       (t
-        (when-let* ((bounds (bounds-of-thing-at-point thing)))
-          (goto-char (car bounds)))
-        ;; Unlikely but theoretically possible jumping to the start
-        ;; of the bounds could cause the point not to move.
-        (cond
-         ((eq pos-orig (point))
-          nil)
-         (t
-          (point))))))))
-
-(defun meep--calc-end-of-prev-thing (thing n)
-  "Move to the end of the previous THING N times."
-  (declare (important-return-value t))
-  (let ((pos-orig (point)))
-    (save-excursion
-      (when-let* ((bounds (bounds-of-thing-at-point thing)))
-        (goto-char (car bounds)))
-      (forward-thing thing (- n))
-      (cond
-       ((eq pos-orig (point))
-        ;; Nothing moved.
-        nil)
-       (t
-        (when-let* ((bounds (bounds-of-thing-at-point thing)))
-          (goto-char (cdr bounds)))
-        ;; Unlikely but theoretically possible jumping to the end
-        ;; of the bounds could cause the point not to move.
-        (cond
-         ((eq pos-orig (point))
-          nil)
-         (t
-          (point))))))))
-
-(defun meep--move-thing-prev-next-end-impl (thing n)
-  "Implementation for next/previous THING, move N times.
-N may be negative to move in the reverse direction."
-  (forward-thing thing n)
-  nil)
-
 ;;;###autoload
 (defun meep-move-symbol-prev (arg)
   "Move point to the beginning of the previous symbol, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (meep--move-thing-prev-next-end-impl 'symbol (- arg))))
+    ;; at-start = (> arg 0): preserves primitive landing for both directions.
+    (meep-motion-at-point 'symbol nil (- arg) (> arg 0))))
 
 ;;;###autoload
 (defun meep-move-symbol-prev-end (arg)
@@ -626,18 +573,17 @@ N may be negative to move in the reverse direction."
   (meep--with-mark-on-motion-maybe-set
     (cond
      ((< arg 0)
-      (meep--move-thing-prev-next-end-impl 'symbol (- arg)))
+      (meep-motion-at-point 'symbol nil (- arg) nil))
      (t
-      (when-let* ((pos (meep--calc-end-of-prev-thing 'symbol arg)))
-        (goto-char pos))
-      nil))))
+      (meep-motion-at-point 'symbol nil (- arg) nil t)))))
 
 ;;;###autoload
 (defun meep-move-symbol-next-end (arg)
   "Move to the end of the next symbol, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (meep--move-thing-prev-next-end-impl 'symbol arg)))
+    ;; at-start = (< arg 0): preserves primitive landing for both directions.
+    (meep-motion-at-point 'symbol nil arg (< arg 0))))
 
 ;;;###autoload
 (defun meep-move-symbol-next (arg)
@@ -646,24 +592,25 @@ N may be negative to move in the reverse direction."
   (meep--with-mark-on-motion-maybe-set
     (cond
      ((< arg 0)
-      (meep--move-thing-prev-next-end-impl 'symbol arg))
+      (meep-motion-at-point 'symbol nil arg t))
      (t
-      (when-let* ((pos (meep--calc-beginning-of-next-thing 'symbol arg)))
-        (goto-char pos))))))
+      (meep-motion-at-point 'symbol nil arg t t)))))
 
 ;;;###autoload
 (defun meep-move-word-prev (arg)
   "Move point to the beginning of the previous word, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (meep--move-thing-prev-next-end-impl 'word (- arg))))
+    ;; at-start = (> arg 0): preserves primitive landing for both directions.
+    (meep-motion-at-point 'word nil (- arg) (> arg 0))))
 
 ;;;###autoload
 (defun meep-move-word-next-end (arg)
   "Move to the end of the next word, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (meep--move-thing-prev-next-end-impl 'word arg)))
+    ;; at-start = (< arg 0): preserves primitive landing for both directions.
+    (meep-motion-at-point 'word nil arg (< arg 0))))
 
 ;;;###autoload
 (defun meep-move-word-prev-end (arg)
@@ -672,11 +619,9 @@ N may be negative to move in the reverse direction."
   (meep--with-mark-on-motion-maybe-set
     (cond
      ((< arg 0)
-      (meep--move-thing-prev-next-end-impl 'word (- arg)))
+      (meep-motion-at-point 'word nil (- arg) nil))
      (t
-      (when-let* ((pos (meep--calc-end-of-prev-thing 'word arg)))
-        (goto-char pos))
-      nil))))
+      (meep-motion-at-point 'word nil (- arg) nil t)))))
 
 ;;;###autoload
 (defun meep-move-word-next (arg)
@@ -685,11 +630,9 @@ N may be negative to move in the reverse direction."
   (meep--with-mark-on-motion-maybe-set
     (cond
      ((< arg 0)
-      (meep--move-thing-prev-next-end-impl 'word arg))
+      (meep-motion-at-point 'word nil arg t))
      (t
-      (when-let* ((pos (meep--calc-beginning-of-next-thing 'word arg)))
-        (goto-char pos))
-      nil))))
+      (meep-motion-at-point 'word nil arg t t)))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -2047,8 +1990,8 @@ IS-TILL when non-nil, stop just before the character."
     (cons beg end)))
 
 (defun meep--bounds-of-visual-line (inner)
-  "Return the bounds of the visual line at point.
-When INNER is non-nil, contract to inner bounds."
+  "Return bounds of the visual line at point.
+When INNER is non-nil, contract by surrounding blank/newline characters."
   (declare (important-return-value t))
   (let ((bounds
          (cons
@@ -2067,8 +2010,8 @@ When INNER is non-nil, contract to inner bounds."
   "Return bounds of the sentence at point, or nil.
 When INNER is non-nil, contract to inner bounds."
   (declare (important-return-value t))
-  (when-let* ((bounds (bounds-of-thing-at-point 'sentence)))
-    (when inner
+  (let ((bounds (bounds-of-thing-at-point 'sentence)))
+    (when (and bounds inner)
       ;; Since it's unlikely the beginning is blank,
       ;; it's likely only the end of the bounds changes when `inner' is used.
       ;; Note that skipping back punctuation is a generalization,
@@ -2086,8 +2029,8 @@ When INNER is non-nil, contract to inner bounds."
   "Return bounds of the paragraph at point, or nil.
 When INNER is non-nil, contract to inner bounds."
   (declare (important-return-value t))
-  (when-let* ((bounds (bounds-of-thing-at-point 'paragraph)))
-    (when inner
+  (let ((bounds (bounds-of-thing-at-point 'paragraph)))
+    (when (and bounds inner)
       (let ((skip "[:blank:]\r\n"))
         (setq bounds (meep--bounds-contract-by-chars bounds skip skip))))
     bounds))
@@ -2442,6 +2385,506 @@ A negative ARG positions point at the end of the region.
 Bounds are detected using: `meep-match-bounds-of-char-contextual'."
   (interactive "p")
   (meep-region-mark-bounds-of-char-contextual-impl arg nil))
+
+;; ---------------------------------------------------------------------------
+;; Implementation: Bounds and Motion
+;;
+;; Each entry in `meep-text-object-alist' maps a text-object KIND to a plist of
+;; operations.  See the alist's docstring for the full slot contract.
+
+(defun meep--bounds-of-word (_inner)
+  "Return bounds of the word at point, or nil.
+INNER is ignored (no inner/outer distinction for words)."
+  (declare (important-return-value t))
+  (bounds-of-thing-at-point 'word))
+
+(defun meep--bounds-of-symbol (_inner)
+  "Return bounds of the symbol at point, or nil.
+INNER is ignored (no inner/outer distinction for symbols)."
+  (declare (important-return-value t))
+  (bounds-of-thing-at-point 'symbol))
+
+(defun meep--bounds-of-defun (inner)
+  "Return bounds of the defun at point, or nil.
+When INNER is non-nil, contract by surrounding blanks."
+  (declare (important-return-value t))
+  (let ((bounds (bounds-of-thing-at-point 'defun)))
+    (when (and bounds inner)
+      (let ((skip "[:blank:]\r\n"))
+        (setq bounds (meep--bounds-contract-by-chars bounds skip skip))))
+    bounds))
+
+(defun meep--bounds-of-comment (inner)
+  "Return bounds of the comment at point, or nil.
+When INNER is non-nil, return the inner bounds (strip delimiters)."
+  (declare (important-return-value t))
+  (cond
+   (inner
+    (meep--bounds-at-point-for-comment-inner))
+   (t
+    (meep--bounds-at-point-for-comment-outer))))
+
+(defun meep--bounds-of-comment-block (inner)
+  "Return bounds of the whole comment block at point, or nil.
+Extends across adjacent comments separated only by blank/newline blank-space
+When INNER is non-nil, strip the opening delimiter of the first comment and
+the closing delimiter of the last comment (the `comment' inner behavior
+applied to the first/last lines of the block); otherwise include the
+trailing newline (outer is line-wise by default)."
+  (declare (important-return-value t))
+  (when-let* ((first-outer (meep--bounds-at-point-for-comment-outer)))
+    (let ((first-beg (car first-outer))
+          (last-beg (car first-outer))
+          (beg (car first-outer))
+          (end (cdr first-outer)))
+      ;; Extend end forward across adjacent comments separated only by blanks.
+      ;; Remember the last comment's start so we can query its inner bounds.
+      (save-excursion
+        (let (next)
+          (while (progn
+                   (goto-char end)
+                   (skip-chars-forward " \t\n\r")
+                   (setq next (meep--bounds-at-point-for-comment-outer)))
+            (setq last-beg (car next))
+            (setq end (cdr next)))))
+      ;; Extend beg backward across adjacent comments.
+      ;; Terminate at BOBP: otherwise the helper would rediscover the
+      ;; current comment and the loop would not progress.
+      (save-excursion
+        (let (prev)
+          (while (progn
+                   (goto-char beg)
+                   (skip-chars-backward " \t\n\r")
+                   (and (not (bobp))
+                        (progn
+                          (forward-char -1)
+                          (setq prev (meep--bounds-at-point-for-comment-outer)))))
+            (setq first-beg (car prev))
+            (setq beg (car prev)))))
+      (cond
+       (inner
+        ;; Apply `comment' inner logic on the first and last comments.
+        (save-excursion
+          (goto-char first-beg)
+          (when-let* ((b (meep--bounds-of-comment t)))
+            (setq beg (car b))))
+        (save-excursion
+          (goto-char last-beg)
+          (when-let* ((b (meep--bounds-of-comment t)))
+            (setq end (cdr b)))))
+       (t
+        ;; Outer (default): include trailing newline (line-wise).
+        (when (>= (point-max) (1+ end))
+          (meep--incf end))))
+      (cons beg end))))
+
+(defun meep--bounds-of-string (inner)
+  "Return bounds of the string at point, or nil.
+When INNER is non-nil, return the inner bounds (inside the quotes)."
+  (declare (important-return-value t))
+  (cond
+   (inner
+    (meep--bounds-at-point-for-string-inner))
+   (t
+    (meep--bounds-at-point-for-string-outer))))
+
+(defun meep--bounds-of-line (inner)
+  "Return bounds of the line at point.
+When INNER is non-nil, contract by surrounding blanks; otherwise include
+the trailing newline when present."
+  (declare (important-return-value t))
+  (cond
+   (inner
+    (let ((skip "[:blank:]"))
+      (meep--bounds-contract-by-chars (cons (pos-bol) (pos-eol)) skip skip)))
+   (t
+    (let ((end (pos-eol)))
+      (when (>= (point-max) (1+ end))
+        (meep--incf end))
+      (cons (pos-bol) end)))))
+
+(defun meep--char-space-p (ch)
+  "Return non-nil if CH is blank-space for `char' text-object purposes.
+Includes space, tab, newline, carriage return; nil (buffer edge) counts
+as blank-space"
+  (declare (important-return-value t))
+  (or (null ch) (memq ch '(?\s ?\t ?\n ?\r))))
+
+
+;; ---------------------------------------------------------------------------
+;; Implementation: Text Object Motions
+
+(defun meep--search-syntax-forward (step ppss-index)
+  "Move to the start of the STEP'th next region matching `syntax-ppss'.
+STEP is the signed count of regions to step over (positive forward,
+negative backward).  PPSS-INDEX is 3 (string) or 4 (comment).  Returns
+the signed count of STEP that could not be advanced; mirrors `forward-line'.
+On partial success point is left at the last region found.
+Uses Emacs's `comment-search-{forward,backward}' for comments and a
+syntax-class regex (`\\\\s\"') for strings, with `syntax-ppss' validation."
+  (declare (important-return-value t))
+  (let* ((sign
+          (cond
+           ((> step 0)
+            1)
+           ((< step 0)
+            -1)
+           (t
+            0)))
+         (remaining (abs step))
+         (more t)
+         ;; PRIMITIVE returns the next candidate region's start (or nil when
+         ;; no more matches in direction).  Comments use the mode-aware
+         ;; built-in search; strings use a syntax-class regex with `ppss'
+         ;; validation (skipping closing quotes, escapes, etc.).
+         (primitive
+          (cond
+           ((eq ppss-index 4)
+            (cond
+             ((> sign 0)
+              (lambda () (comment-search-forward (point-max) t)))
+             (t
+              (lambda () (comment-search-backward (point-min) t)))))
+           (t
+            (cond
+             ((> sign 0)
+              (lambda ()
+                (let ((beg nil))
+                  (while (and (null beg) (re-search-forward "\\s\"" nil t))
+                    (let ((s (syntax-ppss (point))))
+                      (when (and (nth ppss-index s) (eql (nth 8 s) (1- (point))))
+                        (setq beg (1- (point))))))
+                  beg)))
+             (t
+              (lambda ()
+                (let ((beg nil))
+                  (while (and (null beg) (re-search-backward "\\s\"" nil t))
+                    (let ((s (syntax-ppss (1+ (point)))))
+                      (when (and (nth ppss-index s) (eql (nth 8 s) (point)))
+                        (setq beg (point)))))
+                  beg))))))))
+    (while (and more (not (zerop remaining)))
+      (let ((p (point))
+            ;; CUR-BEG is the start of the region we're already in (or about
+            ;; to enter at point).  Look one char ahead for forward search
+            ;; so "at the start of a region" (where ppss hasn't yet crossed
+            ;; the opener) is treated as inside, avoiding re-discovery.
+            (cur-beg
+             (let ((state (syntax-ppss)))
+               (or (and (nth ppss-index state) (nth 8 state))
+                   (and (> sign 0)
+                        (not (eobp))
+                        (let ((s (syntax-ppss (1+ (point)))))
+                          (and (nth ppss-index s) (nth 8 s)))))))
+            (beg nil)
+            (cont t))
+        (while (and (null beg) cont)
+          (let ((found (funcall primitive)))
+            (cond
+             ((null found)
+              (setq cont nil))
+             ((eql found cur-beg)
+              nil)
+             (t
+              (setq beg found)))))
+        (cond
+         (beg
+          (goto-char beg)
+          (meep--decf remaining))
+         (t
+          ;; No more regions in this direction; abort, restoring this
+          ;; iteration's start so partial-advance lands at the last hit.
+          (goto-char p)
+          (setq more nil)))))
+    (* sign remaining)))
+
+(defun meep--bounds-endpoint (bounds at-start)
+  "Return (car BOUNDS) when AT-START is non-nil, else (cdr BOUNDS)."
+  (declare (important-return-value t))
+  (cond
+   (at-start
+    (car bounds))
+   (t
+    (cdr bounds))))
+
+(defun meep--forward-multi (step forward-1-fn)
+  "Iterate FORWARD-1-FN by ±1 STEP times, returning the unadvanced remainder.
+FORWARD-1-FN takes a signed step (+1 or -1) and advances point to the
+next object (a no-op if no further object exists).  Used to wrap
+primitives whose own return value isn't a remainder count
+(e.g. `forward-thing', which returns t/nil)."
+  (declare (important-return-value t))
+  (cond
+   ((zerop step)
+    0)
+   (t
+    (let ((sign
+           (cond
+            ((> step 0)
+             1)
+            (t
+             -1)))
+          (remaining (abs step))
+          (more t))
+      (while (and more (not (zerop remaining)))
+        (let ((p (point)))
+          (funcall forward-1-fn sign)
+          (cond
+           ((eq p (point))
+            (setq more nil))
+           (t
+            (meep--decf remaining)))))
+      (* sign remaining)))))
+
+(defun meep--scan-walk (step forward-fn)
+  "Scan STEP objects via FORWARD-FN, returning `(LANDING-POS . REMAINING)'.
+Does not move point (uses `save-excursion' internally).
+FORWARD-FN takes a signed STEP and advances point that many objects,
+returning the signed count of steps that could not be advanced (mirrors
+`forward-line').  Wrap primitives that don't return a remainder via
+`meep--forward-multi'."
+  (declare (important-return-value t))
+  (cond
+   ((zerop step)
+    (cons (point) 0))
+   (t
+    (save-excursion
+      (let ((unstepped (funcall forward-fn step)))
+        (cons (point) unstepped))))))
+
+(defun meep--scan-walk-bounds (inner step at-start forward-fn bounds-fn)
+  "Scan STEP objects then normalize the landing to the AT-START side of bounds.
+FORWARD-FN scans (see `meep--scan-walk').  After landing, BOUNDS-FN is
+called with INNER and the AT-START side of those bounds is the final
+landing.  Returns `(LANDING-POS . REMAINING)'.  If BOUNDS-FN returns nil
+at the landing (no object there), the primitive landing is returned."
+  (declare (important-return-value t))
+  (let* ((result (meep--scan-walk step forward-fn))
+         (pos (car result)))
+    (when pos
+      (when-let* ((b
+                   (save-excursion
+                     (goto-char pos)
+                     (funcall bounds-fn inner))))
+        (setq pos (meep--bounds-endpoint b at-start))))
+    (cons pos (cdr result))))
+
+(defun meep--scan-walk-thing (inner step at-start forward-fn bounds-fn)
+  "Scan via FORWARD-FN; skip bounds normalization when not needed.
+Optimized for `forward-thing'-style primitives whose natural landing is
+the trailing edge in the direction of motion (forward → end, backward →
+start).  Skips the BOUNDS-FN call when STEP is non-zero and AT-START
+matches the primitive's natural landing for that direction."
+  (declare (important-return-value t))
+  (cond
+   ((and (not (zerop step)) (eq at-start (< step 0)))
+    (meep--scan-walk step forward-fn))
+   (t
+    (meep--scan-walk-bounds inner step at-start forward-fn bounds-fn))))
+
+(defun meep--scan-walk-leading (inner step at-start forward-fn bounds-fn)
+  "Scan via FORWARD-FN; skip bounds normalization when not needed.
+Optimized for primitives whose natural landing is always the start of an
+object (`forward-line', `vertical-motion', `forward-char',
+`meep--search-syntax-forward').  Skips the BOUNDS-FN call when STEP is
+non-zero and AT-START is non-nil."
+  (declare (important-return-value t))
+  (cond
+   ((and (not (zerop step)) at-start)
+    (meep--scan-walk step forward-fn))
+   (t
+    (meep--scan-walk-bounds inner step at-start forward-fn bounds-fn))))
+
+(defun meep--bounds-step-word (inner step at-start)
+  "`:bounds-step-fn' for the `word' text object; scan STEP words."
+  (declare (important-return-value t))
+  (meep--scan-walk-thing
+   inner
+   step
+   at-start
+   (lambda (s) (meep--forward-multi s (lambda (n) (forward-thing 'word n))))
+   #'meep--bounds-of-word))
+
+(defun meep--bounds-step-symbol (inner step at-start)
+  "`:bounds-step-fn' for the `symbol' text object; scan STEP symbols."
+  (declare (important-return-value t))
+  (meep--scan-walk-thing
+   inner step at-start
+   (lambda (s)
+     (meep--forward-multi s (lambda (n) (forward-thing 'symbol n))))
+   #'meep--bounds-of-symbol))
+
+(defun meep--bounds-step-defun (inner step at-start)
+  "`:bounds-step-fn' for the `defun' text object; scan STEP defuns."
+  (declare (important-return-value t))
+  (meep--scan-walk-thing
+   inner
+   step
+   at-start
+   (lambda (s) (meep--forward-multi s (lambda (n) (forward-thing 'defun n))))
+   #'meep--bounds-of-defun))
+
+(defun meep--bounds-step-sentence (inner step at-start)
+  "`:bounds-step-fn' for the `sentence' text object; scan STEP sentences."
+  (declare (important-return-value t))
+  (meep--scan-walk-thing
+   inner step at-start
+   (lambda (s)
+     (meep--forward-multi s (lambda (n) (forward-thing 'sentence n))))
+   #'meep--bounds-of-sentence))
+
+(defun meep--bounds-step-paragraph (inner step at-start)
+  "`:bounds-step-fn' for the `paragraph' text object; scan STEP paragraphs."
+  (declare (important-return-value t))
+  (meep--scan-walk-thing
+   inner step at-start
+   (lambda (s)
+     (meep--forward-multi s (lambda (n) (forward-thing 'paragraph n))))
+   #'meep--bounds-of-paragraph))
+
+(defun meep--bounds-step-comment (inner step at-start)
+  "`:bounds-step-fn' for the `comment' text object; scan STEP comments."
+  (declare (important-return-value t))
+  (meep--scan-walk-leading
+   inner step at-start (lambda (s) (meep--search-syntax-forward s 4)) #'meep--bounds-of-comment))
+
+(defun meep--bounds-step-comment-block (inner step at-start)
+  "`:bounds-step-fn' for the `comment-block' text object; scan STEP blocks."
+  (declare (important-return-value t))
+  (meep--scan-walk-leading
+   inner
+   step
+   at-start
+   (lambda (s) (meep--search-syntax-forward s 4))
+   #'meep--bounds-of-comment-block))
+
+(defun meep--bounds-step-string (inner step at-start)
+  "`:bounds-step-fn' for the `string' text object; scan STEP strings."
+  (declare (important-return-value t))
+  (meep--scan-walk-leading
+   inner step at-start (lambda (s) (meep--search-syntax-forward s 3)) #'meep--bounds-of-string))
+
+(defun meep--bounds-step-line (inner step at-start)
+  "`:bounds-step-fn' for the `line' text object; scan STEP lines."
+  (declare (important-return-value t))
+  (meep--scan-walk-leading inner step at-start #'forward-line #'meep--bounds-of-line))
+
+(defun meep--bounds-step-visual-line (inner step at-start)
+  "`:bounds-step-fn' for the `visual-line' text object; scan STEP visual lines."
+  (declare (important-return-value t))
+  (meep--scan-walk-leading
+   inner step at-start (lambda (s) (- s (vertical-motion s))) #'meep--bounds-of-visual-line))
+
+;; ---------------------------------------------------------------------------
+;; Implementation: Text Object Registry & Dispatch
+
+(defvar meep-text-object-alist
+  (list
+   (cons
+    'word
+    (list :bounds-fn #'meep--bounds-of-word :bounds-step-fn #'meep--bounds-step-word :no-inner t))
+   (cons
+    'symbol
+    (list
+     :bounds-fn #'meep--bounds-of-symbol
+     :bounds-step-fn #'meep--bounds-step-symbol
+     :no-inner t))
+   (cons
+    'sentence
+    (list :bounds-fn #'meep--bounds-of-sentence :bounds-step-fn #'meep--bounds-step-sentence))
+   (cons
+    'paragraph
+    (list :bounds-fn #'meep--bounds-of-paragraph :bounds-step-fn #'meep--bounds-step-paragraph))
+   (cons
+    'comment
+    (list :bounds-fn #'meep--bounds-of-comment :bounds-step-fn #'meep--bounds-step-comment))
+   (cons
+    'comment-block
+    (list
+     :bounds-fn #'meep--bounds-of-comment-block
+     :bounds-step-fn #'meep--bounds-step-comment-block))
+   (cons
+    'string (list :bounds-fn #'meep--bounds-of-string :bounds-step-fn #'meep--bounds-step-string))
+   (cons
+    'defun (list :bounds-fn #'meep--bounds-of-defun :bounds-step-fn #'meep--bounds-step-defun))
+   (cons 'line (list :bounds-fn #'meep--bounds-of-line :bounds-step-fn #'meep--bounds-step-line))
+   (cons
+    'visual-line
+    (list
+     :bounds-fn #'meep--bounds-of-visual-line
+     :bounds-step-fn #'meep--bounds-step-visual-line)))
+  "Alist mapping a text-object KIND to a plist of operations.
+Plist keys:
+  :bounds-fn (INNER) -> BOUNDS
+    Pure query: return `(BEG . END)' of the object at point, or nil.
+  :bounds-step-fn (INNER STEP AT-START) -> (LANDING-POS . REMAINING)
+    Pure query (does not move point): scan STEP objects forward (backward
+    if negative) and return the precise landing plus the signed count of
+    steps that could not be advanced.
+    LANDING-POS is the AT-START side (start when non-nil, end otherwise)
+    of the target object's INNER bounds;
+    the motion dispatcher uses it directly without further lookup.
+    Implementations may skip the bounds-normalization step when the
+    underlying primitive's natural landing already matches AT-START.
+  :no-inner (optional)
+    When non-nil, the kind has no meaningful inner variant (its `:bounds-fn'
+    ignores INNER, e.g. word, symbol).  Consumers (e.g. the mark commands)
+    may generate only an `-outer' variant and skip the `-inner' one.
+Extension packages may extend this alist to register new kinds.")
+
+;;;###autoload
+(defun meep-calc-bounds-at-point (kind inner)
+  "Return `(BEG . END)' for the text-object KIND at point, or nil.
+When INNER is non-nil return the inner bounds, otherwise the outer bounds.
+Dispatches via `meep-text-object-alist's :bounds-fn slot.
+Returns nil when KIND is not registered."
+  (declare (important-return-value t))
+  (when-let* ((plist (alist-get kind meep-text-object-alist))
+              (fn (plist-get plist :bounds-fn)))
+    (funcall fn inner)))
+
+;;;###autoload
+(defun meep-motion-at-point (kind inner steps at-start &optional skip-current)
+  "Move by STEPS objects of text-object KIND.
+STEPS=0 lands at the current object's start/end without walking.
+AT-START non-nil lands at the start, nil at the end.
+When SKIP-CURRENT is non-nil, exit the current object before walking so
+STEPS counts distinct objects forward/backward (strict-next).  When nil,
+the underlying primitive counts the current object as step 1 (vim-style
+word motion).  Skip-current is meaningful only for kinds whose primitive
+lands within the current object (word, symbol, etc.); using it with
+self-stepping primitives (line, char, visual-line) will skip an object.
+INNER's meaning is kind-specific (e.g. for `string', inside vs outside
+the quotes).  Returns the signed count of steps that could not be advanced,
+or nil when KIND is not registered.
+Dispatches via `meep-text-object-alist's :bounds-step-fn slot (plus
+:bounds-fn for optional step-out)."
+  (declare (important-return-value t))
+  (when-let* ((plist (alist-get kind meep-text-object-alist))
+              (step-fn (plist-get plist :bounds-step-fn))
+              (bounds-fn (plist-get plist :bounds-fn)))
+    (let* ((do-step-out (and skip-current (not (zerop steps))))
+           ;; Outer save-excursion is load-bearing: it unwinds the step-out
+           ;; motion when the scan can't advance, so we don't leave point at
+           ;; the stepped-out position.  The inner scan does its own
+           ;; save-excursion.
+           (result
+            (save-excursion
+              ;; Step-out uses the *outer* bounds (INNER=nil) so we truly
+              ;; exit the current object; step-fn below applies the caller's
+              ;; INNER and AT-START for the final landing.  Step out to the
+              ;; start when moving backward, to the end when moving forward.
+              (when do-step-out
+                (when-let* ((b (funcall bounds-fn nil)))
+                  (goto-char (meep--bounds-endpoint b (< steps 0)))))
+              (funcall step-fn inner steps at-start)))
+           (target-pos (car result))
+           (remaining (cdr result))
+           (steps-taken (- (abs steps) (abs remaining))))
+      ;; Advance when we asked for nothing, or when we took some steps.
+      (when (and target-pos (or (zerop steps) (> steps-taken 0)))
+        (goto-char target-pos))
+      remaining)))
 
 ;; ---------------------------------------------------------------------------
 ;; Motion: Bounds

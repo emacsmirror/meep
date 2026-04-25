@@ -97,6 +97,26 @@ Other Variables
    Only used between successive
    ``meep-move-by-sexp-over-next`` and ``meep-move-by-sexp-over-prev`` calls.
 
+``meep-text-object-alist``: ``((word ``:bounds-fn`` meep--bounds-of-word ``:bounds-step-fn`` meep--bounds-step-word ``:no-inner`` t) (symbol ``:bounds-fn`` meep--bounds-of-symbol ``:bounds-step-fn`` meep--bounds-step-symbol ``:no-inner`` t) (sentence ``:bounds-fn`` meep--bounds-of-sentence ``:bounds-step-fn`` meep--bounds-step-sentence) (paragraph ``:bounds-fn`` meep--bounds-of-paragraph ``:bounds-step-fn`` meep--bounds-step-paragraph) (comment ``:bounds-fn`` meep--bounds-of-comment ``:bounds-step-fn`` meep--bounds-step-comment) (comment-block ``:bounds-fn`` meep--bounds-of-comment-block ``:bounds-step-fn`` meep--bounds-step-comment-block) (string ``:bounds-fn`` meep--bounds-of-string ``:bounds-step-fn`` meep--bounds-step-string) (defun ``:bounds-fn`` meep--bounds-of-defun ``:bounds-step-fn`` meep--bounds-step-defun) (line ``:bounds-fn`` meep--bounds-of-line ``:bounds-step-fn`` meep--bounds-step-line) (visual-line ``:bounds-fn`` meep--bounds-of-visual-line ``:bounds-step-fn`` meep--bounds-step-visual-line))``
+   Alist mapping a text-object KIND to a plist of operations.
+   Plist keys:
+     ``:bounds-fn`` (INNER) -> BOUNDS
+       Pure query: return ‘(BEG . END)’ of the object at point, or nil.
+     ``:bounds-step-fn`` (INNER STEP AT-START) -> (LANDING-POS . REMAINING)
+       Pure query (does not move point): scan STEP objects forward (backward
+       if negative) and return the precise landing plus the signed count of
+       steps that could not be advanced.
+       LANDING-POS is the AT-START side (start when non-nil, end otherwise)
+       of the target object’s INNER bounds;
+       the motion dispatcher uses it directly without further lookup.
+       Implementations may skip the bounds-normalization step when the
+       underlying primitive’s natural landing already matches AT-START.
+     ``:no-inner`` (optional)
+       When non-nil, the kind has no meaningful inner variant (its ``:bounds-fn``
+       ignores INNER, e.g. word, symbol).  Consumers (e.g. the mark commands)
+       may generate only an ``-outer`` variant and skip the ``-inner`` one.
+   Extension packages may extend this alist to register new kinds.
+
 ``meep-delete-char-ring``: ``nil``
    Ring of deleted characters.
    Used by ``meep-delete-char-ring-next``, ``meep-delete-char-ring-prev``,
@@ -110,6 +130,67 @@ Other Variables
 
 Commands
 --------
+
+Region Mark Commands (optional)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These commands must be explicitly loaded via::
+
+   (require 'meep-region-mark)
+
+``(meep-region-mark-line-outer)``
+   Mark outer line at point.
+
+``(meep-region-mark-sentence-outer)``
+   Mark outer sentence at point.
+
+``(meep-region-mark-comment-outer)``
+   Mark outer comment at point.
+
+``(meep-region-mark-visual-line-outer)``
+   Mark outer visual-line at point.
+
+``(meep-region-mark-symbol-outer)``
+   Mark outer symbol at point.
+
+``(meep-region-mark-defun-inner)``
+   Mark inner defun at point.
+
+``(meep-region-mark-string-inner)``
+   Mark inner string at point.
+
+``(meep-region-mark-line-inner)``
+   Mark inner line at point.
+
+``(meep-region-mark-sentence-inner)``
+   Mark inner sentence at point.
+
+``(meep-region-mark-comment-inner)``
+   Mark inner comment at point.
+
+``(meep-region-mark-string-outer)``
+   Mark outer string at point.
+
+``(meep-region-mark-comment-block-outer)``
+   Mark outer comment-block at point.
+
+``(meep-region-mark-word-outer)``
+   Mark outer word at point.
+
+``(meep-region-mark-paragraph-outer)``
+   Mark outer paragraph at point.
+
+``(meep-region-mark-visual-line-inner)``
+   Mark inner visual-line at point.
+
+``(meep-region-mark-paragraph-inner)``
+   Mark inner paragraph at point.
+
+``(meep-region-mark-comment-block-inner)``
+   Mark inner comment-block at point.
+
+``(meep-region-mark-defun-outer)``
+   Mark outer defun at point.
 
 Motion: Symbol/Word
 ^^^^^^^^^^^^^^^^^^^
