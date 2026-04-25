@@ -9,6 +9,7 @@ import sys
 BASE_DIR = os.path.join(os.path.dirname(__file__), "..")
 
 ELISP_NAME = "meep.el"
+ELISP_EXTRA_NAMES = ("meep-region-mark.el",)
 EMACS_NAME = "emacs"
 
 
@@ -73,8 +74,12 @@ def text_insert_into_bounds(
 
 
 def readme_patch_docstrings_sections(data: str) -> str:
-    with open(os.path.join(BASE_DIR, ELISP_NAME)) as fh:
-        file_orig = fh.read()
+    # Concatenate sources from the main file and any extension files so their
+    # section headers are also picked up.
+    file_orig = ""
+    for elisp_name in (ELISP_NAME, *ELISP_EXTRA_NAMES):
+        with open(os.path.join(BASE_DIR, elisp_name)) as fh:
+            file_orig += fh.read()
 
     header_overline = ";; " + ("-" * 75) + "\n"
 
@@ -97,6 +102,14 @@ def readme_patch_docstrings_sections(data: str) -> str:
             elif lines[i].startswith("(defconst "):
                 sym = lines[i].split()[1]
             else:
+                # Extension files generate many commands at once via a
+                # `(PREFIX--define-all-commands)' macro; no literal `defun'
+                # follows the section header.  Anchor the section to a
+                # "PREFIX-*" wildcard so it precedes the first generated
+                # command in the output.
+                m = re.match(r"\(([\w-]+)--define-all-commands\b", lines[i])
+                if m:
+                    return m.group(1) + "-*"
                 continue
 
             if "--" not in sym:
@@ -151,7 +164,10 @@ def readme_patch_docstrings_sections(data: str) -> str:
 
         if sym:
             for i, (sym_test, header) in enumerate(sections):
-                if sym_test == sym:
+                # Exact match, or "PREFIX-*" wildcard match for sections
+                # anchored to a `--define-all-commands' macro call.
+                if (sym_test == sym
+                        or (sym_test.endswith("-*") and sym.startswith(sym_test[:-1]))):
                     data_lines_new.append(header)
                     data_lines_new.append("\n")
                     del sections[i]
@@ -169,6 +185,10 @@ def readme_patch_docstrings(data: str) -> str | int:
         "--batch",
         "--load",
         os.path.join(BASE_DIR, ELISP_NAME),
+    ]
+    for extra in ELISP_EXTRA_NAMES:
+        cmd += ["--load", os.path.join(BASE_DIR, extra)]
+    cmd += [
         "--load",
         os.path.join(BASE_DIR, "_misc", "readme_update.el"),
 
@@ -179,7 +199,7 @@ def readme_patch_docstrings(data: str) -> str | int:
         ),
         "--eval", (
             """(readme_update """
-            """(list 'meep) """
+            """(list 'meep 'meep-region-mark) """
             """"^meep-[a-z]" 'var-custom """
             """(list 'meep-mode-hook))"""
         ),
@@ -194,7 +214,7 @@ def readme_patch_docstrings(data: str) -> str | int:
         ),
         "--eval", (
             """(readme_update """
-            """(list 'meep) """
+            """(list 'meep 'meep-region-mark) """
             """"^meep-[a-z]" 'var """
             """(list 'meep-mode-off-hook """
             """      'meep-mode-on-hook """
@@ -209,7 +229,7 @@ def readme_patch_docstrings(data: str) -> str | int:
         ),
         "--eval", (
             """(readme_update """
-            """(list 'meep) """
+            """(list 'meep 'meep-region-mark) """
             """"^meep-[a-z]" 'fun-interactive """
             """(list 'meep-mode """
             """))"""
