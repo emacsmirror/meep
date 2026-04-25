@@ -225,7 +225,7 @@
   (defvar meep-state-keymap-insert (make-keymap))
 
   ;; Optional: a quick way to mask insertion.
-  (keymap-set meep-state-keymap-motion [remap self-insert-command] 'undefined)
+  (keymap-set meep-state-keymap-motion "<remap> <self-insert-command>" 'undefined)
 
   (setq bray-state-definitions
         (list
