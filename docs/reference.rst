@@ -47,6 +47,22 @@ Custom Variables
    Used for ``meep-region-mark-bounds-of-char-inner-contextual`` and
    ``meep-region-mark-bounds-of-char-outer-contextual``.
 
+``meep-bounds-for-inner-comment``: ``nil``
+   Spec for contracting outer comment bounds to inner.
+
+   When non-nil, the value is a 2-element list ‘(FUNC ARGS)’.  Given
+   outer comment bounds BOUNDS, the inner bounds are computed as
+
+     (funcall FUNC ARGS BOUNDS)
+
+   which should return a cons ‘(BEG . END)’ or nil if BOUNDS cannot
+   be contracted.
+
+   Defaults to nil; the spec is then read from the preset for the
+   current ``major-mode`` (see the bundled ‘meep-preset-MODE.el’
+   files).  An explicit user setting — buffer-local or global —
+   takes precedence over the preset.
+
 ``meep-bounds-commands``: ``((112 meep-move-to-bounds-of-paragraph-inner "paragraph inner") (80 meep-move-to-bounds-of-paragraph "paragraphs") (99 meep-move-to-bounds-of-comment-inner "comment inner") (67 meep-move-to-bounds-of-comment "comment") (115 meep-move-to-bounds-of-string-inner "string inner") (83 meep-move-to-bounds-of-string "string") (108 meep-move-to-bounds-of-line-inner "line inner") (76 meep-move-to-bounds-of-line "line") (86 meep-move-to-bounds-of-visual-line-inner "visual line inner") (118 meep-move-to-bounds-of-visual-line "visual line") (100 meep-move-to-bounds-of-defun-inner "defun inner") (68 meep-move-to-bounds-of-defun "defun") (46 meep-move-to-bounds-of-sentence-inner "sentence inner") (62 meep-move-to-bounds-of-sentence "sentence"))``
    List of commands for bounds movement.
    Each element is (key function description).
@@ -126,6 +142,13 @@ Other Variables
    Key-map for register clipboard actions.
 
    Used by ``meep-clipboard-register-actions``.
+
+``meep-preset-variables``: ``(meep-bounds-for-inner-comment meep-match-bounds-of-char-contextual)``
+   Variables that meep presets are allowed to set.
+
+   A bundled ‘meep-preset-MODE.el’ must restrict the keys of its
+   returned alist to symbols in this list.  The contract is checked
+   by the test suite, not enforced at runtime.
 
 
 Commands
@@ -944,9 +967,3 @@ Support entering a sequence of keys without the need to hold modifiers, see:
    Begin entering a key sequence.
 
 .. END VARIABLES
-
-
-.. BEGIN COMMANDS
-
-
-.. END COMMANDS

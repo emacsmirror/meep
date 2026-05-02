@@ -277,48 +277,6 @@ def readme_patch_docstrings(data: str) -> str | int:
     return data_result
 
 
-def readme_patch_commands(data: str) -> str | int:
-
-    preset_prefix = "meep-preset-"
-
-    presets = [
-        f for f in os.listdir(BASE_DIR)
-        if f.endswith(".el")
-        if f.startswith(preset_prefix)
-    ]
-    presets.sort()
-
-    emacs_output = ["\n\n"]
-
-    for preset in presets:
-        with open(os.path.join(BASE_DIR, preset), encoding="utf-8") as fh:
-            preset_name = preset[len(preset_prefix):].removesuffix(".el")
-            preset_data = fh.read()
-            find_comment = ";;; Commentary:"
-            beg = preset_data.find(find_comment)
-            assert beg != -1
-            beg = preset_data.find(";; ", beg + len(find_comment))
-            assert beg != -1
-            # Search for a blank line.
-            end = preset_data.find("\n\n", beg)
-
-            text = "\n".join([
-                "" if (l == ";;") else ("  " + l[2:])
-                for l in preset_data[beg:end].split("\n")
-            ])
-
-            emacs_output.append("``'" + preset_name + "``\n")
-
-            emacs_output.append(text)
-            emacs_output.append("\n\n")
-
-    data_result = text_insert_into_bounds(data, "".join(emacs_output), '.. BEGIN COMMANDS', '.. END COMMANDS')
-    if data_result is None:
-        return 1
-
-    return data_result
-
-
 def main() -> int:
     # Try write reStructuredText directly!
     filepath = "docs/reference.rst"
@@ -327,10 +285,6 @@ def main() -> int:
         data = f.read()
 
     data = readme_patch_docstrings(data)
-    if isinstance(data, int):
-        return data
-
-    data = readme_patch_commands(data)
     if isinstance(data, int):
         return data
 

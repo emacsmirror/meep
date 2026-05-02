@@ -506,7 +506,7 @@ Commands get the same key in all specified states for consistency.")
 (defun meep-test-generate-key (index)
   "Generate a unique key string for INDEX.
 Uses function keys f5-f12 with modifier combinations.
-Provides 72 unique keys (9 modifiers × 8 function keys)."
+Provides 72 unique keys (9 modifiers x 8 function keys)."
   (let* ((fkey-num (+ 5 (mod index 8))) ; f5 through f12
          (modifier-index (/ index 8))
          (modifiers ["" "S-" "C-" "M-" "C-S-" "M-S-" "C-M-" "C-M-S-" "H-"]))
@@ -6974,11 +6974,16 @@ Verifies: outer selection includes the quote delimiters."
 (ert-deftest bounds-of-comment-inner-basic ()
   "Select comment content without delimiters.
 
-Verifies: inner selection excludes comment markers."
+Verifies: inner selection excludes comment markers, with the
+c-mode preset auto-consulted on demand — no explicit
+`meep-preset-ensure' call required."
   (let ((text-initial "foo // bar baz\nqux"))
     (with-meep-test text-initial
       (c-mode)
       (bray-mode 1)
+      ;; No `meep-preset-ensure' — the preset is consulted lazily
+      ;; via `meep-preset-ensure-variable'; the var stays non-local.
+      (should-not (local-variable-p 'meep-bounds-for-inner-comment))
       ;; Cursor: foo // bar baz
       ;;         ^
       (should (equal '(1 . 0) (meep-test-point-line-column)))

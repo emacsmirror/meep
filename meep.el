@@ -1624,68 +1624,43 @@ Return non-nil when point was moved."
      (t
       nil))))
 
-(defun meep--bounds-at-point-for-comment-inner-guess (bounds)
-  "Contract BOUNDS based on the mode."
+;;;###autoload
+(defun meep-bounds-inner-from-delimiters (pairs bounds)
+  "Contract BOUNDS by the first matching delimiter in PAIRS.
+
+PAIRS is a list of `(BEG-STR . END-STR)' cons cells.  For the
+first pair where BOUNDS begins with BEG-STR and ends with
+END-STR, return BOUNDS contracted by the lengths of those
+delimiters.  Return nil if no pair matches.
+
+Intended for use as the FUNC in `meep-bounds-for-inner-comment',
+where ARGS is the PAIRS list.  Useful when writing a preset for
+a mode whose comment delimiters are fixed strings - most of the
+bundled `meep-preset-MODE.el' files (`c-mode', `lua-mode',
+`html-mode', …) configure their comment spec this way."
   (declare (important-return-value t))
-  (let* ((result nil))
-    ;; TODO: split out mode-specific settings into customizable variables.
-    ;; Since it's not good to hard code modes into MEEP.
-    ;; For now, do a "reasonable" job at supporting most popular languages.
-    (cond
-     ;; Defined in `cc-defs'.
-     ((or
-       ;; This looks to be the most generic way to check for a C-like mode.
-       (bound-and-true-p c-buffer-is-cc-mode)
-       ;; Other modes that support both C++ and C style comment blocks.
-       (derived-mode-p 'dart-mode 'javascript-mode 'kotlin-mode 'php-mode 'scala-mode 'rust-mode))
-      (cond
-       ((meep--bounds-equal-at-end-points bounds "/*" "*/")
-        (setq result (cons (+ (car bounds) 2) (- (cdr bounds) 2))))
-       ((meep--bounds-equal-at-end-points bounds "//" "")
-        (setq result (cons (+ 2 (car bounds)) (cdr bounds))))))
-     ;; C /* ... */ style only.
-     ((derived-mode-p 'css-mode)
-      (cond
-       ((meep--bounds-equal-at-end-points bounds "/*" "*/")
-        (setq result (cons (+ (car bounds) 2) (- (cdr bounds) 2))))))
-     ;; C++ // ... style only.
-     ((derived-mode-p 'go-mode)
-      (cond
-       ((meep--bounds-equal-at-end-points bounds "//" "")
-        (setq result (cons (+ 2 (car bounds)) (cdr bounds))))))
-     ((derived-mode-p 'lua-mode)
-      (cond
-       ((meep--bounds-equal-at-end-points bounds "--[[" "]]")
-        (setq result (cons (+ (car bounds) 4) (- (cdr bounds) 2))))
-       ((meep--bounds-equal-at-end-points bounds "--" "")
-        (setq result (cons (+ 2 (car bounds)) (cdr bounds))))))
-     ((derived-mode-p 'cmake-mode)
-      (cond
-       ;; Actual comment is #[[ ]] however: #[=[ ]=] (with arbitrary "=")
-       ;; is allowed, rely on blank-space skipping to skip over these characters.
-       ((meep--bounds-equal-at-end-points bounds "#[" "]")
-        (setq result (cons (+ (car bounds) 3) (- (cdr bounds) 3))))))
-     ((derived-mode-p 'haskell-mode)
-      (cond
-       ((meep--bounds-equal-at-end-points bounds "{-#" "#-}")
-        (setq result (cons (+ (car bounds) 3) (- (cdr bounds) 3))))
-       ((meep--bounds-equal-at-end-points bounds "{-" "-}")
-        (setq result (cons (+ (car bounds) 2) (- (cdr bounds) 2))))))
-     ((derived-mode-p 'html-mode 'xml-mode)
-      (cond
-       ((meep--bounds-equal-at-end-points bounds "<!--" "-->")
-        (setq result (cons (+ (car bounds) 4) (- (cdr bounds) 3))))))
-     ((derived-mode-p 'ruby-mode)
-      (cond
-       ((meep--bounds-equal-at-end-points bounds "=begin" "=end")
-        (setq result (cons (+ 6 (car bounds)) (- (cdr bounds) 4))))))
-     ((derived-mode-p 'pascal-mode)
-      (cond
-       ((meep--bounds-equal-at-end-points bounds "(*" "*)")
-        (setq result (cons (+ (car bounds) 2) (- (cdr bounds) 2))))
-       ((meep--bounds-equal-at-end-points bounds "{" "}")
-        (setq result (cons (+ (car bounds) 1) (- (cdr bounds) 1)))))))
+  (let ((result nil))
+    (while (and pairs (null result))
+      (let* ((pair (pop pairs))
+             (beg-str (car pair))
+             (end-str (cdr pair)))
+        (when (meep--bounds-equal-at-end-points bounds beg-str end-str)
+          (setq result
+                (cons (+ (car bounds) (length beg-str)) (- (cdr bounds) (length end-str)))))))
     result))
+
+(defun meep--bounds-at-point-for-comment-inner-guess (bounds)
+  "Contract BOUNDS based on `meep-bounds-for-inner-comment'.
+
+The spec is read via `meep-preset-ensure-variable', so the
+preset for the current `major-mode' is consulted on demand -
+users do not have to call `meep-preset-ensure' from a mode hook
+just to get inner-comment bounds.  An explicit user setting -
+buffer-local or global - still takes precedence over the preset."
+  (declare (important-return-value t))
+  (let ((spec (meep-preset-ensure-variable 'meep-bounds-for-inner-comment)))
+    (when spec
+      (funcall (car spec) (cadr spec) bounds))))
 
 (defun meep--bounds-at-point-for-comment-inner ()
   "Return the inner bounds for the comment at point or nil when not found."
@@ -2092,6 +2067,23 @@ multi-character pairs are also supported.
 Used for `meep-region-mark-bounds-of-char-inner-contextual' and
 `meep-region-mark-bounds-of-char-outer-contextual'."
   :type '(repeat (cons string string)))
+
+(defcustom meep-bounds-for-inner-comment nil
+  "Spec for contracting outer comment bounds to inner.
+
+When non-nil, the value is a 2-element list `(FUNC ARGS)'.  Given
+outer comment bounds BOUNDS, the inner bounds are computed as
+
+  (funcall FUNC ARGS BOUNDS)
+
+which should return a cons `(BEG . END)' or nil if BOUNDS cannot
+be contracted.
+
+Defaults to nil; the spec is then read from the preset for the
+current `major-mode' (see the bundled `meep-preset-MODE.el'
+files).  An explicit user setting - buffer-local or global -
+takes precedence over the preset."
+  :type '(choice (const nil) (list function sexp)))
 
 (defun meep--symmetrical-char-other-any (ch-str)
   "Return the symmetrical character of CH-STR or nil."
@@ -7208,6 +7200,175 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
   "Return t if CMD is a numeric command."
   (declare (important-return-value t))
   (eq t (meep-command-prop-get cmd :digit-repeat)))
+
+;; ---------------------------------------------------------------------------
+;; Presets
+;;
+;; Per-major-mode configuration is loaded on demand from files named
+;; `meep-preset-MODE.el' anywhere on `load-path'.  For `major-mode'
+;; MODE, a preset is the triple:
+;;
+;;   File:     meep-preset-MODE.el
+;;   Feature:  (provide 'meep-preset-MODE)
+;;   Function: (defun meep-preset-MODE () ALIST)
+;;
+;; The preset function returns an alist of `(VARIABLE . VALUE)' pairs
+;; intended to override existing user options for that mode.
+
+(defvar meep-preset-variables
+  (list 'meep-bounds-for-inner-comment 'meep-match-bounds-of-char-contextual)
+  "Variables that meep presets are allowed to set.
+
+A bundled `meep-preset-MODE.el' must restrict the keys of its
+returned alist to symbols in this list.  The contract is checked
+by the test suite, not enforced at runtime.")
+
+(defvar meep--preset-cache (make-hash-table :test 'eq)
+  "Hash table mapping `major-mode' to its preset alist.
+
+Values:
+- nil / absent  - preset has not yet been attempted for this mode.
+- t             - cached-missing-state: attempted but no usable
+                  preset (file missing, errored, no function defined,
+                  preset returned nil/empty, or preset returned a
+                  non-list value).
+- ALIST         - attempted, the preset returned this alist.
+
+The cached-missing-state value t is internal and never surfaces
+from `meep-preset-ensure'.")
+
+(defun meep--preset-try-mode (mode)
+  "Attempt to load and call the preset for MODE.
+
+Return one of:
+- `continue' - no preset file exists for MODE; walk to its parent.
+- `missing'  - an attempt was made but the result is unusable
+               (load error, file present but missing the entry
+               function, preset returning nil/empty or a
+               non-list value).  Stop the walk; cache as missing.
+- ALIST      - a non-empty alist returned by the preset.  Stop
+               the walk; cache and apply this alist.
+
+Execution errors signaled by the preset function are not caught
+and propagate to the caller."
+  (declare (important-return-value t))
+  ;; NOTE: `intern' adds a symbol to the obarray for unsupported
+  ;; modes, but `meep--preset-cache' ensures this happens at most
+  ;; once per ancestor per session.
+  (let* ((preset-sym (intern (concat "meep-preset-" (symbol-name mode))))
+         (loaded
+          (condition-case err
+              (require preset-sym nil t)
+            (error
+             (lwarn 'meep :error "preset for %S failed to load: %S" mode err)
+             'errored))))
+    (cond
+     ((null loaded)
+      'continue)
+     ((eq loaded 'errored)
+      'missing)
+     ((not (fboundp preset-sym))
+      (lwarn 'meep :error "preset for %S loaded but `%S' is not defined" mode preset-sym)
+      'missing)
+     (t
+      (let ((result (funcall preset-sym)))
+        (cond
+         ((null result)
+          'missing)
+         ((listp result)
+          result)
+         (t
+          (lwarn 'meep :error "preset %S returned %S; expected an alist" preset-sym result)
+          'missing)))))))
+
+(defun meep--preset-lookup ()
+  "Return the preset alist for the current `major-mode', or nil.
+
+Memoized: performs the `derived-mode-parent' chain walk on the
+first call for each `major-mode' and caches the result.  Does
+*not* apply the alist to the current buffer; callers that want
+to apply must do so themselves.
+
+Shared cache/walk core for `meep-preset-ensure' and
+`meep-preset-ensure-variable'."
+  (declare (important-return-value t))
+  (let ((cached (gethash major-mode meep--preset-cache)))
+    (cond
+     ;; Cached-missing-state.
+     ((eq cached t)
+      nil)
+     ;; Cached alist.
+     (cached
+      cached)
+     ;; First attempt - walk the `derived-mode-parent' chain.
+     ;; `visited' guards against any pathological cycle in the
+     ;; chain - Emacs prevents this in practice, but bounding the
+     ;; loop is cheap insurance.
+     (t
+      (let ((mode major-mode)
+            (visited nil)
+            (result nil)
+            (done nil))
+        (while (and mode (not done) (not (memq mode visited)))
+          (push mode visited)
+          (pcase (meep--preset-try-mode mode)
+            ('continue (setq mode (get mode 'derived-mode-parent)))
+            ('missing (setq done t))
+            (found
+             (setq
+              result found
+              done t))))
+        (puthash major-mode (or result t) meep--preset-cache)
+        result)))))
+
+;;;###autoload
+(defun meep-preset-ensure ()
+  "Load and apply the preset for the current `major-mode'.
+
+Walks the `derived-mode-parent' chain starting at `major-mode';
+the first ancestor with a `meep-preset-MODE' file on `load-path'
+wins.  That file's preset function returns an alist of
+`(VARIABLE . VALUE)' pairs.  Each VARIABLE is then set
+buffer-locally to VALUE unless it is already buffer-local - a
+prior buffer-local user override is preserved.
+
+The alist is memoized globally under the current `major-mode',
+so the chain walk happens at most once per Emacs session per
+mode (including the negative case: a mode whose chain has no
+preset is cached and not retried).
+
+The walk continues to the parent only when *no preset file
+exists* for an ancestor (the silent, common path).  Any explicit
+attempt - load error, file present but missing the entry
+function, preset returning nil/empty, preset returning a
+non-list - is treated as the user's intent for that ancestor:
+the walk stops, the result is cached as missing, and an explicit
+empty or broken preset shadows any further parent.
+
+Errors signaled by the preset function itself propagate; the
+cache is left untouched so a fixed preset is retried on the
+next call.
+
+Return the alist, or nil if no preset is available."
+  (declare (important-return-value t))
+  (let ((alist (meep--preset-lookup)))
+    (dolist (entry alist)
+      (let ((var (car entry)))
+        (unless (local-variable-p var)
+          (set (make-local-variable var) (cdr entry)))))
+    alist))
+
+;;;###autoload
+(defun meep-preset-ensure-variable (var)
+  "Return VAR's value: buffer-local, then global, falling back to the preset."
+  (declare (important-return-value t))
+  (let ((val (and (boundp var) (symbol-value var))))
+    (cond
+     ((or (local-variable-p var) val)
+      val)
+     (t
+      (cdr (assq var (meep--preset-lookup)))))))
+
 
 ;; ---------------------------------------------------------------------------
 ;; Public API
