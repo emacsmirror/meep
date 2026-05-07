@@ -6710,6 +6710,51 @@ Use the `meep-clipboard-register-map' key-map."
 ;; Support entering a sequence of keys without the need to hold modifiers, see:
 ;; `keypad mode <https://github.com/meow-edit/meow/blob/master/TUTORIAL.org#keypad>`__.
 
+(defmacro meep--keypad-with-maybe-which-key (keyseq-fn &rest body)
+  "Run BODY with bindings that let `which-key' display the keypad's prefix.
+KEYSEQ-FN is a function returning the current key sequence in the form
+`kbd' returns (a string or vector).  The bindings are harmless when
+`which-key' isn't loaded.
+
+The bindings span both `read-event' and any `which-key-C-h-dispatch' the
+keypad invokes, so which-key's idle timer sees the right prefix while
+its own `read-key' is blocking."
+  (declare (indent 1))
+  `(let ((this-command nil)
+         (which-key-this-command-keys-function ,keyseq-fn))
+     (ignore which-key-this-command-keys-function)
+     ,@body))
+
+(defmacro meep--keypad-which-key-c-h-maybe (ch prefix-arg-var)
+  "Forward CH to `which-key-C-h-dispatch' if it is `help-char' and which-key is showing.
+Returns non-nil when the event was consumed (any binding in
+`which-key-C-h-map': paging, digit-arg, undo, toggle-docstrings,
+show-standard-help, abort).
+
+PREFIX-ARG-VAR is a symbol naming the caller's local that tracks the
+prefix arg for the eventual command.  It is bound through dispatch as
+`current-prefix-arg' so reload-style commands preserve it via
+`(setq prefix-arg current-prefix-arg)', then read back from `prefix-arg'
+which `which-key-digit-argument' sets to the typed digit.
+`unread-command-events' is shadowed so the prefix sequence which-key
+re-feeds for the normal dispatcher doesn't leak into the keypad's next
+`read-event'."
+  (unless (symbolp prefix-arg-var)
+    (error "PREFIX-ARG-VAR must be a symbol, got: %S" prefix-arg-var))
+  `(when (and (eq ,ch help-char)
+              (bound-and-true-p which-key-use-C-h-commands)
+              (fboundp 'which-key--popup-showing-p)
+              (which-key--popup-showing-p))
+     (let ((unread-command-events nil)
+           (prefix-arg nil)
+           (current-prefix-arg ,prefix-arg-var))
+       (which-key-C-h-dispatch)
+       ;; Skip when dispatch left it nil (e.g. `which-key-show-standard-help')
+       ;; - preserves an earlier `C-h <N>' digit.
+       (when prefix-arg
+         (setq ,prefix-arg-var prefix-arg)))
+     t))
+
 ;; NOTE: Based on MEOW's keypad mode
 ;;;###autoload
 (defun meep-keypad ()
@@ -6758,6 +6803,9 @@ Use the `meep-clipboard-register-map' key-map."
     ;; https://github.com/meow-edit/meow/blob/master/TUTORIAL.org#keypad
     (let ((found nil)
           (is-first t)
+          ;; Prefix arg for the eventual command; `which-key-digit-argument'
+          ;; may overwrite this via the C-h intercept.
+          (captured-prefix-arg current-prefix-arg)
           ;; Build a sequence of keys, note that this is stored in reverse order
           ;; for conveniently adding to the start.
           ;; Each element may contain multiple keys - to ensure both
@@ -6789,27 +6837,23 @@ Use the `meep-clipboard-register-map' key-map."
              (list map-fwd map-rev))))
 
       (while (null found)
-        (let ((maybe-complete nil))
-          (let ((ch
-                 ;; Which key needs `this-command' to be nil, else it won't show.
-                 ;; Also bind the command to return the keys for which-key to show.
-                 ;; This is harmless if which-key isn't in use.
-                 (let ((this-command nil)
-                       (which-key-this-command-keys-function
-                        (lambda ()
-                          (let ((keyseq-str (funcall string-from-keyseq-default keyseq)))
-                            ;; Strip incomplete keys, this doesn't help and causes
-                            ;; an error when multiple modifiers are used such as "C-M-".
-                            ;; Although it could be handy if `which-key' would filter
-                            ;; based on the incomplete binding.
-                            (when (string-suffix-p "-" keyseq-str)
-                              (let ((split-by " "))
-                                (setq keyseq-str
-                                      (mapconcat
-                                       #'identity (butlast (split-string keyseq-str split-by))
+        (let ((maybe-complete nil)
+              (handled-elsewhere nil))
+          (meep--keypad-with-maybe-which-key
+              (lambda ()
+                (let ((keyseq-str
+                       (funcall string-from-keyseq-default keyseq)))
+                  ;; Strip incomplete keys, this doesn't help and causes
+                  ;; an error when multiple modifiers are used such as "C-M-".
+                  ;; Although it could be handy if `which-key' would filter
+                  ;; based on the incomplete binding.
+                  (when (string-suffix-p "-" keyseq-str)
+                    (let ((split-by " "))
+                      (setq keyseq-str
+                            (mapconcat #'identity (butlast (split-string keyseq-str split-by))
                                        split-by))))
-                            (kbd keyseq-str)))))
-                   (ignore which-key-this-command-keys-function)
+                  (kbd keyseq-str)))
+            (let ((ch
                    (read-event
                     (concat
                      "Keypad [" (funcall string-from-keyseq-default keyseq)
@@ -6827,62 +6871,66 @@ Use the `meep-clipboard-register-map' key-map."
                                    'face
                                    'font-lock-comment-face))
                       (t
-                       ""))))))
+                       "")))))
 
-                (ch-str-list nil))
+                  (ch-str-list nil))
 
-            ;; Expand `ch-str-list' to include all translated keys.
-            (let ((ch-str (single-key-description ch)))
-              (dolist (map keymap-subst-map-list)
-                (let ((stack (list ch))
-                      (stack-visited (list)))
-                  (while stack
-                    (let ((v (pop stack)))
-                      (push v stack-visited)
-                      (dolist (v-other (gethash v map))
-                        (unless (memq v-other stack-visited)
-                          ;; Only push others, the original char is pushed later.
-                          (let ((ch-str-other (single-key-description v-other)))
-                            (unless (string-equal ch-str ch-str-other)
-                              (push ch-str-other ch-str-list)))
-                          (push v-other stack)))))))
-              ;; Not all that likely but possible.
-              (setq ch-str-list (delete-dups ch-str-list))
-              ;; Important this is first, so `string-from-keyseq-default' is predictable.
-              (push ch-str ch-str-list))
+              ;; Expand `ch-str-list' to include all translated keys.
+              (let ((ch-str (single-key-description ch)))
+                (dolist (map keymap-subst-map-list)
+                  (let ((stack (list ch))
+                        (stack-visited (list)))
+                    (while stack
+                      (let ((v (pop stack)))
+                        (push v stack-visited)
+                        (dolist (v-other (gethash v map))
+                          (unless (memq v-other stack-visited)
+                            ;; Only push others, the original char is pushed later.
+                            (let ((ch-str-other (single-key-description v-other)))
+                              (unless (string-equal ch-str ch-str-other)
+                                (push ch-str-other ch-str-list)))
+                            (push v-other stack)))))))
+                ;; Not all that likely but possible.
+                (setq ch-str-list (delete-dups ch-str-list))
+                ;; Important this is first, so `string-from-keyseq-default' is predictable.
+                (push ch-str ch-str-list))
 
-            (cond
-             ;; Special case: keypad -> m replaces the initial: `C-' with `M-'.
-             ;; Without this, `M-' shortcuts aren't possible.
-             ((and is-first (eq ch ?m))
-              (setcar keyseq (list "M-")))
-             ;; Special case: keypad -> g replaces the initial: `C-' with `C-M-'.
-             ;; Without this, `C-M-' shortcuts aren't possible.
-             ((and is-first (eq ch ?g))
-              (setcar keyseq (list "C-M-")))
-             ((string-suffix-p "-" (car (car keyseq)))
-              (push ch-str-list keyseq)
-              (setq maybe-complete t))
-
-             (was-space
-              (push (list " ") keyseq)
-              (push ch-str-list keyseq)
-
-              (setq was-space nil)
-              (setq maybe-complete t))
-
-             (t
               (cond
-               ((eq ch ?\s)
-                (setq was-space t))
-               ((eq ch ?m)
-                (push (list " M-") keyseq))
-               ((eq ch ?g)
-                (push (list " C-M-") keyseq))
-               (t
-                (push (list " C-") keyseq)
+               ;; `read-event' skips the normal prefix-key dispatcher, so
+               ;; forward `C-h' to which-key here.
+               ((meep--keypad-which-key-c-h-maybe ch captured-prefix-arg)
+                (setq handled-elsewhere t))
+               ;; Special case: keypad -> m replaces the initial: `C-' with `M-'.
+               ;; Without this, `M-' shortcuts aren't possible.
+               ((and is-first (eq ch ?m))
+                (setcar keyseq (list "M-")))
+               ;; Special case: keypad -> g replaces the initial: `C-' with `C-M-'.
+               ;; Without this, `C-M-' shortcuts aren't possible.
+               ((and is-first (eq ch ?g))
+                (setcar keyseq (list "C-M-")))
+               ((string-suffix-p "-" (car (car keyseq)))
                 (push ch-str-list keyseq)
-                (setq maybe-complete t))))))
+                (setq maybe-complete t))
+
+               (was-space
+                (push (list " ") keyseq)
+                (push ch-str-list keyseq)
+
+                (setq was-space nil)
+                (setq maybe-complete t))
+
+               (t
+                (cond
+                 ((eq ch ?\s)
+                  (setq was-space t))
+                 ((eq ch ?m)
+                  (push (list " M-") keyseq))
+                 ((eq ch ?g)
+                  (push (list " C-M-") keyseq))
+                 (t
+                  (push (list " C-") keyseq)
+                  (push ch-str-list keyseq)
+                  (setq maybe-complete t)))))))
 
           (when maybe-complete
             (let* ((kbd-keyseq nil)
@@ -6925,9 +6973,15 @@ Use the `meep-clipboard-register-map' key-map."
                 (cond
                  ((and (symbolp bind) (commandp bind))
                   (setq this-command bind)
-                  (call-interactively bind))
+                  ;; Don't shadow `prefix-arg' - `universal-argument' (and the like)
+                  ;; need to write it for the next command.
+                  (let ((current-prefix-arg captured-prefix-arg))
+                    (call-interactively bind)))
                  (t
-                  (execute-kbd-macro kbd-keyseq))))
+                  ;; `execute-kbd-macro' rotates `prefix-arg' ->
+                  ;; `current-prefix-arg' for its first command.
+                  (let ((prefix-arg captured-prefix-arg))
+                    (execute-kbd-macro kbd-keyseq)))))
 
                ((or (consp bind)
                     ;; A symbol may reference a key-map.
@@ -6938,10 +6992,10 @@ Use the `meep-clipboard-register-map' key-map."
                 (user-error "Keypad [%s] unknown!" keyseq-str-default))
                (t
                 ;; Should never happen, but this is early development so it might.
-                (user-error "Keypad [%s] unknown type: %S !"
-                            keyseq-str-default
-                            (type-of bind)))))))
-        (setq is-first nil)))))
+                (user-error "Keypad [%s] unknown type: %S !" keyseq-str-default (type-of bind))))))
+
+          (unless handled-elsewhere
+            (setq is-first nil)))))))
 
 
 ;; ---------------------------------------------------------------------------
