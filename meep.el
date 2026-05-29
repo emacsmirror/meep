@@ -636,6 +636,55 @@ were to be made into the active region."
 
 
 ;; ---------------------------------------------------------------------------
+;; Motion: List Item
+;;
+;; Useful for navigating over function arguments,
+;; but can be used for stepping over other kinds of list-items.
+;;
+;; Especially useful for transposing arguments as it properly handles
+;; multi-line arguments, arguments mixed with comments and arguments that
+;; themselves contain lists/function calls.
+
+;;;###autoload
+(defun meep-move-list-item-prev (arg)
+  "Move point to the beginning of the (previous) list item, ARG times."
+  (interactive "^p")
+  (meep--with-mark-on-motion-maybe-set
+    ;; at-start = (> arg 0): preserves primitive landing for both directions.
+    (meep-motion-at-point 'list-item t (- arg) (> arg 0))))
+
+;;;###autoload
+(defun meep-move-list-item-next-end (arg)
+  "Move to the end of the current list item, ARG times."
+  (interactive "^p")
+  (meep--with-mark-on-motion-maybe-set
+    ;; at-start = (< arg 0): preserves primitive landing for both directions.
+    (meep-motion-at-point 'list-item t arg (< arg 0))))
+
+;;;###autoload
+(defun meep-move-list-item-prev-end (arg)
+  "Move to the end of the previous list item, ARG times."
+  (interactive "^p")
+  (meep--with-mark-on-motion-maybe-set
+    (cond
+     ((< arg 0)
+      (meep-motion-at-point 'list-item t (- arg) nil))
+     (t
+      (meep-motion-at-point 'list-item t (- arg) nil t)))))
+
+;;;###autoload
+(defun meep-move-list-item-next (arg)
+  "Move point to the beginning of the next list item, ARG times."
+  (interactive "^p")
+  (meep--with-mark-on-motion-maybe-set
+    (cond
+     ((< arg 0)
+      (meep-motion-at-point 'list-item t arg t))
+     (t
+      (meep-motion-at-point 'list-item t arg t t)))))
+
+
+;; ---------------------------------------------------------------------------
 ;; Motion: Same Syntax
 
 (defun meep--move-same-syntax-impl (n skip-single skip-space or-thing)
@@ -2085,6 +2134,64 @@ files).  An explicit user setting - buffer-local or global -
 takes precedence over the preset."
   :type '(choice (const nil) (list function sexp)))
 
+(defun meep--list-item-bounds-default ()
+  "Return a fallback `meep-list-item-bounds' spec derived from the buffer.
+Each single-character pair in `meep-symmetrical-chars' with paren syntax in the
+current buffer becomes two fallback entries: braces `{}' split on `;' (else `,'),
+other brackets on `,' (else `;').  See `meep-list-item-bounds' for the format."
+  (declare (important-return-value t))
+  (let ((result nil))
+    (dolist (pair meep-symmetrical-chars)
+      (let ((open (car pair))
+            (close (cdr pair)))
+        (when (and (stringp open) (length= open 1) (stringp close) (length= close 1))
+          (let ((open-ch (string-to-char open))
+                (close-ch (string-to-char close)))
+            (when (and (eq (char-syntax open-ch) ?\() (eq (char-syntax close-ch) ?\)))
+              (let ((bracket (cons open-ch close-ch))
+                    (seps
+                     (cond
+                      ((eq open-ch ?\{)
+                       '(";" ","))
+                      (t
+                       '("," ";")))))
+                (dolist (sep seps)
+                  (push (list bracket (list sep)) result))))))))
+    (nreverse result)))
+
+(defcustom meep-list-item-bounds nil
+  "Spec for the `list-item' text object: bracket lists and their separators.
+
+The value is a list of entries, each of the form
+
+  ((OPEN . CLOSE) SEPARATORS)
+
+OPEN and CLOSE are the bracket characters delimiting a list, and SEPARATORS is
+the list of that list's separator strings, or t to split on runs of whitespace
+\(e.g. Lisp, where items are space-separated):
+
+  (((?\\( . ?\\)) (\",\")) ((?\\=\\{ . ?\\}) (\";\")))
+  (((?\\( . ?\\)) t))   ; whitespace-separated, e.g. Lisp
+
+Each bracket type defines its own separators, so different brackets may separate
+differently - in C/C++ `()' splits on `,' while `{}' splits on `;'.  A bracket
+may appear in more than one entry to give a fallback chain: entries are tried in
+order and the first whose separators occur in the list wins, e.g. C/C++ braces
+holding either statements (`;') or an initializer (`,').
+
+Nesting is read from the buffer's syntax tree, so a separator inside any deeper
+bracket, string or comment never splits a list item.  Each OPEN and CLOSE must
+therefore be a single character with paren syntax in the current mode (possibly
+via a syntax-table text property, as CC Mode does for C++ template `<' / `>').
+
+When nil, falls back to the preset for the current `major-mode', then to a spec
+generated from `meep-symmetrical-chars' (see `meep--list-item-bounds-default')."
+  :type
+  '(repeat
+    (list
+     (cons (character :tag "Open") (character :tag "Close"))
+     (choice (repeat (string :tag "Separator")) (const :tag "Whitespace" t)))))
+
 (defun meep--symmetrical-char-other-any (ch-str)
   "Return the symmetrical character of CH-STR or nil."
   (declare (important-return-value t))
@@ -2495,6 +2602,297 @@ the trailing newline when present."
         (meep--incf end))
       (cons (pos-bol) end)))))
 
+;; ---------------------------------------------------------------------------
+;; Implementation: List Item Text Object
+;;
+;; A "list item" is one top-level element of a bracketed, separated list
+;; (e.g. a function call's parameters).  Separators nested inside brackets,
+;; strings or comments do not split list items, so given:
+;;
+;;   foo_fn(a, b, [c, (0, 1)], {e, f, "_"}, "g h")
+;;
+;; the list items are: a / b / [c, (0, 1)] / {e, f, "_"} / "g h".
+;;
+;; The recognized brackets and separators are configurable per major mode via
+;; `meep-list-item-bounds' (see its docstring and the bundled presets).
+
+(defun meep--list-item-bounds-config ()
+  "Return the resolved spec for the `list-item' text object.
+See `meep-list-item-bounds' for the spec format and resolution order."
+  (declare (important-return-value t))
+  (or (meep-preset-ensure-variable 'meep-list-item-bounds) (meep--list-item-bounds-default)))
+
+(defun meep--list-item-comment-skip (limit dir)
+  "Step point past a comment abutting it in direction DIR; return non-nil if so.
+Point must already sit just past any blank-space.  Clamps to LIMIT; returns
+nil with point unmoved when no comment abuts.  Backward, when blank-skipping has
+carried point into a line comment's body, point is dropped to the comment start."
+  (declare (important-return-value t))
+  (let* ((pos (point))
+         ;; Backward only: if blank-skip landed us inside a comment's body, this
+         ;; is that comment's start position (`nth 8'), else nil.
+         (comment-beg
+          (and (< dir 0)
+               (let ((state (syntax-ppss pos)))
+                 (and (nth 4 state) (not (nth 3 state)) (nth 8 state))))))
+    (cond
+     (comment-beg
+      (goto-char (max comment-beg limit)))
+     (t
+      (forward-comment dir)
+      (goto-char
+       (cond
+        ((> dir 0)
+         (min (point) limit))
+        (t
+         (max (point) limit))))))
+    (/= (point) pos)))
+
+(defun meep--list-item-trim-edge (from limit dir)
+  "Scan from FROM toward LIMIT, returning the first real-token position.
+Skips the blank-space and whole comments padding a list item, never crossing
+LIMIT.  DIR is 1 to scan forward (LIMIT after FROM) or -1 backward."
+  (declare (important-return-value t))
+  ;; TOWARD: still short of LIMIT?  Blank-space is skipped via
+  ;; `meep--list-item-skip-blank' (same DIR/LIMIT clamping).
+  (let ((toward
+         (cond
+          ((> dir 0)
+           #'<)
+          (t
+           #'>))))
+    (save-excursion
+      (save-match-data
+        (goto-char (meep--list-item-skip-blank from limit dir))
+        ;; Step over each comment that still abuts point, then its blank-space.
+        (while (and (funcall toward (point) limit) (meep--list-item-comment-skip limit dir))
+          (goto-char (meep--list-item-skip-blank (point) limit dir)))
+        (point)))))
+
+(defun meep--list-item-trim (beg end)
+  "Return `(BEG . END)' contracted past surrounding blank-space and comments.
+A comment adjacent to the list item is trivia and skipped; one *between* tokens
+of the same list item is interior and kept.  See `meep--list-item-trim-edge'."
+  (declare (important-return-value t))
+  (let ((new-beg (meep--list-item-trim-edge beg end 1)))
+    (cons new-beg (meep--list-item-trim-edge end new-beg -1))))
+
+(defun meep--list-item-enclosing-bounds (config)
+  "Return `(INNER-BEG INNER-END . GROUPS)' of the enclosing list, or nil.
+CONFIG is the resolved `meep-list-item-bounds' spec.  Finds the innermost list
+whose open bracket is one of CONFIG's pairs by walking the syntax tree's
+open-paren stack (`syntax-ppss').  INNER-BEG is just after the open bracket,
+INNER-END just before its matching close, and GROUPS the separator groups for
+that bracket (one per matching CONFIG entry, tried as fallbacks)."
+  (declare (important-return-value t))
+  (let ((opens (mapcar #'caar config)))
+    (save-excursion
+      (let* ((ppss (syntax-ppss))
+             ;; `nth 9' lists open-paren positions outermost-first; reversing it
+             ;; makes the search run innermost-first, so the first configured
+             ;; open it finds is the innermost enclosing list.  Point resting
+             ;; *on* an open is not yet on the stack, so fall back to the char at
+             ;; point (unless point is in a string or comment).
+             (open-beg
+              (or (seq-find (lambda (pos) (memq (char-after pos) opens)) (reverse (nth 9 ppss)))
+                  (and (not (nth 8 ppss)) (memq (char-after) opens) (point)))))
+        (when open-beg
+          ;; `scan-sexps' jumps to just past the matching close (nil/error when
+          ;; unbalanced).  No containment check is needed: the stack case has
+          ;; point inside the bracket, and the at-point case has point *on* the
+          ;; open (resolving to the first list item downstream).
+          (when-let* ((close-end
+                       (ignore-errors
+                         (scan-sexps open-beg 1))))
+            (let ((open-char (char-after open-beg)))
+              (cons
+               (1+ open-beg)
+               (cons
+                (1- close-end)
+                (mapcar
+                 #'cadr (seq-filter (lambda (entry) (eql (caar entry) open-char)) config)))))))))))
+
+(defun meep--list-item-separators-in (inner-bounds separators)
+  "Return an ordered list of `(SBEG . SEND)' for the top-level separators.
+SEPARATORS is a list of separator strings, or t to split on runs of whitespace
+\(consecutive whitespace counts once, and a run at either edge of the list is
+trivia, so no empty items arise).  A separator counts only when its immediately
+enclosing bracket is the one enclosing INNER-BOUNDS; one nested in a deeper
+bracket, string or comment is skipped."
+  (declare (important-return-value t))
+  (let* ((by-whitespace (eq separators t))
+         (re
+          (cond
+           (by-whitespace
+            "[[:blank:]\r\n]+")
+           (t
+            (regexp-opt separators))))
+         (beg (car inner-bounds))
+         (end (cdr inner-bounds))
+         ;; INNER-BEG is always just inside the enclosing open bracket, so that
+         ;; bracket's position is `(1- beg)' - no need to read it back from the
+         ;; syntax tree.  Separators whose enclosing open differs are nested.
+         (list-open (1- beg))
+         (result nil))
+    (save-excursion
+      (save-match-data
+        (goto-char beg)
+        (while (re-search-forward re end t)
+          (let* ((mbeg (match-beginning 0))
+                 (mend (match-end 0))
+                 (state (save-excursion (syntax-ppss mbeg)))
+                 (open (nth 1 state)))
+            (cond
+             ;; Nested inside a deeper bracket: jump past the whole bracketed
+             ;; sub-expression so its interior separators are never considered.
+             ((and open (not (eql open list-open)))
+              (when-let* ((close
+                           (ignore-errors
+                             (scan-sexps open 1))))
+                (goto-char (min close end))))
+             ;; A real separator: at the list level (not in a string/comment),
+             ;; and - for whitespace - not the leading or trailing run, which is
+             ;; edge trivia rather than an item boundary.
+             ((and (not (nth 8 state)) (not (and by-whitespace (or (= mbeg beg) (= mend end)))))
+              (push (cons mbeg mend) result)))))))
+    (nreverse result)))
+
+(defun meep--list-item-separators-for (inner-bounds groups)
+  "Return the `(SBEG . SEND)' separators within INNER-BOUNDS, trying GROUPS.
+GROUPS is a list of separator groups, each tried in order; the first that occurs
+in INNER-BOUNDS wins (the separator fallback chain - see `meep-list-item-bounds').
+Returns nil when no group matches, making the list a single list item."
+  (declare (important-return-value t))
+  (seq-some (lambda (group) (meep--list-item-separators-in inner-bounds group)) groups))
+
+(defun meep--list-item-cells (inner-bounds seps)
+  "Return the ordered list-item cells within INNER-BOUNDS.
+SEPS is the precomputed `(SBEG . SEND)' separator list (see
+`meep--list-item-separators-for').  Each cell is `(BEG END PREV NEXT)': BEG and
+END are the list item's trimmed bounds (see `meep--list-item-trim'); PREV and
+NEXT are the bounding separators, or nil at the list's first/last edge.  An empty
+SEPS yields a single trimmed cell spanning the whole inner range."
+  (declare (important-return-value t))
+  (let ((end (cdr inner-bounds))
+        (lo (car inner-bounds))
+        (prev nil)
+        (cells nil))
+    (dolist (s seps)
+      (let ((bounds (meep--list-item-trim lo (car s))))
+        (push (list (car bounds) (cdr bounds) prev s) cells))
+      (setq prev s)
+      (setq lo (cdr s)))
+    (let ((final-bounds (meep--list-item-trim lo end)))
+      ;; Drop the final cell when a trailing separator leaves only blank-space
+      ;; before the close (a phantom empty list item).  A separator-less list
+      ;; still yields its single (possibly empty) cell.
+      (unless (and seps (= (car final-bounds) (cdr final-bounds)))
+        (push (list (car final-bounds) (cdr final-bounds) prev nil) cells)))
+    (nreverse cells)))
+
+(defun meep--list-item-cell-at (cells origin)
+  "Return the cell in CELLS that owns position ORIGIN, or nil when CELLS is nil.
+CELLS is the descriptor list from `meep--list-item-cells'.  A cell owns every
+position from just after its PREV separator onward (the first cell, PREV nil,
+owns from the inner start), so point on a separator or in an item's leading
+blank-space/comment resolves to the adjacent real list item."
+  (declare (important-return-value t))
+  ;; The first cell (PREV nil) owns from the inner start, so RESULT is never left
+  ;; nil for a non-empty CELLS.  Ownership (PREV separator at/before ORIGIN) is
+  ;; monotonic over the ordered cells, so stop at the first cell it fails for.
+  (let ((result (car cells))
+        (rest (cdr cells)))
+    (while (and rest
+                (let ((prev (nth 2 (car rest))))
+                  (or (null prev) (<= (cdr prev) origin))))
+      (setq result (pop rest)))
+    result))
+
+(defun meep--list-item-skip-blank (from limit dir)
+  "Return the position reached skipping blank-space from FROM toward LIMIT.
+DIR is 1 to scan forward or -1 backward; the scan never crosses LIMIT.
+Blank-space is spaces, tabs and newlines."
+  (declare (important-return-value t))
+  (save-excursion
+    (goto-char from)
+    (cond
+     ((> dir 0)
+      (skip-chars-forward "[:blank:]\r\n" limit))
+     (t
+      (skip-chars-backward "[:blank:]\r\n" limit)))
+    (point)))
+
+(defun meep--list-item-cells-at-point (config)
+  "Return `(LIST-INNER . CELLS)' for the list enclosing point, or nil.
+CONFIG is the resolved `meep-list-item-bounds' spec.  LIST-INNER is the
+`(BEG . END)' inner span (see `meep--list-item-enclosing-bounds'); CELLS its
+list-item descriptors (see `meep--list-item-cells')."
+  (declare (important-return-value t))
+  (when-let* ((enc (meep--list-item-enclosing-bounds config)))
+    (let* ((list-inner (cons (car enc) (cadr enc)))
+           (seps (meep--list-item-separators-for list-inner (cddr enc))))
+      (cons list-inner (meep--list-item-cells list-inner seps)))))
+
+(defun meep--list-item-outer-bounds-for-cell (cell list-beg list-end)
+  "Return the outer `(BEG . END)' bounds of CELL within LIST-BEG..LIST-END.
+CELL is a descriptor from `meep--list-item-cells'.  A non-final list item
+absorbs its trailing separator and the blank-space after it; the final
+list item absorbs its leading separator and preceding blank-space; a sole
+list item absorbs nothing, so removing the bounds leaves a well-formed list."
+  (declare (important-return-value t))
+  (let ((cell-beg (nth 0 cell))
+        (cell-end (nth 1 cell))
+        (prev (nth 2 cell))
+        (next (nth 3 cell)))
+    (cond
+     (next
+      (cons cell-beg (meep--list-item-skip-blank (cdr next) list-end 1)))
+     (prev
+      (cons (meep--list-item-skip-blank (car prev) list-beg -1) cell-end))
+     (t
+      (cons cell-beg cell-end)))))
+
+(defun meep--list-item-bounds-from-cells (list-cells inner)
+  "Return the list-item bounds at point from precomputed LIST-CELLS, or nil.
+LIST-CELLS is `(LIST-INNER . CELLS)' from `meep--list-item-cells-at-point'.  When
+INNER is non-nil return just the list item, otherwise its outer bounds (see
+`meep--list-item-outer-bounds-for-cell')."
+  (declare (important-return-value t))
+  (let* ((list-inner (car list-cells))
+         (cell (meep--list-item-cell-at (cdr list-cells) (point))))
+    (cond
+     (inner
+      (cons (nth 0 cell) (nth 1 cell)))
+     (t
+      (meep--list-item-outer-bounds-for-cell cell (car list-inner) (cdr list-inner))))))
+
+(defun meep--bounds-of-list-item (inner)
+  "Return bounds of the list item at point, or nil.
+When INNER is non-nil return just the list item, otherwise its outer bounds (see
+`meep--list-item-outer-bounds-for-cell').
+Recognized brackets and separators come from `meep-list-item-bounds'.
+
+Returns nil only when point is not inside a recognized list.  An empty list or a
+leading empty slot (e.g. `(,a)') yields empty bounds (BEG = END), not nil."
+  (declare (important-return-value t))
+  (when-let* ((list-cells (meep--list-item-cells-at-point (meep--list-item-bounds-config))))
+    (meep--list-item-bounds-from-cells list-cells inner)))
+
+(defun meep--list-item-outer-ending-at (list-cells pos)
+  "Return outer list-item bounds from LIST-CELLS whose end is exactly POS, or nil.
+LIST-CELLS is `(LIST-INNER . CELLS)' from `meep--list-item-cells-at-point'.  A
+backward outer move uses this to step to the list item *ending* at point rather
+than the one starting there, mirroring gap-separated text objects so that
+`meep-region-activate-and-reverse-motion' reconstructs the whole outer span."
+  (declare (important-return-value t))
+  (let ((list-inner (car list-cells)))
+    (seq-some
+     (lambda (cell)
+       (let ((bounds
+              (meep--list-item-outer-bounds-for-cell cell (car list-inner) (cdr list-inner))))
+         (and (eql (cdr bounds) pos) bounds)))
+     (cdr list-cells))))
+
 (defun meep--char-space-p (ch)
   "Return non-nil if CH is blank-space for `char' text-object purposes.
 Includes space, tab, newline, carriage return; nil (buffer edge) counts
@@ -2767,6 +3165,55 @@ non-zero and AT-START is non-nil."
   (meep--scan-walk-leading
    inner step at-start (lambda (s) (- s (vertical-motion s))) #'meep--bounds-of-visual-line))
 
+(defun meep--forward-list-item (step)
+  "Move point like `forward-thing' over list items, STEP times (signed).
+Forward motion lands on a list item's end, backward on its start, counting the
+current list item as the first step.  Bounded to the enclosing list; stepping
+past the last/first item is a no-op, left in the returned remainder."
+  (declare (important-return-value t))
+  ;; The enclosing list - and hence its cells - is invariant across the whole
+  ;; motion (every landing stays inside it), so resolve it once rather than
+  ;; rebuilding it on each step.
+  (let ((list-cells (meep--list-item-cells-at-point (meep--list-item-bounds-config))))
+    (cond
+     (list-cells
+      ;; CELLS-REV is only consumed by backward steps; reverse once here rather
+      ;; than on every step inside `meep--forward-multi's loop.
+      (let* ((cells (cdr list-cells))
+             (cells-rev (reverse cells)))
+        (meep--forward-multi
+         step
+         (lambda (dir)
+           (let* ((origin (point))
+                  ;; Forward: end of the first list item ending past point.
+                  ;; Backward: start of the last starting before point - the same
+                  ;; "first match" over CELLS reversed.
+                  (cell
+                   (cond
+                    ((> dir 0)
+                     (seq-find (lambda (c) (> (nth 1 c) origin)) cells))
+                    (t
+                     (seq-find (lambda (c) (< (nth 0 c) origin)) cells-rev)))))
+             (when cell
+               (goto-char
+                (nth
+                 (cond
+                  ((> dir 0)
+                   1)
+                  (t
+                   0))
+                 cell))))))))
+     ;; No enclosing list: nothing stepped, so the full STEP is the remainder
+     ;; (matching `meep--forward-multi's contract for a no-op).
+     (t
+      step))))
+
+(defun meep--bounds-step-list-item (inner step at-start)
+  "`:bounds-step-fn' for the `list-item' text object; scan STEP list items."
+  (declare (important-return-value t))
+  (meep--scan-walk-thing
+   inner step at-start #'meep--forward-list-item #'meep--bounds-of-list-item))
+
 ;; ---------------------------------------------------------------------------
 ;; Implementation: Text Object Registry & Dispatch
 
@@ -2804,7 +3251,10 @@ non-zero and AT-START is non-nil."
     'visual-line
     (list
      :bounds-fn #'meep--bounds-of-visual-line
-     :bounds-step-fn #'meep--bounds-step-visual-line)))
+     :bounds-step-fn #'meep--bounds-step-visual-line))
+   (cons
+    'list-item
+    (list :bounds-fn #'meep--bounds-of-list-item :bounds-step-fn #'meep--bounds-step-list-item)))
   "Alist mapping a text-object KIND to a plist of operations.
 Plist keys:
   :bounds-fn (INNER) -> BOUNDS
@@ -3007,6 +3457,38 @@ When INNER is non-nil, move to the inner bound."
   (interactive "^p")
   (meep-move-to-bounds-of-visual-line arg t))
 
+;;;###autoload
+(defun meep-move-to-bounds-of-list-item (arg &optional inner)
+  "Move to the list item start/end (start when ARG is negative).
+When INNER is non-nil, move to the inner bound.
+Recognized brackets and separators come from `meep-list-item-bounds'."
+  (interactive "^p")
+  ;; Resolve the enclosing list (and its cells) once: the same LIST-CELLS serves
+  ;; both the backward-outer "ending at point" lookup and the plain
+  ;; bounds-at-point, so the list is `scan-sexps'-ed only once.
+  (let ((list-cells (meep--list-item-cells-at-point (meep--list-item-bounds-config))))
+    (cond
+     (list-cells
+      (let ((bounds
+             (or
+              ;; A backward outer move from a list item's trailing edge targets
+              ;; the list item ending there, not the adjacent one starting there.
+              ;; This makes the motion step to the previous list item at a
+              ;; boundary (as symbol/word motions do) so move + reverse-motion
+              ;; reconstructs the whole outer span; see
+              ;; `meep--list-item-outer-ending-at'.
+              (and (< arg 0) (not inner) (meep--list-item-outer-ending-at list-cells (point)))
+              (meep--list-item-bounds-from-cells list-cells inner))))
+        (meep--move-to-bounds-endpoint bounds arg)))
+     (t
+      (message "Not found: bounds of list item")
+      nil))))
+;;;###autoload
+(defun meep-move-to-bounds-of-list-item-inner (arg)
+  "Move to the inner list item start/end (start when ARG is negative)."
+  (interactive "^p")
+  (meep-move-to-bounds-of-list-item arg t))
+
 (defcustom meep-bounds-commands
   '((?p meep-move-to-bounds-of-paragraph-inner "paragraph inner")
     (?P meep-move-to-bounds-of-paragraph "paragraphs")
@@ -3020,6 +3502,8 @@ When INNER is non-nil, move to the inner bound."
     (?v meep-move-to-bounds-of-visual-line "visual line")
     (?d meep-move-to-bounds-of-defun-inner "defun inner")
     (?D meep-move-to-bounds-of-defun "defun")
+    (?i meep-move-to-bounds-of-list-item-inner "list item inner")
+    (?I meep-move-to-bounds-of-list-item "list item")
     (?\. meep-move-to-bounds-of-sentence-inner "sentence inner")
     (?> meep-move-to-bounds-of-sentence "sentence"))
   "List of commands for bounds movement.
@@ -7270,7 +7754,8 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 ;; intended to override existing user options for that mode.
 
 (defvar meep-preset-variables
-  (list 'meep-bounds-for-inner-comment 'meep-match-bounds-of-char-contextual)
+  (list
+   'meep-bounds-for-inner-comment 'meep-match-bounds-of-char-contextual 'meep-list-item-bounds)
   "Variables that meep presets are allowed to set.
 
 A bundled `meep-preset-MODE.el' must restrict the keys of its

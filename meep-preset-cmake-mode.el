@@ -11,7 +11,11 @@
    (cons
     'meep-bounds-for-inner-comment
     '(meep-bounds-inner-from-delimiters
-      (("#[" . "]")))))) ; Block comment.
+      (("#[" . "]")))) ; Block comment.
+   (cons
+    'meep-list-item-bounds
+    ;; CMake command arguments are whitespace-separated, e.g. `set(VAR a b c)'.
+    '(((?\( . ?\)) t)))))
 
 (provide 'meep-preset-cmake-mode)
 ;; Local Variables:

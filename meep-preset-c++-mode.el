@@ -4,6 +4,9 @@
 (defun meep-preset-c++-mode ()
   "Return the meep preset alist for `c++-mode'."
   (declare (important-return-value t))
+  ;; `meep-list-item-bounds' is intentionally not set: the generated default
+  ;; (see `meep--list-item-bounds-default') already covers C++ - `()'/`[]' on
+  ;; `,' and `{}' on `;' (else `,').
   (list
    (cons
     'meep-bounds-for-inner-comment

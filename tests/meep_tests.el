@@ -123,6 +123,8 @@ Also suppresses minibuffer prompts from interactive specs."
 (require 'seq)
 (require 'bray)
 (require 'meep)
+;; Loads the auto-generated `meep-region-mark-KIND-{inner,outer}' commands.
+(require 'meep-region-mark)
 
 ;; Key bindings organized by state.
 ;; Commands are looked up dynamically from bray's state keymaps.
@@ -481,6 +483,10 @@ PLIST must contain exactly :state and :command keys."
     (meep-move-by-sexp-over-next . (normal))
     (meep-move-by-sexp-out-next . (normal))
     (meep-move-by-sexp-out-prev . (normal))
+    (meep-move-list-item-next . (normal))
+    (meep-move-list-item-prev . (normal))
+    (meep-move-list-item-next-end . (normal))
+    (meep-move-list-item-prev-end . (normal))
     ;; Delete commands (tested in insert state).
     (meep-delete-symbol-next . (insert))
     (meep-delete-symbol-prev . (insert))
@@ -502,6 +508,11 @@ PLIST must contain exactly :state and :command keys."
     (meep-move-to-bounds-of-string-inner . (normal))
     (meep-move-to-bounds-of-comment . (normal))
     (meep-move-to-bounds-of-comment-inner . (normal))
+    (meep-move-to-bounds-of-list-item . (normal))
+    (meep-move-to-bounds-of-list-item-inner . (normal))
+    ;; List item text-object mark commands.
+    (meep-region-mark-list-item-inner . (normal))
+    (meep-region-mark-list-item-outer . (normal))
     ;; Region commands.
     (meep-region-activate-and-reverse . (normal visual))
     (meep-region-disable . (visual)))
@@ -3002,6 +3013,76 @@ First three succeed, fourth does nothing and prints a message."
       (should (equal text-expected (buffer-string)))
       ;; Exactly one message was printed by the failing transpose.
       (should (equal '("Transpose: no element to swap with") (meep-test-messages)))
+      (should (equal 'normal (bray-state))))))
+
+;; ---------------------------------------------------------------------------
+;; Transpose: List item
+;;
+;; Transposing list items is a key use of the `list-item' text object.  It needs
+;; no special support: the `next'/`prev' motions set the mark on motion like
+;; any other motion, and `meep-transpose' acts on that.
+
+(ert-deftest transpose-list-item-next ()
+  "Transpose a list item with the following one.
+
+Verifies: forward list item motion + transpose swaps adjacent list items,
+separators included, leaving a well-formed list."
+  (let ((text-initial "foo(aa, bb, cc)")
+        (text-expected "foo(bb, aa, cc)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Cursor on the first list item `aa'.
+      ;;     foo(aa, bb, cc)
+      ;;         ^ pos 5
+      (goto-char 5)
+      (should (equal ?a (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-next)
+        '(:state normal :command meep-transpose))
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-list-item-prev ()
+  "Transpose a list item with the preceding one.
+
+Verifies: backward list item motion + transpose swaps the landed list item
+with its predecessor (the symmetric counterpart of the forward case)."
+  (let ((text-initial "foo(aa, bb, cc, dd)")
+        (text-expected "foo(aa, cc, bb, dd)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Cursor on the last list item `dd'; `prev' lands on `cc'.
+      ;;     foo(aa, bb, cc, dd)
+      ;;                     ^ pos 17
+      (goto-char 17)
+      (should (equal ?d (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-prev)
+        '(:state normal :command meep-transpose))
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state))))))
+
+(ert-deftest transpose-list-item-next-repeat ()
+  "Drag a list item across the list by repeating transpose.
+
+Verifies: a prefix argument repeats the transpose, moving one list item
+past several others in a single command."
+  (let ((text-initial "foo(aa, bb, cc, dd)")
+        (text-expected "foo(bb, cc, aa, dd)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Cursor on `aa'; move next then transpose twice (C-u 2).
+      (goto-char 5)
+      (should (equal ?a (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-next)
+        [?\C-u ?2]
+        '(:state normal :command meep-transpose))
+      ;; `aa' has moved two positions to the right.
+      (should (equal text-expected (buffer-string)))
       (should (equal 'normal (bray-state))))))
 
 (ert-deftest transpose-line-next ()
@@ -6972,6 +7053,781 @@ Verifies: outer selection includes the quote delimiters."
       ;; Should select "\"bar baz\"" including quotes.
       (should (equal 'visual (bray-state)))
       (should (equal "\"bar baz\"" (meep-test-region-as-string))))))
+
+
+;; ---------------------------------------------------------------------------
+;; Bounds: List item
+;;
+;; The `list-item' text object selects one top-level element of a bracketed,
+;; separated list.  The recognized brackets and separators come from
+;; `meep-list-item-bounds' (default: parenthesized, comma-separated).
+
+(ert-deftest mark-list-item-inner-basic ()
+  "Mark a single list item, excluding separators.
+
+Verifies: the default parenthesized/comma-separated spec selects the
+list item at point without surrounding separators or blank-space."
+  (let ((text-initial "foo(a, bar, baz)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Cursor: foo(a, bar, baz)
+      ;;               ^
+      (goto-char 8)
+      (should (equal ?b (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-list-item-inner))
+      (should (equal 'visual (bray-state)))
+      (should (equal "bar" (meep-test-region-as-string))))))
+
+(ert-deftest mark-list-item-outer-trailing-separator ()
+  "Mark a list item including its trailing separator.
+
+Verifies: a non-final list item's outer bounds absorb the following
+separator and blank-space so removal leaves a well-formed list."
+  (let ((text-initial "foo(a, bar, baz)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Cursor on `bar' (a middle list item).
+      (goto-char 8)
+      (should (equal ?b (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-list-item-outer))
+      (should (equal 'visual (bray-state)))
+      (should (equal "bar, " (meep-test-region-as-string))))))
+
+(ert-deftest mark-list-item-outer-last-leading-separator ()
+  "Mark the final list item including its leading separator.
+
+Verifies: the last list item's outer bounds absorb the preceding
+separator and blank-space (there is no trailing separator to take)."
+  (let ((text-initial "foo(a, bar, baz)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Cursor on `baz' (the final list item).
+      (goto-char 13)
+      (should (equal ?b (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-list-item-outer))
+      (should (equal 'visual (bray-state)))
+      (should (equal ", baz" (meep-test-region-as-string))))))
+
+(ert-deftest mark-list-item-outer-sole-list-item ()
+  "The sole list item's outer bounds equal its inner bounds.
+
+Verifies: with no separator in the list there is nothing to absorb, so
+`outer' selects just the list item (not the brackets)."
+  (let ((text-initial "foo(bar)"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor on the only list item `bar'.
+      (goto-char 5)
+      (should (equal ?b (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-list-item-outer))
+      (should (equal 'visual (bray-state)))
+      (should (equal "bar" (meep-test-region-as-string))))))
+
+(ert-deftest mark-list-item-inner-on-enclosing-brackets ()
+  "Point on a list's own bracket resolves into that list, symmetrically.
+
+Verifies: with point resting on the list's opening bracket the object
+selects the first list item, and on the closing bracket the last - the two
+edges mirror each other (the opening bracket is not a dead spot)."
+  (let ((text-initial "f(a, b, c)"))
+    ;; On the opening `(' (pos 2): the first list item.
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 2)
+      (should (equal ?\( (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-list-item-inner))
+      (should (equal 'visual (bray-state)))
+      (should (equal "a" (meep-test-region-as-string))))
+    ;; On the closing `)' (pos 10): the last list item.
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 10)
+      (should (equal ?\) (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-list-item-inner))
+      (should (equal 'visual (bray-state)))
+      (should (equal "c" (meep-test-region-as-string))))))
+
+(ert-deftest mark-list-item-inner-nested-brackets ()
+  "Nested brackets do not split a list item - regardless of bracket type.
+
+Verifies: nesting is read from the buffer's syntax tree.  The `,' inside the
+nested [] and () sub-expressions are nested deeper than the enclosing `('
+list, so the whole bracketed group is a single list item."
+  (let ((text-initial "foo(a, [c, (0, 1)], {e, f}, g)"))
+    (with-meep-test text-initial
+      ;; `c-mode' only for its syntax table (so [] {} () all nest); the spec
+      ;; is set here rather than relying on the c-mode preset's data.
+      (c-mode)
+      (bray-mode 1)
+      (setq-local meep-list-item-bounds '(((?\( . ?\)) (","))))
+      ;; Cursor on the `[' of the second list item.
+      (goto-char 8)
+      (should (equal ?\[ (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-list-item-inner))
+      (should (equal 'visual (bray-state)))
+      (should (equal "[c, (0, 1)]" (meep-test-region-as-string))))))
+
+(ert-deftest mark-list-item-inner-brace-group ()
+  "A brace group is a single list item; stepping never enters it.
+
+Verifies the reported case: in `a(b, {c, d, e}, f)' the list items of the
+`()' list are `b', `{c, d, e}' and `f'.  The commas inside the braces are
+nested (per the syntax tree) and never split the enclosing `()' list item."
+  (let ((text-initial "a(b, {c, d, e}, f)"))
+    (with-meep-test text-initial
+      ;; `c-mode' for its syntax table; the spec is set explicitly so the test
+      ;; does not depend on the c-mode preset's data.
+      (c-mode)
+      (bray-mode 1)
+      (setq-local meep-list-item-bounds '(((?\( . ?\)) (","))))
+      ;; Mark the brace list item from inside it.
+      ;;     a(b, {c, d, e}, f)
+      ;;          ^ pos 6 (the open brace)
+      (goto-char 6)
+      (should (equal ?{ (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-list-item-inner))
+      (should (equal 'visual (bray-state)))
+      (should (equal "{c, d, e}" (meep-test-region-as-string)))))
+  ;; Stepping forward from `b' must skip straight over the brace group to `f'.
+  (let ((text-initial "a(b, {c, d, e}, f)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (setq-local meep-list-item-bounds '(((?\( . ?\)) (","))))
+      (goto-char 3)
+      (should (equal ?b (char-after)))
+      ;; Next list item: the brace group's start (pos 6), NOT inside it.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-next))
+      (should (equal 6 (point)))
+      (should (equal ?{ (char-after)))
+      ;; Next list item: `f' (pos 17) - the brace interior is never entered.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-next))
+      (should (equal 17 (point)))
+      (should (equal ?f (char-after))))))
+
+(ert-deftest mark-list-item-per-pair-separators ()
+  "Each bracket pair uses its own separator.
+
+Verifies the framework, with the spec set explicitly (not via a preset):
+`()' separates on `,' while `{}' separates on `;'.  A statement inside a
+brace block keeps its own parenthesized commas intact (they are nested), so
+`{ g(a, b); h(); }' splits into the statements `g(a, b)' and `h()'."
+  (let ((spec '(((?\( . ?\)) (",")) ((?\{ . ?\}) (";")))))
+    ;; `()' separates on `,'.
+    (let ((text-initial "f(a, b) { x; y; }"))
+      (with-meep-test text-initial
+        (c-mode)
+        (bray-mode 1)
+        (setq-local meep-list-item-bounds spec)
+        ;; Inside the parens, on `a'.
+        (goto-char 3)
+        (should (equal ?a (char-after)))
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-list-item-inner))
+        (should (equal "a" (meep-test-region-as-string)))))
+    ;; `{}' separates on `;', not `,'.
+    (let ((text-initial "{ g(a, b); h(); }"))
+      (with-meep-test text-initial
+        (c-mode)
+        (bray-mode 1)
+        (setq-local meep-list-item-bounds spec)
+        ;; Inside the brace block, on the first statement `g(a, b)'.
+        ;;     { g(a, b); h(); }
+        ;;       ^ pos 3
+        (goto-char 3)
+        (should (equal ?g (char-after)))
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-list-item-inner))
+        ;; The whole statement - its `,' is nested inside () so does not split.
+        (should (equal "g(a, b)" (meep-test-region-as-string)))))))
+
+(ert-deftest mark-list-item-brace-separator-fallback ()
+  "Separator entries for one bracket are tried in order, first match wins.
+
+Verifies the fallback chain (spec set explicitly, not via a preset): a `{}'
+that lists `;' then `,' splits a statement block on `;', and an initializer
+with no `;' falls back to `,'.  When a `;' is present it always wins (the
+`,' is not consulted)."
+  (let ((spec '(((?\{ . ?\}) (";")) ((?\{ . ?\}) (",")))))
+    ;; Statement block: splits on `;'.
+    (let ((text-initial "{ x; y; }"))
+      (with-meep-test text-initial
+        (c-mode)
+        (bray-mode 1)
+        (setq-local meep-list-item-bounds spec)
+        (goto-char 3)
+        (should (equal ?x (char-after)))
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-list-item-inner))
+        (should (equal "x" (meep-test-region-as-string)))))
+    ;; Initializer with no `;': falls back to `,'.
+    (let ((text-initial "{ 1, 2, 3 }"))
+      (with-meep-test text-initial
+        (c-mode)
+        (bray-mode 1)
+        (setq-local meep-list-item-bounds spec)
+        (goto-char 3)
+        (should (equal ?1 (char-after)))
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-list-item-inner))
+        (should (equal "1" (meep-test-region-as-string)))))
+    ;; Mixed: a `;' is present, so `;' wins and the `,' stays inside one element.
+    (let ((text-initial "{ a, b; c }"))
+      (with-meep-test text-initial
+        (c-mode)
+        (bray-mode 1)
+        (setq-local meep-list-item-bounds spec)
+        (goto-char 3)
+        (should (equal ?a (char-after)))
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-list-item-inner))
+        (should (equal "a, b" (meep-test-region-as-string)))))))
+
+(ert-deftest list-item-trailing-separator ()
+  "A trailing separator closes the list, not an empty final list item.
+
+Verifies: in a list with a trailing comma the blank span between that comma
+and the close bracket is not a phantom list item.  Stepping forward from the
+last list item clamps instead of entering the gap, and marking with point
+parked in the gap selects the last real list item."
+  ;; Only `()' is involved, so the built-in default spec (parens, comma)
+  ;; applies - no preset or override needed.
+  ;; format-next-line: off
+  (let ((text-initial (concat "fn(\n" "  a,\n" "  b,\n" "  c,\n" ")")))
+       ;;                  f1 n2 (3 \n4 _5 _6 a7 ,8 \n9 _10 _11 b12 ,13 \n14
+       ;;                  _15 _16 c17 ,18 \n19 )20
+       ;; Stepping from `c' does not advance into the trailing gap.
+       (with-meep-test text-initial
+                       (c-mode)
+                       (bray-mode 1)
+                       (goto-char 17)
+                       (should (equal ?c (char-after)))
+                       (simulate-input-for-meep
+                        '(:state normal :command meep-move-list-item-next))
+                       (should (equal 17 (point))))
+       ;; Point parked in the trailing gap marks the last real list item.
+       (with-meep-test text-initial
+                       (c-mode)
+                       (bray-mode 1)
+                       ;; On the newline between the trailing `,' and `)'.
+                       (goto-char 19)
+                       (should (equal ?\n (char-after)))
+                       (simulate-input-for-meep
+                        '(:state normal :command meep-region-mark-list-item-inner))
+                       (should (equal "c" (meep-test-region-as-string))))))
+
+(ert-deftest mark-list-item-inner-separator-in-string ()
+  "A separator inside a string does not split a list item.
+
+Verifies: positions inside a string (per the mode's syntax) are skipped
+when scanning for separators."
+  (let ((text-initial "f(a, \"x, y\", b)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Cursor inside the string `"x, y"'.
+      (goto-char 8)
+      (should (equal ?\, (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-list-item-inner))
+      (should (equal 'visual (bray-state)))
+      (should (equal "\"x, y\"" (meep-test-region-as-string))))))
+
+(ert-deftest mark-list-item-syntax-propertize ()
+  "Bracket scanning works under a custom `syntax-propertize-function'.
+
+Verifies: `meep--list-item-enclosing-bounds' resolves the enclosing list from
+the syntax tree (`syntax-ppss' / `scan-sexps').  Finding it forces a propertize
+pass - arbitrary regexp code that overwrites the global match data and may move
+point - which must not disturb the scan.  With such a function in effect, the
+list item must still be marked."
+  (let ((text-initial "foo(a, bar, baz)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; A propertize pass that runs a regexp, leaving the match data on a
+      ;; word and point away from the brackets being scanned.
+      (setq-local syntax-propertize-function
+                  (lambda (start end)
+                    (goto-char start)
+                    (while (re-search-forward "[a-z]+" end t))))
+      (syntax-ppss-flush-cache (point-min))
+      ;; Cursor on `bar'.
+      (goto-char 8)
+      (should (equal ?b (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-list-item-inner))
+      (should (equal 'visual (bray-state)))
+      (should (equal "bar" (meep-test-region-as-string))))))
+
+(ert-deftest mark-list-item-outside-list-not-found ()
+  "Marking a list item outside any bracket list does nothing.
+
+Verifies: with no enclosing list, the command leaves normal state and
+activates no region."
+  (let ((text-initial "no parens here"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      (goto-char 5)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-list-item-inner))
+      (should (equal 'normal (bray-state)))
+      (should-not (region-active-p)))))
+
+(ert-deftest move-list-item-next-prev-basic ()
+  "Move forward and backward across list items by point.
+
+Verifies: `meep-move-list-item-next' / `-prev' land on the start of the
+adjacent list item, confined to the enclosing list."
+  (let ((text-initial "foo(aa, bb, cc)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Cursor on `aa' (first list item).
+      ;;     foo(aa, bb, cc)
+      ;;         ^ pos 5
+      (goto-char 5)
+      (should (equal ?a (char-after)))
+      ;; Next list item: start of `bb' (pos 9).
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-next))
+      (should (equal 9 (point)))
+      (should (equal ?b (char-after)))
+      ;; Next list item: start of `cc' (pos 13).
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-next))
+      (should (equal 13 (point)))
+      (should (equal ?c (char-after)))
+      ;; Previous list item: back to start of `bb' (pos 9).
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-prev))
+      (should (equal 9 (point)))
+      (should (equal ?b (char-after))))))
+
+(ert-deftest move-list-item-next-prev-end-basic ()
+  "Move to the end of the current/next list item (vim `e'-style).
+
+Verifies: `meep-move-list-item-next-end' lands at the end of the *current*
+list item (not the next one), counting the current list item as the first
+step; repeating advances to the following list item's end.  `-prev-end'
+lands at the end of the previous list item.  The landing is the end of the
+list item text, excluding the separator."
+  (let ((text-initial "foo(aa, bb, cc)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Cursor inside the first list item `aa'.
+      ;;     foo(aa, bb, cc)
+      ;;         ^ pos 5
+      (goto-char 5)
+      (should (equal ?a (char-after)))
+      ;; End of THIS list item `aa': after the second `a' (pos 7, the comma).
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-next-end))
+      (should (equal 7 (point)))
+      (should (equal ?\, (char-after)))
+      ;; Again: end of the next list item `bb' (pos 11, the comma).
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-next-end))
+      (should (equal 11 (point)))
+      (should (equal ?\, (char-after)))
+      ;; End of the previous list item `aa' (pos 7).
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-prev-end))
+      (should (equal 7 (point)))
+      (should (equal ?\, (char-after))))))
+
+(ert-deftest move-list-item-from-mid-list-item ()
+  "Motions count the current list item when point is inside one.
+
+Verifies the vim-style semantics that distinguish `next' (w), `next-end'
+\(e) and `prev' (b): starting from the *middle* of a list item, `next-end'
+lands at the current list item's end, `prev' at its start, and `next' at the
+next list item's start."
+  (let ((text-initial "foo(aaa, bbb)"))
+    ;;                  f1 o2 o3 (4 a5 a6 a7 ,8 _9 b10 b11 b12 )13
+    ;; `next-end' from mid `aaa' -> end of `aaa' (pos 8, the comma).
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 6)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-next-end))
+      (should (equal 8 (point))))
+    ;; `prev' from mid `aaa' -> start of `aaa' (pos 5), not the previous list item.
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 6)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-prev))
+      (should (equal 5 (point))))
+    ;; `next' from mid `aaa' -> start of the next list item `bbb' (pos 10).
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 6)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-next))
+      (should (equal 10 (point))))))
+
+(ert-deftest move-list-item-count-and-clamp ()
+  "A numeric prefix moves by several list items and clamps at the list ends.
+
+Verifies: `meep-move-list-item-next'/`-prev' honour a count (the loop through
+`meep--forward-multi'), and clamp at the first/last list item when the count
+exceeds what the list holds rather than leaving it."
+  (let ((text-initial "foo(aa, bb, cc)"))
+    ;;                  f1 o2 o3 (4 a5 a6 ,7 _8 b9 b10 ,11 _12 c13 c14 )15
+    ;; Count 2: jump from `aa' past `bb' to `cc'.
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 5)
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-list-item-next))
+      (should (equal 13 (point)))
+      (should (equal ?c (char-after))))
+    ;; Over-count forward clamps at the last list item.
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 5)
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        '(:state normal :command meep-move-list-item-next))
+      (should (equal 13 (point))))
+    ;; Over-count backward clamps at the first list item.
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 13)
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        '(:state normal :command meep-move-list-item-prev))
+      (should (equal 5 (point))))
+    ;; `prev' at the first list item does not move.
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 5)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-list-item-prev))
+      (should (equal 5 (point))))))
+
+(ert-deftest move-list-item-negative-arg-reverses ()
+  "A negative prefix reverses each motion's direction.
+
+Verifies the `(< arg 0)' branches of all four motion commands - untested by the
+positive-arg cases - which mirror the word/symbol convention.  From `bb' in
+`foo(aa, bb, cc)': `next' and `next-end' with -1 step backward to a list item
+*start* (here `aa'), while `prev' and `prev-end' with -1 step forward to a list
+item *end* (here `bb's, the comma)."
+  (let ((text-initial "foo(aa, bb, cc)"))
+    ;;                  f1 o2 o3 (4 a5 a6 ,7 _8 b9 b10 ,11 _12 c13 c14 )15
+    ;; `next' -1: backward to the start of `aa' (pos 5).
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 9)
+      (should (equal ?b (char-after)))
+      (simulate-input-for-meep
+        [?\C-u ?- ?1]
+        '(:state normal :command meep-move-list-item-next))
+      (should (equal 5 (point)))
+      (should (equal ?a (char-after))))
+    ;; `next-end' -1: likewise backward to the start of `aa' (pos 5).
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 9)
+      (simulate-input-for-meep
+        [?\C-u ?- ?1]
+        '(:state normal :command meep-move-list-item-next-end))
+      (should (equal 5 (point)))
+      (should (equal ?a (char-after))))
+    ;; `prev' -1: forward to the end of `bb' (pos 11, the comma).
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 9)
+      (simulate-input-for-meep
+        [?\C-u ?- ?1]
+        '(:state normal :command meep-move-list-item-prev))
+      (should (equal 11 (point)))
+      (should (equal ?\, (char-after))))
+    ;; `prev-end' -1: likewise forward to the end of `bb' (pos 11).
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (goto-char 9)
+      (simulate-input-for-meep
+        [?\C-u ?- ?1]
+        '(:state normal :command meep-move-list-item-prev-end))
+      (should (equal 11 (point)))
+      (should (equal ?\, (char-after))))))
+
+(ert-deftest move-to-bounds-of-list-item-inner-basic ()
+  "Move to list item inner bounds, then select by reversing.
+
+Verifies: `meep-move-to-bounds-of-list-item-inner' drives the same bounds
+as the mark command via the motion + activate-and-reverse path."
+  (let ((text-initial "foo(a, bar, baz)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Cursor at the start of `bar' so moving to the inner end spans it.
+      (goto-char 8)
+      (should (equal ?b (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-to-bounds-of-list-item-inner)
+        '(:state normal :command meep-region-activate-and-reverse-motion))
+      (should (equal 'visual (bray-state)))
+      (should (equal "bar" (meep-test-region-as-string))))))
+
+(ert-deftest move-to-bounds-of-list-item-outer-basic ()
+  "Move to the outer bound of the list item (past its trailing separator).
+
+Verifies the outer variant `meep-move-to-bounds-of-list-item': with a
+positive list item it moves point to the end of the outer bounds, i.e. past
+the list item and its trailing separator.  (The outer bounds are asymmetric,
+so this command is tested by where point lands rather than via the
+`activate-and-reverse-motion' idiom, which assumes symmetric bounds.)"
+  (let ((text-initial "foo(a, bar, qux)"))
+    ;;                  f1 o2 o3 (4 a5 ,6 _7 b8 a9 r10 ,11 _12 q13 u14 x15 )16
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Start at the beginning of `bar'.
+      (goto-char 8)
+      (should (equal ?b (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-to-bounds-of-list-item))
+      ;; Point lands after "bar, " - on `q' of the next list item.
+      (should (equal 13 (point)))
+      (should (equal ?q (char-after))))))
+
+(ert-deftest move-to-bounds-of-list-item-outer-reverse-motion ()
+  "Outer list item move + reverse-motion must select the whole outer span.
+
+Verifies: `meep-move-to-bounds-of-list-item' (outer) followed by
+`meep-region-activate-and-reverse-motion' selects the list item plus its
+trailing separator (\"bar, \"), matching `meep-region-mark-list-item-outer'.
+
+The outer list item bounds are asymmetric (they absorb the trailing
+separator on one side only), and reverse-motion reconstructs the span by
+re-running the motion from the mark.  When that reconstruction is wrong it
+selects only the separator (\", \") instead of the list item plus separator."
+  (let ((text-initial "foo(a, bar, baz)"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Start at the beginning of `bar' (a middle list item).
+      (goto-char 8)
+      (should (equal ?b (char-after)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-to-bounds-of-list-item)
+        '(:state normal :command meep-region-activate-and-reverse-motion))
+      (should (equal 'visual (bray-state)))
+      (should (equal "bar, " (meep-test-region-as-string))))))
+
+(ert-deftest move-to-bounds-of-list-item-outer-backward-boundary ()
+  "Backward outer move from a list item's first char steps to the previous one.
+
+Verifies: list items are adjacent, so a list item's first character is also the
+previous list item's outer trailing edge.  A backward outer move there targets
+the list item *ending* at point (stepping to the previous list item's start, like
+symbol/word motions) rather than the one starting there - this is what lets
+move + `meep-region-activate-and-reverse-motion' reconstruct the outer span."
+  (let ((text-initial "foo(a, bar, baz)"))
+    ;;                  f1 o2 o3 (4 a5 ,6 _7 b8 a9 r10 ,11 _12 b13 a14 z15 )16
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; On the first char of `baz' (pos 13), which is `bar's outer trailing
+      ;; edge: a backward outer move steps to the start of `bar' (pos 8).
+      (goto-char 13)
+      (should (equal ?b (char-after)))
+      (simulate-input-for-meep
+        [?\C-u ?- ?1]
+        '(:state normal :command meep-move-to-bounds-of-list-item))
+      (should (equal 8 (point)))
+      (should (equal ?b (char-after)))
+      ;; Mid-list-item is unaffected: from inside `baz' (pos 14) a backward outer
+      ;; move lands at `baz's own outer start (pos 11, its leading separator).
+      (goto-char 14)
+      (simulate-input-for-meep
+        [?\C-u ?- ?1]
+        '(:state normal :command meep-move-to-bounds-of-list-item))
+      (should (equal 11 (point)))
+      (should (equal ?\, (char-after))))))
+
+(ert-deftest move-to-bounds-of-list-item-empty-yields-bounds ()
+  "An empty list or leading-empty slot yields bounds, not \"not found\".
+
+Verifies the documented `meep--bounds-of-list-item' contract through the public
+move command: inside an empty list `()', or at the empty first slot of `(,a)',
+`meep-move-to-bounds-of-list-item-inner' resolves (empty) bounds and moves -
+it does *not* report \"Not found\" the way it does outside any list.  This pins
+the intentional asymmetry with a *trailing* empty slot, which is dropped (see
+`list-item-trailing-separator')."
+  (let ((not-found "Not found: bounds of list item"))
+    ;; Empty list `f()': point between the brackets (pos 3, on `)').
+    (let ((text-initial "f()"))
+      (with-meep-test text-initial
+        (c-mode)
+        (bray-mode 1)
+        (setq-local meep-list-item-bounds '(((?\( . ?\)) (","))))
+        (goto-char 3)
+        (simulate-input-for-meep
+          '(:state normal :command meep-move-to-bounds-of-list-item-inner))
+        (should-not (member not-found (meep-test-messages)))
+        (should (equal 3 (point)))))
+    ;; Leading-empty slot: the empty first item of `f(,a)' (pos 3, on `,').
+    (let ((text-initial "f(,a)"))
+      (with-meep-test text-initial
+        (c-mode)
+        (bray-mode 1)
+        (setq-local meep-list-item-bounds '(((?\( . ?\)) (","))))
+        (goto-char 3)
+        (simulate-input-for-meep
+          '(:state normal :command meep-move-to-bounds-of-list-item-inner))
+        (should-not (member not-found (meep-test-messages)))
+        (should (equal 3 (point)))))
+    ;; Contrast: outside any list *does* report "Not found" (proving the checks
+    ;; above are not vacuous).
+    (let ((text-initial "no parens"))
+      (with-meep-test text-initial
+        (c-mode)
+        (bray-mode 1)
+        (setq-local meep-list-item-bounds '(((?\( . ?\)) (","))))
+        (goto-char 4)
+        (simulate-input-for-meep
+          '(:state normal :command meep-move-to-bounds-of-list-item-inner))
+        (should (member not-found (meep-test-messages)))))))
+
+(defun meep-test--list-item-mark-inner (text mode &optional bounds)
+  "Return the inner `list-item' region selected by the public mark command.
+TEXT contains a single `|' marking point (deleted before marking).  MODE is the
+major mode enabled so the buffer's comment and bracket syntax is in effect.
+BOUNDS overrides `meep-list-item-bounds' (defaults to parenthesized,
+comma-separated).  Drives `meep-region-mark-list-item-inner' - the user-facing
+command - and returns the marked region, so only external behavior is checked."
+  (with-meep-test text
+    (funcall mode)
+    (bray-mode 1)
+    (setq-local meep-list-item-bounds (or bounds '(((?\( . ?\)) (",")))))
+    (goto-char (point-min))
+    (search-forward "|")
+    (delete-char -1)
+    (simulate-input-for-meep
+      '(:state normal :command meep-region-mark-list-item-inner))
+    (meep-test-region-as-string)))
+
+(ert-deftest mark-list-item-inner-skips-adjacent-comment ()
+  "A comment padding a list item is trivia, excluded from the inner selection.
+
+Verifies (via `meep-region-mark-list-item-inner'): a comment between the
+separator and the item, after the item, a line comment ahead of or trailing it,
+and several comments in a row are all skipped - the selection is just the item."
+  (should (equal "e" (meep-test--list-item-mark-inner "a(b, /* c, d, */ |e);" #'c-mode)))
+  (should (equal "b" (meep-test--list-item-mark-inner "a(b| /* x, y */, e);" #'c-mode)))
+  (should (equal "e" (meep-test--list-item-mark-inner "a(b,\n  // x, y\n  |e);" #'c-mode)))
+  ;; A line comment's terminating newline is blank-space the backward scan
+  ;; must not stall inside.
+  (should (equal "e" (meep-test--list-item-mark-inner "a(b, |e // tail\n , g);" #'c-mode)))
+  (should (equal "e" (meep-test--list-item-mark-inner "a(b, /*x*/ /*y*/ |e);" #'c-mode))))
+
+(ert-deftest mark-list-item-inner-point-on-leading-comment ()
+  "Point resting on an item's leading comment resolves to that item.
+
+Verifies: the comment between a separator and the item text is trivia owned by
+the following item and excluded, even with point inside it; each item keeps its
+own leading comment as trivia."
+  (should (equal "c" (meep-test--list-item-mark-inner "fn(b, |/*c*/ c, /*d*/ d, e)" #'c-mode)))
+  (should (equal "d" (meep-test--list-item-mark-inner "fn(b, /*c*/ c, /*d*/ |d, e)" #'c-mode))))
+
+(ert-deftest mark-list-item-inner-keeps-interior-comment ()
+  "A comment between two tokens of one list item is interior and kept.
+
+Verifies: only edge comments are trivia; one surrounded by the item's own
+tokens stays in the selection."
+  (should (equal "e /* x */ f" (meep-test--list-item-mark-inner "a(|e /* x */ f, g);" #'c-mode))))
+
+(ert-deftest mark-list-item-inner-comment-no-comment-syntax ()
+  "Without comment syntax the `/* */' text is literal and stays in the item.
+
+Verifies: comment trivia is read from the mode's syntax; in `fundamental-mode'
+`/* c */' is ordinary text and part of the item."
+  (should
+   (equal "/* c */ e" (meep-test--list-item-mark-inner "a(b, /* c */ |e);" #'fundamental-mode))))
+
+(ert-deftest mark-list-item-inner-union-separators ()
+  "Several separator strings in one entry split on any of them (union).
+
+Verifies: unlike a fallback chain (the first matching group wins), every
+separator in one group is active at once, so a list mixing `,' and `;' splits
+at each."
+  (let ((both '(((?\( . ?\)) ("," ";")))))
+    (should (equal "a" (meep-test--list-item-mark-inner "(|a, b; c)" #'c-mode both)))
+    (should (equal "b" (meep-test--list-item-mark-inner "(a, |b; c)" #'c-mode both)))
+    (should (equal "c" (meep-test--list-item-mark-inner "(a, b; |c)" #'c-mode both)))))
+
+(ert-deftest mark-list-item-inner-whitespace-separator ()
+  "A `t' separator splits on whitespace runs (e.g. Lisp), not a literal token.
+
+Verifies: consecutive whitespace counts once (no phantom empty items), newlines
+and tabs count, whitespace at the list edges is trivia, a separator inside a
+nested bracket does not split, and a string's interior whitespace is preserved."
+  (let ((ws '(((?\( . ?\)) t))))
+    (should (equal "b" (meep-test--list-item-mark-inner "(foo a |b c)" #'emacs-lisp-mode ws)))
+    ;; Consecutive whitespace is one separator (no empty item between).
+    (should (equal "b" (meep-test--list-item-mark-inner "(foo a  |b  c)" #'emacs-lisp-mode ws)))
+    ;; Newlines and indentation count as whitespace.
+    (should (equal "b" (meep-test--list-item-mark-inner "(foo\n  a\n  |b)" #'emacs-lisp-mode ws)))
+    ;; Leading/trailing whitespace inside the brackets is edge trivia.
+    (should (equal "a" (meep-test--list-item-mark-inner "( |a b )" #'emacs-lisp-mode ws)))
+    ;; A nested list is a single item; its interior whitespace does not split.
+    (should (equal "(b c)" (meep-test--list-item-mark-inner "(a |(b c) d)" #'emacs-lisp-mode ws)))
+    ;; Whitespace inside a string is not a separator.
+    (should
+     (equal "\"a b\"" (meep-test--list-item-mark-inner "(|\"a b\" c)" #'emacs-lisp-mode ws)))))
+
+(ert-deftest bounds-commands-all-resolve-to-commands ()
+  "Every `meep-bounds-commands' entry maps a key to a real interactive command.
+
+Verifies the dispatch table has no typos or unbound function names - covering
+the `list-item' entries (`i'/`I') added with the text object and all the
+others.  A data-shape check on the defcustom, independent of any preset's
+contents."
+  (dolist (entry meep-bounds-commands)
+    (let ((key (nth 0 entry))
+          (fn (nth 1 entry))
+          (desc (nth 2 entry)))
+      (should (characterp key))
+      (should (commandp fn))
+      (should (stringp desc))))
+  ;; The list-item entries are present and point at the right commands.
+  (should (eq 'meep-move-to-bounds-of-list-item-inner (nth 1 (assq ?i meep-bounds-commands))))
+  (should (eq 'meep-move-to-bounds-of-list-item (nth 1 (assq ?I meep-bounds-commands)))))
 
 
 ;; ---------------------------------------------------------------------------
