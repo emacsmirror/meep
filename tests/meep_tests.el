@@ -20,6 +20,12 @@
 
 ;;; Code:
 
+;; NOTE: regarding `inhibit-redisplay' some tests disable this because the
+;; `indent-rigidly-*' tests exit its transient keymap with `C-a' (unbound
+;; here); the resulting `undefined' command forces a ~100ms redisplay per
+;; call even in batch.  Binding it to t skips that (~130x faster) without
+;; affecting buffer/point assertions.
+
 ;; ---------------------------------------------------------------------------
 ;; Message Capture (suppress minibuffer noise during tests)
 
@@ -8105,7 +8111,9 @@ Messages should be captured and not displayed."
 
 Verifies: `meep-indent-rigidly' sets up the current line as the region
 and `indent-rigidly' shifts it left when existing indentation is present."
-  (let ((text-initial (concat "first\n" "        second")))
+  (let ((text-initial (concat "first\n" "        second"))
+        ;; See `inhibit-redisplay' note in this file.
+        (inhibit-redisplay t))
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
@@ -8128,7 +8136,9 @@ and `indent-rigidly' shifts it left when existing indentation is present."
 Verifies: right and left keys shift indentation
 via the transient keymap entered by `indent-rigidly'.
 Note: S-right/S-left are not testable in batch mode."
-  (let ((text-initial "hello"))
+  (let ((text-initial "hello")
+        ;; See `inhibit-redisplay' note in this file.
+        (inhibit-redisplay t))
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
@@ -8158,7 +8168,9 @@ Note: S-right/S-left are not testable in batch mode."
 
 Verifies: `meep-indent-rigidly' passes through to `indent-rigidly'
 when a region is already active."
-  (let ((text-initial "aaa\nbbb\nccc"))
+  (let ((text-initial "aaa\nbbb\nccc")
+        ;; See `inhibit-redisplay' note in this file.
+        (inhibit-redisplay t))
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
@@ -8196,7 +8208,9 @@ when a region is already active."
 
 Verifies: `meep-indent-rigidly' sets the marker to bol
 when point is not at the beginning of the line."
-  (let ((text-initial "hello"))
+  (let ((text-initial "hello")
+        ;; See `inhibit-redisplay' note in this file.
+        (inhibit-redisplay t))
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
