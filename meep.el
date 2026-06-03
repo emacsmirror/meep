@@ -906,7 +906,7 @@ A negative ARG moves to the end."
 
 ;;;###autoload
 (defun meep-move-line-non-space-end (arg)
-  "Move to the end of the line, ignoring trailing blank-space
+  "Move to the end of the line, ignoring trailing blank-space.
 A negative ARG moves to the beginning."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
@@ -2911,7 +2911,7 @@ negative backward).  PPSS-INDEX is 3 (string) or 4 (comment).  Returns
 the signed count of STEP that could not be advanced; mirrors `forward-line'.
 On partial success point is left at the last region found.
 Uses Emacs's `comment-search-{forward,backward}' for comments and a
-syntax-class regex (`\\\\s\"') for strings, with `syntax-ppss' validation."
+string-syntax regexp (`\\\\s\"') for strings, with `syntax-ppss' validation."
   (declare (important-return-value t))
   (let* ((sign
           (cond
@@ -3002,7 +3002,7 @@ syntax-class regex (`\\\\s\"') for strings, with `syntax-ppss' validation."
 FORWARD-1-FN takes a signed step (+1 or -1) and advances point to the
 next object (a no-op if no further object exists).  Used to wrap
 primitives whose own return value isn't a remainder count
-(e.g. `forward-thing', which returns t/nil)."
+\(e.g. `forward-thing', which returns t/nil)."
   (declare (important-return-value t))
   (cond
    ((zerop step)
@@ -3063,8 +3063,9 @@ at the landing (no object there), the primitive landing is returned."
   "Scan via FORWARD-FN; skip bounds normalization when not needed.
 Optimized for `forward-thing'-style primitives whose natural landing is
 the trailing edge in the direction of motion (forward -> end, backward ->
-start).  Skips the BOUNDS-FN call when STEP is non-zero and AT-START
-matches the primitive's natural landing for that direction."
+start).  Skips the BOUNDS-FN call (and so ignores INNER) when STEP is
+non-zero and AT-START matches the primitive's natural landing for that
+direction."
   (declare (important-return-value t))
   (cond
    ((and (not (zerop step)) (eq at-start (< step 0)))
@@ -3076,8 +3077,8 @@ matches the primitive's natural landing for that direction."
   "Scan via FORWARD-FN; skip bounds normalization when not needed.
 Optimized for primitives whose natural landing is always the start of an
 object (`forward-line', `vertical-motion', `forward-char',
-`meep--search-syntax-forward').  Skips the BOUNDS-FN call when STEP is
-non-zero and AT-START is non-nil."
+`meep--search-syntax-forward').  Skips the BOUNDS-FN call (and so ignores
+INNER) when STEP is non-zero and AT-START is non-nil."
   (declare (important-return-value t))
   (cond
    ((and (not (zerop step)) at-start)
@@ -3086,7 +3087,7 @@ non-zero and AT-START is non-nil."
     (meep--scan-walk-bounds inner step at-start forward-fn bounds-fn))))
 
 (defun meep--bounds-step-word (inner step at-start)
-  "`:bounds-step-fn' for the `word' text object; scan STEP words."
+  "`:bounds-step-fn' (INNER STEP AT-START) for the `word' text object; scan STEP words."
   (declare (important-return-value t))
   (meep--scan-walk-thing
    inner
@@ -3096,7 +3097,7 @@ non-zero and AT-START is non-nil."
    #'meep--bounds-of-word))
 
 (defun meep--bounds-step-symbol (inner step at-start)
-  "`:bounds-step-fn' for the `symbol' text object; scan STEP symbols."
+  "`:bounds-step-fn' (INNER STEP AT-START) for the `symbol' text object; scan STEP symbols."
   (declare (important-return-value t))
   (meep--scan-walk-thing
    inner step at-start
@@ -3105,7 +3106,7 @@ non-zero and AT-START is non-nil."
    #'meep--bounds-of-symbol))
 
 (defun meep--bounds-step-defun (inner step at-start)
-  "`:bounds-step-fn' for the `defun' text object; scan STEP defuns."
+  "`:bounds-step-fn' (INNER STEP AT-START) for the `defun' text object; scan STEP defuns."
   (declare (important-return-value t))
   (meep--scan-walk-thing
    inner
@@ -3115,7 +3116,7 @@ non-zero and AT-START is non-nil."
    #'meep--bounds-of-defun))
 
 (defun meep--bounds-step-sentence (inner step at-start)
-  "`:bounds-step-fn' for the `sentence' text object; scan STEP sentences."
+  "`:bounds-step-fn' (INNER STEP AT-START) for the `sentence' text object; scan STEP sentences."
   (declare (important-return-value t))
   (meep--scan-walk-thing
    inner step at-start
@@ -3124,7 +3125,7 @@ non-zero and AT-START is non-nil."
    #'meep--bounds-of-sentence))
 
 (defun meep--bounds-step-paragraph (inner step at-start)
-  "`:bounds-step-fn' for the `paragraph' text object; scan STEP paragraphs."
+  "`:bounds-step-fn' (INNER STEP AT-START) for the `paragraph' text object; scan STEP paragraphs."
   (declare (important-return-value t))
   (meep--scan-walk-thing
    inner step at-start
@@ -3133,13 +3134,13 @@ non-zero and AT-START is non-nil."
    #'meep--bounds-of-paragraph))
 
 (defun meep--bounds-step-comment (inner step at-start)
-  "`:bounds-step-fn' for the `comment' text object; scan STEP comments."
+  "`:bounds-step-fn' (INNER STEP AT-START) for the `comment' text object; scan STEP comments."
   (declare (important-return-value t))
   (meep--scan-walk-leading
    inner step at-start (lambda (s) (meep--search-syntax-forward s 4)) #'meep--bounds-of-comment))
 
 (defun meep--bounds-step-comment-block (inner step at-start)
-  "`:bounds-step-fn' for the `comment-block' text object; scan STEP blocks."
+  "`:bounds-step-fn' (INNER STEP AT-START) for the `comment-block' text object; scan STEP blocks."
   (declare (important-return-value t))
   (meep--scan-walk-leading
    inner
@@ -3149,18 +3150,18 @@ non-zero and AT-START is non-nil."
    #'meep--bounds-of-comment-block))
 
 (defun meep--bounds-step-string (inner step at-start)
-  "`:bounds-step-fn' for the `string' text object; scan STEP strings."
+  "`:bounds-step-fn' (INNER STEP AT-START) for the `string' text object; scan STEP strings."
   (declare (important-return-value t))
   (meep--scan-walk-leading
    inner step at-start (lambda (s) (meep--search-syntax-forward s 3)) #'meep--bounds-of-string))
 
 (defun meep--bounds-step-line (inner step at-start)
-  "`:bounds-step-fn' for the `line' text object; scan STEP lines."
+  "`:bounds-step-fn' (INNER STEP AT-START) for the `line' text object; scan STEP lines."
   (declare (important-return-value t))
   (meep--scan-walk-leading inner step at-start #'forward-line #'meep--bounds-of-line))
 
 (defun meep--bounds-step-visual-line (inner step at-start)
-  "`:bounds-step-fn' for the `visual-line' text object; scan STEP visual lines."
+  "`:bounds-step-fn' (INNER STEP AT-START) for the `visual-line' text object; scan STEP visual lines."
   (declare (important-return-value t))
   (meep--scan-walk-leading
    inner step at-start (lambda (s) (- s (vertical-motion s))) #'meep--bounds-of-visual-line))
@@ -3209,7 +3210,7 @@ past the last/first item is a no-op, left in the returned remainder."
       step))))
 
 (defun meep--bounds-step-list-item (inner step at-start)
-  "`:bounds-step-fn' for the `list-item' text object; scan STEP list items."
+  "`:bounds-step-fn' (INNER STEP AT-START) for the `list-item' text object; scan STEP list items."
   (declare (important-return-value t))
   (meep--scan-walk-thing
    inner step at-start #'meep--forward-list-item #'meep--bounds-of-list-item))
