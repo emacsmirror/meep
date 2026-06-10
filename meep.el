@@ -7655,6 +7655,10 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
            meep-move-line-non-space-beginning
            meep-move-line-non-space-end
            meep-move-line-prev
+           meep-move-list-item-next
+           meep-move-list-item-next-end
+           meep-move-list-item-prev
+           meep-move-list-item-prev-end
            meep-move-matching-bracket-inner
            meep-move-matching-bracket-outer
            meep-move-matching-contextual-inner
@@ -7668,22 +7672,28 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
            meep-move-symbol-next
            meep-move-symbol-next-end
            meep-move-symbol-prev
+           meep-move-symbol-prev-end
            meep-move-to-bounds-of-comment-inner
            meep-move-to-bounds-of-defun-inner
            meep-move-to-bounds-of-line-inner
+           meep-move-to-bounds-of-list-item-inner
            meep-move-to-bounds-of-paragraph-inner
+           meep-move-to-bounds-of-sentence-inner
            meep-move-to-bounds-of-string-inner
            meep-move-to-bounds-of-visual-line-inner
            meep-move-word-next
            meep-move-word-next-end
            meep-move-word-prev
+           meep-move-word-prev-end
 
            meep-move-to-bounds-of-paragraph
            meep-move-to-bounds-of-comment
            meep-move-to-bounds-of-string
            meep-move-to-bounds-of-line
            meep-move-to-bounds-of-visual-line
-           meep-move-to-bounds-of-defun))
+           meep-move-to-bounds-of-defun
+           meep-move-to-bounds-of-list-item
+           meep-move-to-bounds-of-sentence))
   (meep-command-prop-set cmd :mark-on-motion t))
 
 (dolist (cmd-pair
