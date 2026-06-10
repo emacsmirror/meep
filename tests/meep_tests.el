@@ -5513,6 +5513,103 @@ Verifies: expands to cover full lines of the span."
       (should (equal '(1 . 0) (meep-test-mark-line-column)))
       (should (equal "ABC\nDEF\n" (meep-test-region-as-string))))))
 
+(ert-deftest selection-expand-to-line-bounds-extend-no-trailing-newline ()
+  "Extend a whole-line selection forward in a buffer with no trailing newline.
+
+Regression: extending past the last line searched downward for a blank line
+that never existed, so `line-move' stopped at end-of-buffer without the loop
+ever terminating (infinite loop / hard hang)."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "ABC\n"
+          "DEF\n"
+          "GHI"))) ; No trailing newline.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the whole of line 1.
+      ;; Cursor line 1: ABC
+      ;;                ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-expand-to-line-bounds))
+      (should (equal 'visual (bray-state)))
+      (should (equal '(2 . 0) (meep-test-point-line-column)))
+      (should (equal '(1 . 0) (meep-test-mark-line-column)))
+      (should (equal "ABC\n" (meep-test-region-as-string)))
+      ;; Extend again: with the bug this never returns.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-expand-to-line-bounds))
+      (should (equal 'visual (bray-state)))
+      ;; Extends over the remaining non-empty lines to end of buffer.
+      (should (equal '(3 . 3) (meep-test-point-line-column)))
+      (should (equal '(1 . 0) (meep-test-mark-line-column)))
+      (should (equal "ABC\nDEF\nGHI" (meep-test-region-as-string))))))
+
+(ert-deftest selection-expand-to-line-bounds-extend-backward-at-buffer-start ()
+  "Extend a whole-line selection backward when already at the first line.
+
+Regression: the backward branch stepped with `forward-char' -1 past
+`point-min', signaling `beginning-of-buffer' instead of stopping cleanly."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "ABC\n"
+          "DEF\n"
+          "GHI\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the whole of line 1, then reverse so point is at the top.
+      ;; Cursor line 1: ABC
+      ;;                ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-expand-to-line-bounds)
+        '(:state visual :command meep-region-activate-and-reverse))
+      (should (equal 'visual (bray-state)))
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      (should (equal '(2 . 0) (meep-test-mark-line-column)))
+      (should (equal "ABC\n" (meep-test-region-as-string)))
+      ;; Extend again: with the bug this signals `beginning-of-buffer'.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-expand-to-line-bounds))
+      (should (equal 'visual (bray-state)))
+      ;; Nothing precedes line 1, so the selection is unchanged.
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      (should (equal '(2 . 0) (meep-test-mark-line-column)))
+      (should (equal "ABC\n" (meep-test-region-as-string))))))
+
+(ert-deftest selection-expand-to-line-bounds-extend-backward-through-to-start ()
+  "Extend a whole-line selection backward, scanning up to the buffer start.
+
+Regression: the backward scan reached `point-min' with `forward-char' -1,
+signaling `beginning-of-buffer' mid-loop instead of terminating."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "ABC\n"
+          "DEF\n"
+          "GHI\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the whole of line 2, then reverse so point is at its top.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-region-expand-to-line-bounds)
+        '(:state visual :command meep-region-activate-and-reverse))
+      (should (equal 'visual (bray-state)))
+      (should (equal '(2 . 0) (meep-test-point-line-column)))
+      (should (equal '(3 . 0) (meep-test-mark-line-column)))
+      (should (equal "DEF\n" (meep-test-region-as-string)))
+      ;; Extend again: scans up through line 1 to the buffer start.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-expand-to-line-bounds))
+      (should (equal 'visual (bray-state)))
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      (should (equal '(3 . 0) (meep-test-mark-line-column)))
+      (should (equal "ABC\nDEF\n" (meep-test-region-as-string))))))
+
 ;; Contract after movement
 
 (ert-deftest selection-syntax-contract-after-movement ()

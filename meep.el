@@ -4107,16 +4107,30 @@ use to maintain line-based selection."
       ;; when the user isn't explicitly requesting selection.
       (setq meep-state-region-elem 'line-wise))
 
-    (let ((is-forward (eq (point) (region-end)))
-          (beg (region-beginning))
-          (end (region-end))
+    (let* ((is-forward (eq (point) (region-end)))
+           (beg (region-beginning))
+           (end (region-end))
 
-          ;; Local functions.
-          (is-line-empty-fn
-           (lambda ()
-             (save-excursion
-               (beginning-of-line)
-               (looking-at-p "[[:blank:]]*$")))))
+           ;; Local functions.
+           (is-line-empty-fn
+            (lambda ()
+              (save-excursion
+                (beginning-of-line)
+                (looking-at-p "[[:blank:]]*$"))))
+
+           ;; Scan by STEP lines (+1/-1) over the run of non-empty lines from
+           ;; point, returning the start of the last non-empty line reached.
+           ;; `forward-line' yields a non-zero remainder at the buffer bound
+           ;; without signaling, so the scan always terminates: an unterminated
+           ;; final line (forward) or `point-min' (backward) cannot spin it.
+           (scan-non-empty-fn
+            (lambda (step)
+              (let ((x (point))
+                    (cont t))
+                (while (and cont (null (funcall is-line-empty-fn)))
+                  (setq x (point))
+                  (setq cont (zerop (forward-line step))))
+                x))))
 
       (let ((beg-next nil)
             (end-next nil))
@@ -4135,18 +4149,13 @@ use to maintain line-based selection."
            (is-forward
             ;; No need for an initial next-line as this is already on the next line.
 
-            ;; If the first line is empty, skip all empty space.
+            ;; Step past a leading blank line so the scan below extends the
+            ;; following run of non-empty lines.
             (when (funcall is-line-empty-fn)
-              (line-move 1 t)
-              (while (null (funcall is-line-empty-fn))
-                (line-move 1 t)))
+              (forward-line 1))
 
-            (let ((x (point)))
-              (while (null (funcall is-line-empty-fn))
-                (setq x (point))
-                (line-move 1 t))
-              (goto-char x)
-              (goto-char (pos-eol)))
+            (goto-char (funcall scan-non-empty-fn 1))
+            (goto-char (pos-eol))
 
             ;; Ensure we always step over the last newline.
             ;; This is (among other reasons)
@@ -4155,24 +4164,22 @@ use to maintain line-based selection."
             ;; - The cursor doesn't scroll off the RHS of the screen
             ;;   for long lines.
             ;; - Moving the cursor up-down can stick to column zero.
-            (unless (funcall is-line-empty-fn)
+            ;;
+            ;; Except at end-of-buffer, where there is no newline to step over.
+            (unless (or (eobp) (funcall is-line-empty-fn))
               (forward-char 1)))
 
            (t
-            (forward-char -1)
+            ;; Step to the line above the selection.
+            (forward-line -1)
 
-            ;; If the first line is empty, skip all empty space.
+            ;; Step past a leading blank line so the scan below extends the
+            ;; preceding run of non-empty lines.
             (when (funcall is-line-empty-fn)
-              (forward-char -1)
-              (while (null (funcall is-line-empty-fn))
-                (forward-char -1)))
+              (forward-line -1))
 
-            (let ((x (point)))
-              (while (null (funcall is-line-empty-fn))
-                (setq x (point))
-                (forward-char -1))
-              (goto-char x)
-              (goto-char (pos-bol)))
+            (goto-char (funcall scan-non-empty-fn -1))
+            (goto-char (pos-bol))
 
             ;; Don't start on the empty line.
             (when (funcall is-line-empty-fn)
