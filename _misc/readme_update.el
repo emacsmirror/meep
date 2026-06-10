@@ -70,14 +70,26 @@ Valid values for TY include:
       (setq vars
             (sort vars
                   #'(lambda (x y)
-                      (< (or (cdr-safe (ignore-errors (find-function-noselect x t))) 0)
-                         (or (cdr-safe (ignore-errors (find-function-noselect y t))) 0))))))
+                      (< (or (cdr-safe
+                              (ignore-errors
+                                (find-function-noselect x t)))
+                             0)
+                         (or (cdr-safe
+                              (ignore-errors
+                                (find-function-noselect y t)))
+                             0))))))
      ((or (eq ty 'var) (eq ty 'var-custom))
       (setq vars
             (sort vars
                   #'(lambda (x y)
-                      (< (or (cdr-safe (ignore-errors (find-variable-noselect x nil))) 0)
-                         (or (cdr-safe (ignore-errors (find-variable-noselect y nil))) 0)))))))
+                      (< (or (cdr-safe
+                              (ignore-errors
+                                (find-variable-noselect x nil)))
+                             0)
+                         (or (cdr-safe
+                              (ignore-errors
+                                (find-variable-noselect y nil)))
+                             0)))))))
 
 
     (dolist (sym vars)

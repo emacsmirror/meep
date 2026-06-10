@@ -42,6 +42,9 @@
 (declare-function repeat-fu-listener-register "repeat-fu")
 (declare-function repeat-fu-listener-unregister-and-collect "repeat-fu")
 
+;; Must be forward declared for byte-compilation.
+(defvar which-key-this-command-keys-function)
+
 ;; ---------------------------------------------------------------------------
 ;; Custom Variables
 
@@ -7223,7 +7226,6 @@ its own `read-key' is blocking."
   (declare (indent 1))
   `(let ((this-command nil)
          (which-key-this-command-keys-function ,keyseq-fn))
-     (ignore which-key-this-command-keys-function)
      ,@body))
 
 (defmacro meep--keypad-which-key-c-h-maybe (ch prefix-arg-var)
