@@ -5260,6 +5260,11 @@ Leave the char-ring unmodified afterwards."
            (t
             (meep--set-marker end)))))
        (t
+        ;; Mirror the end-of-buffer guard above: at the end of a line point
+        ;; is on the newline, so there is no character on this line to
+        ;; replace (spanning it would give a negative column count).
+        (when (eolp)
+          (user-error "Cannot replace at the end of the line"))
         (funcall replace-in-range-fn (point) (1+ (point)))))))))
 
 

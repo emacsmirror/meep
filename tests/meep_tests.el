@@ -805,6 +805,29 @@ Verifies: basic text insertion works correctly."
       (should (equal 'normal (bray-state)))
       (should (equal text-expected (buffer-string))))))
 
+(ert-deftest primitive-replace-char-end-of-line ()
+  "Replace char with point at end of line (no region) is a clean error.
+
+Regression: the no-region fallback spanned the newline, so the column
+difference went negative and `make-string' signaled `wrong-type-argument'
+instead of a clear message."
+  (let ((text-initial "abc\ndef\n"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Point at the end of line 1 (on the newline), not end of buffer.
+      (goto-char 4)
+      (should (eolp))
+      (should-not (eobp))
+      (should-error-with-message
+          (simulate-input-for-meep
+            '(:state normal :command meep-char-replace)
+            "x")
+        'user-error
+        "Cannot replace at the end of the line")
+      ;; Buffer is unchanged.
+      (should (equal text-initial (buffer-string))))))
+
 (ert-deftest primitive-change-region-rectangle ()
   "Ensure insert-change works with rectangle mark mode."
   (let ((text-initial
