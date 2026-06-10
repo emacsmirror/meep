@@ -6159,6 +6159,27 @@ Verifies: cursor stays in place, informative message displayed."
       ;; Verify informative message was displayed.
       (should (equal '("char z not found") (meep-test-messages))))))
 
+(ert-deftest movement-find-char-repeat-no-prior-char ()
+  "Repeat-find with no stored character is a graceful no-op.
+
+Regression: the repeat commands passed the helper's nil straight into
+`meep--move-find-impl', where `(char-to-string nil)' signaled
+`wrong-type-argument' instead of leaving the informative message."
+  (let ((text-initial "hello world"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; No prior find-char, so there is no character to repeat.
+      (setq meep--move-find-last-char nil)
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      ;; Repeating with nothing stored must not signal.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-find-char-on-line-repeat-at-next))
+      ;; Cursor stays put, informative message displayed.
+      (should (equal 'normal (bray-state)))
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      (should (equal '("No last character is set") (meep-test-messages))))))
+
 (ert-deftest movement-matching-bracket ()
   "Jump between matching brackets.
 

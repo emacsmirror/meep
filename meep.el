@@ -1952,25 +1952,29 @@ IS-TILL when non-nil, stop just before the character."
 (defun meep-move-find-char-on-line-repeat-at-next (arg)
   "Repeat find ARG times forwards."
   (interactive "^p")
-  (meep--move-find-impl arg (meep--move-find-last-char-or-message) nil))
+  (when-let* ((ch (meep--move-find-last-char-or-message)))
+    (meep--move-find-impl arg ch nil)))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-repeat-at-prev (arg)
   "Repeat find ARG times backwards."
   (interactive "^p")
-  (meep--move-find-impl (- arg) (meep--move-find-last-char-or-message) nil))
+  (when-let* ((ch (meep--move-find-last-char-or-message)))
+    (meep--move-find-impl (- arg) ch nil)))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-repeat-till-next (arg)
   "Repeat find-till ARG times forwards."
   (interactive "^p")
-  (meep--move-find-impl arg (meep--move-find-last-char-or-message) t))
+  (when-let* ((ch (meep--move-find-last-char-or-message)))
+    (meep--move-find-impl arg ch t)))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-repeat-till-prev (arg)
   "Repeat find-till ARG times backwards."
   (interactive "^p")
-  (meep--move-find-impl (- arg) (meep--move-find-last-char-or-message) t))
+  (when-let* ((ch (meep--move-find-last-char-or-message)))
+    (meep--move-find-impl (- arg) ch t)))
 
 
 ;; ---------------------------------------------------------------------------
