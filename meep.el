@@ -176,7 +176,9 @@ Return the modified PLIST, or the original if KEY is not found."
 
 (defun meep--ranges-overlap-p (list-a list-b)
   "Return t if any range in LIST-A overlaps any range in LIST-B.
-Each list contains cons cells (BEG . END) with BEG <= END.
+Each list contains cons cells (BEG . END): half-open ranges [BEG END) with
+BEG <= END, so END is the position past the range and touching ranges (one
+END equal to the other BEG) do not overlap.
 Stop at the first detected overlap."
   (declare (important-return-value t))
   (let ((found nil))
@@ -189,8 +191,9 @@ Stop at the first detected overlap."
           (let* ((range-b (car b-list))
                  (b-beg (car range-b))
                  (b-end (cdr range-b)))
-            ;; Overlap if ranges intersect at all:
-            (when (and (<= a-beg b-end) (<= b-beg a-end))
+            ;; Overlap if the half-open ranges intersect (touching is not
+            ;; overlapping, so the comparisons are strict).
+            (when (and (< a-beg b-end) (< b-beg a-end))
               (setq found t)))
           (setq b-list (cdr b-list))))
       (setq list-a (cdr list-a)))

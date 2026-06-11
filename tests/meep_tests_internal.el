@@ -106,9 +106,13 @@ see `advice-add' for HOW values."
   (should-not (meep--ranges-overlap-p '((6 . 10)) '((1 . 5)))))
 
 (ert-deftest ranges-overlap-p-touching-edges ()
-  "Ranges that touch at edges should count as overlap."
-  (should (meep--ranges-overlap-p '((1 . 5)) '((5 . 8))))
-  (should (meep--ranges-overlap-p '((5 . 8)) '((1 . 5)))))
+  "Half-open ranges that touch at an edge do not overlap.
+END is the position past the range, so [1 5) and [5 8) share no position,
+while [1 6) and [5 8) do (position 5)."
+  (should-not (meep--ranges-overlap-p '((1 . 5)) '((5 . 8))))
+  (should-not (meep--ranges-overlap-p '((5 . 8)) '((1 . 5))))
+  (should (meep--ranges-overlap-p '((1 . 6)) '((5 . 8))))
+  (should (meep--ranges-overlap-p '((5 . 8)) '((1 . 6)))))
 
 (ert-deftest ranges-overlap-p-multiple-ranges ()
   "Overlap occurs when any pair of ranges intersect."
@@ -122,10 +126,10 @@ see `advice-add' for HOW values."
   (should-not (meep--ranges-overlap-p nil '((1 . 5)))))
 
 (ert-deftest ranges-overlap-p-single-point-ranges ()
-  "Ranges where start == end are treated as inclusive points."
-  (should (meep--ranges-overlap-p '((5 . 5)) '((5 . 5))))
-  (should (meep--ranges-overlap-p '((5 . 5)) '((4 . 5))))
-  (should (meep--ranges-overlap-p '((5 . 5)) '((5 . 6)))))
+  "Zero-width ranges (START == END) are empty and overlap nothing."
+  (should-not (meep--ranges-overlap-p '((5 . 5)) '((5 . 5))))
+  (should-not (meep--ranges-overlap-p '((5 . 5)) '((4 . 5))))
+  (should-not (meep--ranges-overlap-p '((5 . 5)) '((5 . 6)))))
 
 
 ;; ---------------------------------------------------------------------------
