@@ -4933,7 +4933,8 @@ Return non-nil on success."
       (call-interactively #'isearch-forward-regexp)))
 
     (let ((text (meep--isearch-extract-regex-from-bounds text-bounds)))
-      (push text regexp-search-ring)
+      ;; Push onto `regexp-search-ring', applying de-duplicating & limiting rules.
+      (isearch-update-ring text t)
       ;; This function defines the search as being "regex",
       ;; so it's important ISEARCH's variable is set accordingly.
       (setq isearch-regexp t)
