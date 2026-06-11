@@ -6755,6 +6755,8 @@ When DO-CUT is non-nil, cut instead of copying."
               (t
                "Copy"))))
    (t
+    (unless interprogram-cut-function
+      (user-error "No clipboard integration available in this terminal"))
     (let ((text (buffer-substring-no-properties beg end)))
       (when do-cut
         (delete-region beg end))
@@ -6787,11 +6789,13 @@ When DO-CUT is non-nil, cut instead of copying."
 
 (defun meep--clipboard-only-yank-impl ()
   "Yank-replace from the system clipboard."
+  (unless interprogram-paste-function
+    (user-error "No clipboard integration available in this terminal"))
   (let ((text (funcall interprogram-paste-function)))
     ;; This is strange that emacs cannot access its own selection.
     ;; Copy sets this value, could investigate this further.
     (unless text
-      (setq text gui--last-selected-text-clipboard))
+      (setq text (bound-and-true-p gui--last-selected-text-clipboard)))
 
     (unless text
       (user-error "No text in clipboard"))

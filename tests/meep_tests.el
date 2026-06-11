@@ -1491,6 +1491,61 @@ Verifies: error is signaled, kill-ring remains empty."
       ;; Kill-ring should remain empty.
       (should (null kill-ring)))))
 
+(ert-deftest clipboard-only-copy-no-tty-clipboard ()
+  "Copy to system clipboard raises error when no clipboard integration.
+
+Simulates a TTY frame where `interprogram-cut-function' is nil.
+Verifies: user-error is raised, buffer unchanged."
+  (let ((text-initial "foo bar baz")
+        (interprogram-cut-function nil))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Set a region so the nil-function check is reached.
+      (push-mark (point-min) t t)
+      (goto-char (point-max))
+      (should-error-with-message
+          (meep-clipboard-only-copy)
+        'user-error
+        "No clipboard integration available in this terminal")
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest clipboard-only-cut-no-tty-clipboard ()
+  "Cut to system clipboard raises error when no clipboard integration.
+
+Simulates a TTY frame where `interprogram-cut-function' is nil.
+Verifies: user-error raised before any deletion, buffer unchanged."
+  (let ((text-initial "foo bar baz")
+        (interprogram-cut-function nil))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Set a region so the nil-function check is reached.
+      (push-mark (point-min) t t)
+      (goto-char (point-max))
+      (should-error-with-message
+          (meep-clipboard-only-cut)
+        'user-error
+        "No clipboard integration available in this terminal")
+      ;; Buffer must be unchanged since error fires before delete.
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest clipboard-only-yank-no-tty-clipboard ()
+  "Yank from system clipboard raises error when no clipboard integration.
+
+Simulates a TTY frame where `interprogram-paste-function' is nil.
+Verifies: user-error is raised, buffer unchanged."
+  (let ((text-initial "foo bar baz")
+        (interprogram-paste-function nil))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      (should-error-with-message
+          (meep-clipboard-only-yank)
+        'user-error
+        "No clipboard integration available in this terminal")
+      (should (equal text-initial (buffer-string))))))
+
 (ert-deftest clipboard-yank-empty-kill-ring ()
   "Yank when kill-ring is empty shows message.
 
