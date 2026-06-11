@@ -515,7 +515,9 @@ PLIST must contain exactly :state and :command keys."
     (meep-region-mark-list-item-outer . (normal))
     ;; Region commands.
     (meep-region-activate-and-reverse . (normal visual))
-    (meep-region-disable . (visual)))
+    (meep-region-disable . (visual))
+    ;; Clipboard register commands.
+    (meep-clipboard-register-yank-lines . (normal visual)))
   "Commands needing test bindings, with list of states for each.
 Each entry is (COMMAND . STATES) where STATES is a list of state symbols.
 Commands get the same key in all specified states for consistency.")
@@ -1507,6 +1509,47 @@ Verifies: buffer unchanged, informative message displayed."
       (should (equal text-initial (buffer-string)))
       ;; Verify informative message was displayed.
       (should (equal '("Kill ring is empty") (meep-test-messages))))))
+
+(ert-deftest clipboard-register-yank-lines-no-region ()
+  "Register yank-lines inserts at beginning of current line.
+
+Verifies: with no active region, content is inserted at (pos-bol)."
+  (let ((text-initial "foo\nbar\nbaz"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Pre-load register ?a with "INSERTED\n".
+      (set-register ?a "INSERTED\n")
+      (setq meep--clipboard-register-current ?a)
+      ;; Move point to middle of "bar" line (col 1).
+      (goto-char 6)
+      (should (equal ?a (char-after)))
+      ;; Yank as lines: should insert at start of "bar" line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-clipboard-register-yank-lines))
+      (should (equal "foo\nINSERTED\nbar\nbaz" (buffer-string))))))
+
+(ert-deftest clipboard-register-yank-lines-with-region ()
+  "Register yank-lines with active region replaces the region.
+
+Verifies: active region is deleted and register content inserted in its place."
+  (let ((text-initial "foo bar baz"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Pre-load register ?a with "INSERTED".
+      (set-register ?a "INSERTED")
+      (setq meep--clipboard-register-current ?a)
+      ;; Select "bar" via motion then activate visual region.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-symbol-next)
+        '(:state normal :command meep-move-symbol-next-end)
+        '(:state normal :command meep-region-activate-and-reverse-motion))
+      (should (equal 'visual (bray-state)))
+      ;; Yank as lines: active region should be replaced.
+      (simulate-input-for-meep
+        '(:state visual :command meep-clipboard-register-yank-lines))
+      (should (equal "foo INSERTED baz" (buffer-string))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Delete Char Ring

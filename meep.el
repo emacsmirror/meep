@@ -7213,8 +7213,19 @@ Use the `meep-clipboard-register-map' key-map."
 ;;;###autoload
 (defun meep-clipboard-register-yank-lines ()
   "Yank from pre-defined register as lines."
-  (interactive)
-  (user-error "Line-wise register yank is not yet implemented"))
+  (interactive "*")
+  (let ((reg meep--clipboard-register-current))
+    (cond
+     ((region-active-p)
+      (let ((beg (region-beginning))
+            (end (region-end)))
+        (deactivate-mark t)
+        (delete-region beg end)))
+     (t
+      (goto-char (pos-bol))))
+    (let ((pos-init (point)))
+      (insert-register reg t)
+      (meep--set-marker pos-init))))
 
 
 ;; ---------------------------------------------------------------------------
