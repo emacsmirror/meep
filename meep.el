@@ -4945,6 +4945,15 @@ Return non-nil on success."
         (setq isearch-yank-flag t)
         (isearch-process-search-string text (mapconcat #'isearch-text-char-description text ""))))
 
+    ;; Repeat for prefix arguments greater than 1.
+    (let ((n (1- (abs dir))))
+      (unless (zerop n)
+        (cond
+         ((< dir 0)
+          (isearch-repeat-backward n))
+         (t
+          (isearch-repeat-forward n)))))
+
     (isearch-exit)
 
     (meep--isearch-handle-done had-region)))
