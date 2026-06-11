@@ -9483,6 +9483,23 @@ columns are affected, not entire lines."
       (should (equal 'normal (bray-state)))
       (should (equal text-expected (buffer-string))))))
 
+(ert-deftest selection-expand-to-line-bounds-initial-no-trailing-newline ()
+  "Select current line when on last line of buffer with no trailing newline.
+
+Regression: goto-char was called with (1+ (pos-eol)) which equals
+(1+ (point-max)) on the last line without a trailing newline, raising
+an out-of-range error."
+  (let ((text-initial "hello")) ; No trailing newline.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-expand-to-line-bounds))
+      (should (equal 'visual (bray-state)))
+      (should (equal '(1 . 5) (meep-test-point-line-column)))
+      (should (equal '(1 . 0) (meep-test-mark-line-column)))
+      (should (equal "hello" (meep-test-region-as-string))))))
+
 (provide 'meep_tests)
 ;; Local Variables:
 ;; fill-column: 99

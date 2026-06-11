@@ -4215,7 +4215,7 @@ use to maintain line-based selection."
     (setq meep-state-region-elem 'line-wise)
 
     (meep--set-marker (pos-bol))
-    (goto-char (1+ (pos-eol)))
+    (goto-char (min (1+ (pos-eol)) (point-max)))
     (activate-mark t))))
 
 
