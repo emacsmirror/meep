@@ -7213,9 +7213,8 @@ Use the `meep-clipboard-register-map' key-map."
 ;;;###autoload
 (defun meep-clipboard-register-yank-lines ()
   "Yank from pre-defined register as lines."
-  (interactive "*")
-  (let ((reg meep--clipboard-register-current))
-    (meep--clipboard-register-yank-impl reg)))
+  (interactive)
+  (user-error "Line-wise register yank is not yet implemented"))
 
 
 ;; ---------------------------------------------------------------------------
