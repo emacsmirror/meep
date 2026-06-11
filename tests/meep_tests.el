@@ -9483,6 +9483,50 @@ columns are affected, not entire lines."
       (should (equal 'normal (bray-state)))
       (should (equal text-expected (buffer-string))))))
 
+(ert-deftest selection-mark-bounds-of-char-outer-region-straddles-close ()
+  "Outer-bracket selection must contain the full active region.
+
+Regression: the containment check used (car bounds-init) for both the
+open and close bracket tests, so a bracket pair whose close fell inside
+the selection (but after the selection start) was returned as valid outer
+bounds even though it did not contain the selection end.
+
+Setup: select inner `foo` of `(foo) bar', swap so point is at the end,
+extend two chars to include `) ' - the region now straddles the closing
+paren.  Requesting outer `(' must fail (no enclosing pair exists) rather
+than returning the mismatched inner pair."
+  (let ((text-initial "(foo) bar"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move one step right so cursor is inside the parens on `f'.
+      ;; Cursor: (foo) bar
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next))
+      ;; Select inner content of `(' - region becomes `foo'.
+      ;; point=col1, mark=col4 (is-forward nil, so point at start).
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-bounds-of-char-inner)
+        "(")
+      (should (equal "foo" (meep-test-region-as-string)))
+      ;; Swap so point is at the far end, enabling forward extension.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-activate-and-reverse))
+      ;; Extend two chars forward: past `)' and into the space.
+      ;; Region is now `foo) ' - close-bracket is inside the selection.
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-char-next))
+      (should (equal "foo) " (meep-test-region-as-string)))
+      ;; Attempt outer `(' - no enclosing pair exists.
+      ;; With the bug: returns `(foo)' which drops the ` ' from the end.
+      ;; With the fix: leaves the region unchanged and emits a message.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-mark-bounds-of-char-outer)
+        "(")
+      (should (equal "foo) " (meep-test-region-as-string))))))
+
 (ert-deftest selection-expand-to-line-bounds-initial-no-trailing-newline ()
   "Select current line when on last line of buffer with no trailing newline.
 

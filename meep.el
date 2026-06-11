@@ -2297,7 +2297,7 @@ Return the bounds or nil if no matching brackets are found."
                          (cond
                           (has-region
                            ;; When region is active, ensure brackets contain the region.
-                           (and (<= open-pos (car bounds-init)) (>= close-pos (car bounds-init))))
+                           (and (<= open-pos (car bounds-init)) (>= close-pos (cdr bounds-init))))
                           (t
                            ;; When no region, ensure point is between brackets.
                            (>= close-pos (car bounds-init)))))
