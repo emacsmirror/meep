@@ -2449,7 +2449,7 @@ A negative ARG positions point at the end of the region.
 
 Note that pressing Return instead of a character performs a contextual mark,
 finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
-  (interactive "*cMark inner char:\np")
+  (interactive "cMark inner char:\np")
   ;; NOTE: we could add useful features with other characters.
   (cond
    ((eq ch 13) ; RET.
@@ -2465,7 +2465,7 @@ A negative ARG positions point at the end of the region.
 
 Note that pressing Return instead of a character performs a contextual mark,
 finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
-  (interactive "*cMark outer char:\np")
+  (interactive "cMark outer char:\np")
   ;; NOTE: we could add useful features with other characters.
   (cond
    ((eq ch 13) ; RET.
