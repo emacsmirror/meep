@@ -1471,13 +1471,13 @@ Move forward when ARG is positive, otherwise backwards."
 (defun meep-move-by-sexp-out-prev (&optional arg)
   "Jump out of the current S-expression to the opening bracket, ARG times."
   (interactive "^p")
-  (meep--move-by-sexp-out-impl (- arg)))
+  (meep--move-by-sexp-out-impl (- (or arg 1))))
 
 ;;;###autoload
 (defun meep-move-by-sexp-out-next (&optional arg)
   "Jump out of the current S-expression to the closing bracket, ARG times."
   (interactive "^p")
-  (meep--move-by-sexp-out-impl arg))
+  (meep--move-by-sexp-out-impl (or arg 1)))
 
 ;;;###autoload
 (defun meep-move-matching-bracket-outer ()
