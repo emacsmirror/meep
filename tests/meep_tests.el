@@ -8328,6 +8328,29 @@ Verifies: sexp-over-prev navigates backward through expressions."
       (should (equal '(1 . 13) (meep-test-point-line-column)))
       (should (equal ?b (char-after))))))
 
+(ert-deftest sexp-depth-calc-cache-invalidated-on-edit ()
+  "Cache is discarded after a length-preserving buffer edit.
+
+Verifies: meep--sexp-depth-calc does not return stale depth after a
+char-replacing edit that changes the bracket structure."
+  ;; Use '(a (bc))': point at 'c' (pos 6) is clearly interior.
+  (with-meep-test "(a (bc))"
+    (emacs-lisp-mode)
+    (bray-mode 1)
+    ;; Point at 'c' (pos 6) inside two levels of parens -> depth 2.
+    (goto-char 6)
+    (should (equal ?c (char-after)))
+    (should (equal 2 (meep--sexp-depth-calc)))
+    ;; Replace '(' at pos 4 with 'x': buffer becomes "(a xbc))".
+    ;; This is length-preserving so positions do not shift.
+    (goto-char 4)
+    (delete-char 1)
+    (insert "x")
+    ;; Back to pos 6 ('c'), now only one enclosing paren -> depth 1.
+    (goto-char 6)
+    (should (equal ?c (char-after)))
+    (should (equal 1 (meep--sexp-depth-calc)))))
+
 (ert-deftest movement-sexp-out-next ()
   "Move out of current s-expression forward.
 

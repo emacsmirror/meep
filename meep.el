@@ -1321,7 +1321,8 @@ Only used between successive
 ;; the cache is valid as long as `meep--sexp-depth-calc' calls
 ;; are done without any buffer edits.
 ;;
-;; - Numbers are ordered small to large.
+;; - Format: (tick pos1 pos2 ...) where tick is `buffer-chars-modified-tick'.
+;; - Positions are ordered largest to smallest (innermost bracket first).
 ;; - The place represents the depth (1 based).
 ;;   Where the first item has depth 1, the second depth 2 and so on.
 (defvar-local meep--sexp-depth-calc-cache nil)
@@ -1330,7 +1331,13 @@ Only used between successive
   "Return the S-expression depth."
   (declare (important-return-value t))
   (let* ((bracket-chars (meep--jump-brackets-from-mode))
-         (cache-prev meep--sexp-depth-calc-cache)
+         (tick (buffer-chars-modified-tick))
+         (cache-prev
+          (cond
+           ((and meep--sexp-depth-calc-cache (eq tick (car meep--sexp-depth-calc-cache)))
+            (cdr meep--sexp-depth-calc-cache))
+           (t
+            nil)))
          (cache-tail (cons nil nil))
          (cache-cell cache-tail)
          (keep-searching t)
@@ -1370,7 +1377,7 @@ Only used between successive
                 (setcdr cache-tail cache-next)
                 (setq cache-tail cache-next)))))))
 
-    (setq meep--sexp-depth-calc-cache (cdr cache-cell))
+    (setq meep--sexp-depth-calc-cache (cons tick (cdr cache-cell)))
     depth))
 
 (defun meep--move-by-sexp-over-last-command-check ()
