@@ -7627,6 +7627,23 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
            meep-region-mark-bounds-of-char-contextual-outer))
   (meep-command-prop-set cmd :mark-activate t))
 
+;; Commands whose primary purpose is to activate or modify the region, and which should be kept
+;; as a repeatable selection operation (unlike commands that merely leave a region active as a
+;; side-effect, such as jumping to a search match).
+;; Currently only `repeat-fu' uses this.
+(dolist (cmd
+         '(meep-region-enable
+           meep-region-enable-rectangle
+           meep-region-expand-to-line-bounds
+           meep-region-mark-bounds-of-char-contextual-inner
+           meep-region-mark-bounds-of-char-contextual-outer
+           meep-region-mark-bounds-of-char-inner
+           meep-region-mark-bounds-of-char-outer
+           meep-region-syntax-expand
+           meep-region-toggle
+           meep-region-toggle-rectangle))
+  (meep-command-prop-set cmd :mark-activate-repeat t))
+
 (dolist (cmd '(meep-digit-argument-repeat))
   (meep-command-prop-set cmd :digit-repeat t))
 
@@ -7786,6 +7803,11 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
   "Return t if CMD activates the mark."
   (declare (important-return-value t))
   (eq t (meep-command-prop-get cmd :mark-activate)))
+;;;###autoload
+(defun meep-command-is-mark-activate-repeat (cmd)
+  "Return t if CMD activates the region as a repeatable selection operation."
+  (declare (important-return-value t))
+  (eq t (meep-command-prop-get cmd :mark-activate-repeat)))
 ;;;###autoload
 (defun meep-command-is-mark-on-motion-exclude (cmd)
   "Return t if CMD should be excluded from mark-on-motion."
