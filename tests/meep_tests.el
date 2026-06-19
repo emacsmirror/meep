@@ -134,8 +134,6 @@ Also suppresses minibuffer prompts from interactive specs."
      .
      (meep-char-insert
       meep-char-replace
-      meep-char-surround-insert
-      meep-char-surround-insert-lines
       meep-clipboard-killring-copy
       meep-clipboard-killring-cut
       meep-clipboard-killring-cut-line
@@ -229,7 +227,6 @@ Also suppresses minibuffer prompts from interactive specs."
      .
      (meep-char-insert
       meep-char-replace
-      meep-char-surround-insert
       meep-clipboard-killring-copy
       meep-clipboard-killring-cut
       meep-clipboard-killring-yank-pop-stack
@@ -4250,6 +4247,189 @@ Verifies: selects innermost matching outer pair."
       (should (equal '(1 . 15) (meep-test-mark-line-column)))
       (should (equal "(b1 (c2) d3)" (meep-test-region-as-string))))))
 
+(ert-deftest selection-mark-bounds-of-char-bracket-inside-string ()
+  "Characterize: a bracket inside a string is counted by the text backend.
+
+The enclosing-bracket search scans the buffer text, not its syntax, so the
+parentheses sitting inside the string are matched in preference to the outer
+pair.  Pins the text backend explicitly - `emacs-lisp-mode' auto-resolves to the
+syntax backend, which instead skips a bracket inside a string (the flip is
+`selection-mark-bounds-of-char-syntax-skips-string-bracket')."
+  (let ((text-initial "(f \"(x)\")"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Move onto `x', inside the string's parentheses.
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state normal :command meep-move-char-next))
+      ;; Cursor: (f "(x)")
+      ;;              ^
+      ;; Mark inner with '(' using the text backend.
+      (let ((meep-syntax-backend 'text))
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-bounds-of-char-inner)
+          "("))
+      (should (equal 'visual (bray-state)))
+      ;; The inner parentheses win, not the outer pair: content is "x".
+      (should (equal '(1 . 5) (meep-test-point-line-column)))
+      (should (equal '(1 . 6) (meep-test-mark-line-column)))
+      (should (equal "x" (meep-test-region-as-string))))))
+
+(ert-deftest selection-mark-bounds-of-char-syntax-skips-string-bracket ()
+  "The syntax backend skips a bracket inside a string.
+
+With `meep-syntax-backend' set to `syntax' the parentheses inside the string are
+ignored and the enclosing pair is the outer one - the flip of
+`selection-mark-bounds-of-char-bracket-inside-string' on the same input."
+  (let ((text-initial "(f \"(x)\")"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Move onto `x', inside the string's parentheses.
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state normal :command meep-move-char-next))
+      ;; Mark inner with '(' using the syntax backend.
+      (let ((meep-syntax-backend 'syntax))
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-bounds-of-char-inner)
+          "("))
+      (should (equal 'visual (bray-state)))
+      ;; The outer pair wins: the inner parentheses are string contents.
+      (should (equal '(1 . 1) (meep-test-point-line-column)))
+      (should (equal '(1 . 8) (meep-test-mark-line-column)))
+      (should (equal "f \"(x)\"" (meep-test-region-as-string))))))
+
+(ert-deftest selection-mark-bounds-of-char-syntax-nested ()
+  "The syntax backend resolves the innermost enclosing pair, ignoring a string bracket.
+
+A nested pair whose inner content holds an open paren inside a string: the syntax
+backend nests to the inner real pair and does not count the in-string paren as a
+level.  This diverges from text - which counts it and overshoots - so the input
+exercises `meep--syntax-enclosing-pair-from-syntax' and fails if the dispatch
+falls through to text."
+  (let ((text-initial "(a (b \"(\" c) d)"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Move onto `b', inside the inner parentheses.
+      (simulate-input-for-meep
+        [?\C-u ?4]
+        '(:state normal :command meep-move-char-next))
+      (let ((meep-syntax-backend 'syntax))
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-bounds-of-char-inner)
+          "("))
+      (should (equal 'visual (bray-state)))
+      ;; The inner real pair, not widened by the `(' inside the string; the text
+      ;; backend instead overshoots to `b "(" c) d'.
+      (should (equal "b \"(\" c" (meep-test-region-as-string))))))
+
+(ert-deftest selection-mark-bounds-of-char-syntax-fallback-non-paren ()
+  "A non-paren delimiter falls back to the text backend under `syntax'.
+
+`<' has no paren syntax in `text-mode', so the syntax backend cannot match it and
+the text scan is used - the mark still succeeds."
+  (let ((text-initial "<a b>"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move inside the angle brackets.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next))
+      (let ((meep-syntax-backend 'syntax))
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-bounds-of-char-inner)
+          "<"))
+      (should (equal 'visual (bray-state)))
+      (should (equal "a b" (meep-test-region-as-string))))))
+
+(ert-deftest selection-mark-bounds-of-char-auto-backend-prog-mode ()
+  "The nil (auto) backend resolves to syntax in a `prog-mode' buffer.
+
+With `meep-syntax-backend' left at its default, `emacs-lisp-mode' uses the
+syntax backend, so a bracket inside a string is skipped without setting the
+backend explicitly."
+  (let ((text-initial "(f \"(x)\")"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state normal :command meep-move-char-next))
+      ;; Auto backend (nil) -> syntax in a prog-mode derivative.
+      (let ((meep-syntax-backend nil))
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-bounds-of-char-inner)
+          "("))
+      (should (equal 'visual (bray-state)))
+      (should (equal "f \"(x)\"" (meep-test-region-as-string))))))
+
+(ert-deftest selection-mark-bounds-of-char-auto-backend-non-prog ()
+  "The nil (auto) backend resolves to text in a non-prog-mode buffer.
+
+The mirror of `selection-mark-bounds-of-char-auto-backend-prog-mode'.  In a
+non-prog buffer the text and syntax backends cannot diverge - there is no string
+syntax for them to disagree about - so the resolution is asserted directly
+through `meep--syntax-backend-resolve' rather than through motion behaviour."
+  (with-meep-test ""
+    (text-mode)
+    (let ((meep-syntax-backend nil))
+      (should (eq 'text (meep--syntax-backend-resolve))))))
+
+(ert-deftest selection-mark-bounds-of-char-syntax-count-peels-region ()
+  "A count feeds a region back into the syntax backend (the has-region branch).
+
+`(a \"(\" (x) b)' with point on `x' and a count of 2: the first mark finds the
+inner `(x)', then the outward peel passes that region to
+`meep--syntax-enclosing-pair-from-syntax' (its has-region containment branch),
+which resolves the enclosing real pair and skips the `(' inside the string.  The
+text backend miscounts the in-string `(', so this exercises the syntax path and
+diverges from text."
+  (let ((text-initial "(a \"(\" (x) b)"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Move onto `x', inside the inner parentheses.
+      (simulate-input-for-meep
+        [?\C-u ?8]
+        '(:state normal :command meep-move-char-next))
+      (let ((meep-syntax-backend 'syntax))
+        (simulate-input-for-meep
+          [?\C-u ?2]
+          '(:state normal :command meep-region-mark-bounds-of-char-inner)
+          "("))
+      (should (equal 'visual (bray-state)))
+      ;; The outer real pair's inner content; the `(' inside the string is not a
+      ;; level, so it is skipped during the peel.
+      (should (equal "a \"(\" (x) b" (meep-test-region-as-string))))))
+
+(ert-deftest selection-mark-bounds-of-char-syntax-outer ()
+  "Mark-outer resolves the enclosing pair through the syntax backend.
+
+`(a \"(\" b)' with point on `b', marking outer with `(': the syntax backend skips
+the `(' inside the string and selects the whole real pair, delimiters included.
+The text backend starts at the in-string `(', so this exercises the syntax path
+and diverges from text."
+  (let ((text-initial "(a \"(\" b)"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Move onto `b'.
+      (simulate-input-for-meep
+        [?\C-u ?7]
+        '(:state normal :command meep-move-char-next))
+      (let ((meep-syntax-backend 'syntax))
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-bounds-of-char-outer)
+          "("))
+      (should (equal 'visual (bray-state)))
+      ;; The whole pair including delimiters; the text backend instead starts at
+      ;; the `(' inside the string.
+      (should (equal "(a \"(\" b)" (meep-test-region-as-string))))))
+
 
 ;; ---------------------------------------------------------------------------
 ;; Selection Tests - Additional Coverage
@@ -5556,6 +5736,25 @@ Verifies: pressing Return auto-detects enclosing delimiter for outer."
       (should (equal '(1 . 2) (meep-test-point-line-column)))
       (should (equal '(1 . 7) (meep-test-mark-line-column)))
       (should (equal "(b c)" (meep-test-region-as-string))))))
+
+(ert-deftest selection-mark-bounds-of-char-contextual-multi-char-wins ()
+  "Contextual mark keeps a multi-char pair over its single-char form.
+With `**' before `*' in `meep-match-bounds-of-char-contextual', the `*' candidate
+only re-pairs the `**' delimiter, so it must not supersede it, see
+`meep--bounds-supersedes-p'; the outer mark spans the whole `**...**' rather than the
+`*'-clipped `*bold*' inside it."
+  (let ((text-initial "**bold**")
+        (meep-match-bounds-of-char-contextual '(("**" . "**") ("*" . "*"))))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor inside `bold'.
+      (goto-char 4)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-bounds-of-char-outer)
+        [return])
+      (should (equal 'visual (bray-state)))
+      (should (equal "**bold**" (meep-test-region-as-string))))))
 
 (ert-deftest selection-mark-bounds-of-char-contextual-quotes ()
   "Mark contextual bounds inside quotes.
@@ -6967,10 +7166,9 @@ Verifies: selected text wrapped with ()."
       (should (equal '(1 . 6) (meep-test-point-line-column)))
       (should (equal '(1 . 0) (meep-test-mark-line-column)))
       (should (equal "hello " (meep-test-region-as-string)))
-      ;; Surround with parens.
+      ;; Surround with parens (`t x' add verb, then the delimiter).
       (simulate-input-for-meep
-        '(:state visual :command meep-char-surround-insert)
-        "(")
+        "tx(")
       (should (equal 'normal (bray-state)))
       (should (equal "(hello )world" (buffer-string))))))
 
@@ -6995,10 +7193,9 @@ Verifies: selected text wrapped with double quotes."
       (should (equal '(1 . 6) (meep-test-point-line-column)))
       (should (equal '(1 . 0) (meep-test-mark-line-column)))
       (should (equal "hello " (meep-test-region-as-string)))
-      ;; Surround with double quotes.
+      ;; Surround with double quotes (`t x' add verb, then the delimiter).
       (simulate-input-for-meep
-        '(:state visual :command meep-char-surround-insert)
-        "\"")
+        "tx\"")
       (should (equal 'normal (bray-state)))
       (should (equal "\"hello \"world" (buffer-string))))))
 
@@ -7023,12 +7220,985 @@ Verifies: selected text wrapped with []."
       (should (equal '(1 . 6) (meep-test-point-line-column)))
       (should (equal '(1 . 0) (meep-test-mark-line-column)))
       (should (equal "hello " (meep-test-region-as-string)))
-      ;; Surround with brackets.
+      ;; Surround with brackets (`t x' add verb, then the delimiter).
       (simulate-input-for-meep
-        '(:state visual :command meep-char-surround-insert)
-        "[")
+        "tx[")
       (should (equal 'normal (bray-state)))
       (should (equal "[hello ]world" (buffer-string))))))
+
+(ert-deftest surround-dispatch-add-event-direct ()
+  "A direct delimiter binding wraps with that delimiter, like `t SPC ['.
+
+Verifies: `t [' (`meep-surround-add-event') reads `[' from the invoking key and
+surrounds the region, skipping the gate's separate delimiter read."
+  (let ((text-initial "hello world"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-symbol-next))
+      (should (equal "hello " (meep-test-region-as-string)))
+      ;; `t [' wraps directly; no second key is read.
+      (simulate-input-for-meep
+        "t[")
+      (should (equal 'normal (bray-state)))
+      (should (equal "[hello ]world" (buffer-string))))))
+
+(ert-deftest surround-close-delimiter-key-canonical ()
+  "A close-bracket key wraps with the canonical open-first pair.
+
+Verifies: `t ]' / `t )' / `t }' add `[...]' / `(...)' / `{...}', identical to
+their open-bracket counterpart - the typed side must not invert the delimiters.
+Replace (`t g ]') and type-directed delete (`t c ]') resolve the same pair."
+  ;; Add: each close key wraps exactly as its opener does.
+  (dolist (entry '(("]" . "[hello ]world") (")" . "(hello )world") ("}" . "{hello }world")))
+    (with-meep-test "hello world"
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-symbol-next))
+      (should (equal "hello " (meep-test-region-as-string)))
+      (simulate-input-for-meep
+        (concat "t" (car entry)))
+      (should (equal 'normal (bray-state)))
+      (should (equal (cdr entry) (buffer-string)))))
+  ;; Replace: a close key names the destination pair, open first.
+  (with-meep-test "(hello)"
+    (text-mode)
+    (bray-mode 1)
+    (simulate-input-for-meep
+      '(:state normal :command meep-move-char-next))
+    (simulate-input-for-meep
+      "tg]")
+    (should (equal "[hello]" (buffer-string))))
+  ;; Delete by type: a close key names the pair type to strip.
+  (with-meep-test "([hello])"
+    (text-mode)
+    (bray-mode 1)
+    (simulate-input-for-meep
+      '(:state normal :command meep-move-char-next)
+      '(:state normal :command meep-move-char-next))
+    (should (equal ?h (char-after)))
+    (simulate-input-for-meep
+      "tc]")
+    (should (equal "(hello)" (buffer-string)))))
+
+(ert-deftest surround-dispatch-add-lines-event-direct ()
+  "A direct delimiter binding wraps the line's content, like `T SPC ['.
+
+Verifies: `T [' (`meep-surround-add-lines-event') reads `[' from the invoking key
+and wraps the current line's content, skipping the gate's separate read."
+  (let ((text-initial "hello"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; `T [' wraps the line directly; no second key is read.
+      (simulate-input-for-meep
+        "T[")
+      (should (equal 'normal (bray-state)))
+      (should (equal "[hello]" (buffer-string))))))
+
+(ert-deftest surround-dispatch-delete ()
+  "The surround dispatch deletes the surrounding pair on a double tap.
+
+Verifies: `meep-surround' then `t' strips the enclosing delimiters."
+  (let ((text-initial "(hello)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move inside the parens.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next))
+      (should (equal ?h (char-after)))
+      ;; `t t' double-tap deletes the surrounding pair.
+      (simulate-input-for-meep
+        "tt")
+      (should (equal 'normal (bray-state)))
+      (should (equal "hello" (buffer-string))))))
+
+(ert-deftest surround-delete-top-level-string-syntax-no-op ()
+  "Surround-delete inside a top-level string is a no-op under the `syntax' backend.
+
+A string with no enclosing bracket has no paren-syntax pair around point, and the
+`syntax' backend drops the auto-detected quote fall-backs, so `t t' finds no pair
+and leaves the buffer unchanged.  This is the deliberate, documented trade-off of
+the `syntax' backend (see `meep-syntax-backend'); the `text' backend deletes the
+quotes instead, see `surround-delete-top-level-string-text-deletes-quotes'."
+  (let ((text-initial "\"foo bar\""))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Move inside the string, onto `f'.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next))
+      (should (equal ?f (char-after)))
+      ;; Default (nil -> syntax in a prog-mode buffer) backend.
+      (let ((meep-syntax-backend nil))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal 'normal (bray-state)))
+      ;; The quotes are not deleted - the buffer is unchanged.
+      (should (equal "\"foo bar\"" (buffer-string))))))
+
+(ert-deftest surround-delete-top-level-string-text-deletes-quotes ()
+  "Surround-delete inside a top-level string strips its quotes under the `text' backend.
+
+The flip of `surround-delete-top-level-string-syntax-no-op' on the same input: the
+`text' backend keeps the auto-detected quote pair, so `t t' deletes the
+surrounding quotes."
+  (let ((text-initial "\"foo bar\""))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next))
+      (should (equal ?f (char-after)))
+      (let ((meep-syntax-backend 'text))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal 'normal (bray-state)))
+      (should (equal "foo bar" (buffer-string))))))
+
+(ert-deftest surround-dispatch-replace ()
+  "The surround dispatch replaces the surrounding pair.
+
+Verifies: `meep-surround' then `g' then a delimiter replaces the pair."
+  (let ((text-initial "(hello)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next))
+      ;; `t g [' replaces the surrounding pair to brackets (`g' is the replace key).
+      (simulate-input-for-meep
+        "tg[")
+      (should (equal 'normal (bray-state)))
+      (should (equal "[hello]" (buffer-string))))))
+
+(ert-deftest surround-dispatch-delete-by-type ()
+  "The surround dispatch deletes the surrounding pair of the read delimiter's type.
+
+Verifies: `meep-surround-delete' then `(' strips the enclosing parens even though a
+bracket pair is closer (the read delimiter is a type filter that skips it)."
+  (let ((text-initial "([hello])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move inside both pairs (point on `h'); `[]' is the closer pair.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-move-char-next))
+      (should (equal ?h (char-after)))
+      ;; `t c (' deletes the parens, skipping the closer brackets.
+      (simulate-input-for-meep
+        "tc(")
+      (should (equal 'normal (bray-state)))
+      (should (equal "[hello]" (buffer-string))))))
+
+(ert-deftest surround-dispatch-delete-lines-by-type ()
+  "Line-wise type-directed delete strips each line's outermost pair of the read type.
+
+Verifies: `meep-surround-delete-lines' (`T c') routes the `delete' action through
+the line-wise path with a single-element pairs list, stripping only that type."
+  (let ((text-initial "([x])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; `T c (' strips the line's outer parens line-wise, leaving the brackets.
+      (simulate-input-for-meep
+        "Tc(")
+      (should (equal 'normal (bray-state)))
+      (should (equal "[x]" (buffer-string))))))
+
+(ert-deftest surround-dispatch-delete-by-type-repeat ()
+  "Repeat a `t c (' type-directed delete with repeat-fu.
+
+Verifies: replaying the `t c (' keys re-runs the gate's `delete' branch, stripping
+the next enclosing pair of that type, ((x)) -> (x) -> x."
+  (require 'repeat-fu-preset-meep)
+  (let ((repeat-fu-backend (repeat-fu-preset-meep))
+        (text-initial "((x))"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Point on `x', inside both pairs.
+      (goto-char 3)
+      (simulate-input-for-meep
+        "tc(")
+      (should (equal "(x)" (buffer-string)))
+      ;; Repeat with repeat-fu; called directly because it uses
+      ;; `execute-kbd-macro' internally which cannot nest in the simulation.
+      (repeat-fu-execute 1)
+      (should (equal "x" (buffer-string))))))
+
+(ert-deftest surround-dispatch-lines-add ()
+  "The line-wise surround dispatch wraps the current line's content.
+
+Verifies: `meep-surround-lines' then a delimiter wraps the line."
+  (let ((text-initial "hello"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; `T x' is the line-wise add verb; `(' is the delimiter.
+      (simulate-input-for-meep
+        "Tx(")
+      (should (equal 'normal (bray-state)))
+      (should (equal "(hello)" (buffer-string))))))
+
+(ert-deftest surround-dispatch-alias ()
+  "An alias wraps with the pair resolved from `meep-surround-pairs'.
+
+Verifies: the add gate then an alias key (`t x *') uses the mode's delimiters.
+Aliases are reached through the gate, not bound at the top level."
+  (let ((text-initial "hello world"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (setq-local meep-surround-pairs '((bold . ("**" . "**"))))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-symbol-next))
+      (should (equal "hello " (meep-test-region-as-string)))
+      (simulate-input-for-meep
+        "tx*")
+      (should (equal 'normal (bray-state)))
+      (should (equal "**hello **world" (buffer-string))))))
+
+(ert-deftest surround-dispatch-control-char-rejected ()
+  "A control character such as `C-g' is not used as a delimiter.
+
+Verifies: `meep-surround' then `C-g' cancels rather than wrapping with ^G."
+  (let ((text-initial "hello world"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-symbol-next))
+      (simulate-input-for-meep
+        "tx"
+        "\C-g")
+      (should (equal "hello world" (buffer-string))))))
+
+(ert-deftest surround-dispatch-form-feed-rejected ()
+  "Form-feed (^L) is a control character and is not used as a delimiter.
+
+Verifies: `meep-surround' then `C-l' cancels rather than wrapping with ^L."
+  (let ((text-initial "hello world"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-symbol-next))
+      (simulate-input-for-meep
+        "tx"
+        "\C-l")
+      (should (equal "hello world" (buffer-string))))))
+
+(ert-deftest surround-dispatch-line-feed-rejected ()
+  "Line-feed (^J / `LFD') cancels rather than prompting like `RET'.
+Only `RET' / `<return>' opens the literal-pair prompt; `C-j' is left out of that
+guard so an unbound control key stays free for a later meaning.
+
+Verifies: `meep-surround' then `C-j' cancels rather than reading a pair."
+  (let ((text-initial "hello world"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-symbol-next))
+      (simulate-input-for-meep
+        "tx"
+        "\C-j")
+      (should (equal "hello world" (buffer-string))))))
+
+(ert-deftest surround-add-literal-delimiters ()
+  "Each literal delimiter key wraps with its own pair.
+Covers the keys the dedicated `surround-insert-*' tests omit - `{' via the
+symmetrical fall-back and `'' which pairs with itself, both resolved by
+`meep--surround-pair-from-key'."
+  (dolist (entry '(("{" . "{hello }world") ("'" . "'hello 'world")))
+    (with-meep-test "hello world"
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-symbol-next))
+      (should (equal "hello " (meep-test-region-as-string)))
+      (simulate-input-for-meep
+        (concat "tx" (car entry)))
+      (should (equal 'normal (bray-state)))
+      (should (equal (cdr entry) (buffer-string))))))
+
+(ert-deftest surround-add-alias-undefined-no-op ()
+  "An alias whose symbol the mode does not define wraps nothing, ASCII or not.
+A mnemonic letter alias is suppressed rather than taken literally, and the
+suppression spans the whole `[:alnum:]' class, so a non-ASCII letter alias is
+suppressed too - reporting the miss rather than wrapping with the letter itself."
+  (dolist (key '("b" "é"))
+    (with-meep-test "hello world"
+      (text-mode)
+      (bray-mode 1)
+      (setq-local meep-surround-alist '((?b . bold) (?é . emphasis)))
+      (setq-local meep-surround-pairs '((italic . ("*" . "*"))))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-symbol-next))
+      (simulate-input-for-meep
+        (concat "tx" key))
+      (should (equal "hello world" (buffer-string)))
+      (should (member "No surround for that key" (meep-test-messages))))))
+
+(ert-deftest surround-add-alias-undefined-punctuation-literal ()
+  "A punctuation alias the mode leaves undefined falls back to its literal pair.
+The backtick maps to the `code' alias; where `code' is absent it still wraps with a
+literal backtick - unlike a mnemonic letter alias, which stays suppressed."
+  (with-meep-test "hello world"
+    (text-mode)
+    (bray-mode 1)
+    ;; The default alist maps the backtick to `code'; leave `code' undefined.
+    (setq-local meep-surround-pairs '((italic . ("*" . "*"))))
+    (simulate-input-for-meep
+      '(:state normal :command meep-region-toggle)
+      '(:state visual :command meep-move-symbol-next))
+    (simulate-input-for-meep
+      "tx`")
+    (should (equal 'normal (bray-state)))
+    (should (equal "`hello `world" (buffer-string)))))
+
+(ert-deftest surround-add-function-spec ()
+  "A function-valued pair spec is called to produce the wrapping delimiters."
+  (with-meep-test "hello world"
+    (text-mode)
+    (bray-mode 1)
+    (setq-local meep-surround-alist '((?t . tag)))
+    (setq-local meep-surround-pairs (list (cons 'tag (lambda () (cons "<x>" "</x>")))))
+    (simulate-input-for-meep
+      '(:state normal :command meep-region-toggle)
+      '(:state visual :command meep-move-symbol-next))
+    (simulate-input-for-meep
+      "txt")
+    (should (equal 'normal (bray-state)))
+    (should (equal "<x>hello </x>world" (buffer-string)))))
+
+(ert-deftest surround-add-non-printable-alias ()
+  "A non-printable key bound as a configured alias resolves rather than cancelling.
+`TAB' is rejected as a literal delimiter, but a `TAB' alias must still wrap through
+`meep--surround-pair-from-event' - the keymap binds it as an alias key."
+  (with-meep-test "hello world"
+    (text-mode)
+    (bray-mode 1)
+    (setq-local meep-surround-alist '((?\t . code)))
+    (setq-local meep-surround-pairs '((code . ("`" . "`"))))
+    (simulate-input-for-meep
+      '(:state normal :command meep-region-toggle)
+      '(:state visual :command meep-move-symbol-next))
+    (simulate-input-for-meep
+      "tx\t")
+    (should (equal 'normal (bray-state)))
+    (should (equal "`hello `world" (buffer-string)))))
+
+(ert-deftest surround-add-literal-pair-prompt ()
+  "`RET' at the delimiter read prompts for an arbitrary pair; an empty close cancels.
+A typed open and close wrap the region, the close defaulting to the open's mirror;
+clearing the prefilled close submits nothing, which is rejected rather than
+wrapping one-sided, see `meep--surround-read-literal-pair'."
+  ;; A typed pair wraps the region (accept the mirrored close with `RET').
+  (with-meep-test "hello world"
+    (text-mode)
+    (bray-mode 1)
+    (simulate-input-for-meep
+      '(:state normal :command meep-region-toggle)
+      '(:state visual :command meep-move-symbol-next))
+    (simulate-input-for-meep
+      "tx\r<\r\r")
+    (should (equal 'normal (bray-state)))
+    (should (equal "<hello >world" (buffer-string))))
+  ;; Clearing the prefilled close (`DEL' then `RET') cancels, buffer left as-is.
+  (with-meep-test "hello world"
+    (text-mode)
+    (bray-mode 1)
+    (simulate-input-for-meep
+      '(:state normal :command meep-region-toggle)
+      '(:state visual :command meep-move-symbol-next))
+    (simulate-input-for-meep
+      "tx\r[\r\d\r")
+    (should (equal "hello world" (buffer-string)))))
+
+(ert-deftest surround-add-malformed-spec-no-op ()
+  "A malformed or signaling pair spec wraps nothing rather than crashing.
+A spec that is not a cons of two strings, a half-nil (literal or builder-returned)
+or empty pair, or a builder that signals all resolve to no pair - a graceful miss,
+see `meep--surround-pair-from-symbol'."
+  (dolist (key '("m" "h" "e" "B" "l"))
+    (with-meep-test "hello world"
+      (text-mode)
+      (bray-mode 1)
+      (setq-local meep-surround-alist
+                  '((?m . str) (?h . half) (?e . empty) (?B . boom) (?l . litbad)))
+      (setq-local meep-surround-pairs
+                  (list
+                   (cons 'str (lambda () "oops"))
+                   (cons 'half (lambda () (cons "x" nil)))
+                   (cons 'empty (lambda () (cons "" "")))
+                   (cons 'boom (lambda () (error "Builder failed")))
+                   (cons 'litbad '("x" . nil))))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-symbol-next))
+      (simulate-input-for-meep
+        (concat "tx" key))
+      (should (equal "hello world" (buffer-string))))))
+
+(ert-deftest surround-add-whitespace-alias ()
+  "A whitespace (`SPC') alias key resolves to its pair rather than erroring.
+The alias binds through its kbd spelling (\"SPC\"), not the raw space that
+`keymap-set' rejects, see `meep--surround-each-alias'."
+  (with-meep-test "hello world"
+    (text-mode)
+    (bray-mode 1)
+    (setq-local meep-surround-alist '((?\s . spaced)))
+    (setq-local meep-surround-pairs '((spaced . ("<" . ">"))))
+    (simulate-input-for-meep
+      '(:state normal :command meep-region-toggle)
+      '(:state visual :command meep-move-symbol-next))
+    (simulate-input-for-meep
+      "tx ")
+    (should (equal 'normal (bray-state)))
+    (should (equal "<hello >world" (buffer-string)))))
+
+(ert-deftest surround-dispatch-delete-twice ()
+  "Two `t t' deletes peel two nested pairs around point.
+
+Verifies: ([{x}]) with point on `x' becomes (x) after two deletes."
+  (let ((text-initial "([{x}])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (should (equal ?x (char-after)))
+      (simulate-input-for-meep
+        "tt"
+        "tt")
+      (should (equal "(x)" (buffer-string)))
+      (should (equal ?x (char-after))))))
+
+(ert-deftest surround-dispatch-delete-repeat ()
+  "Repeat a `t t' delete with repeat-fu (`q').
+
+Verifies: after deleting one pair, repeat-fu reproduces the delete on the
+next enclosing pair, ([{x}]) -> ([x]) -> (x)."
+  (require 'repeat-fu-preset-meep)
+  (let ((repeat-fu-backend (repeat-fu-preset-meep))
+        (text-initial "([{x}])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        "tt")
+      (should (equal "([x])" (buffer-string)))
+      ;; Repeat with repeat-fu; called directly because it uses
+      ;; `execute-kbd-macro' internally which cannot nest in the simulation.
+      (repeat-fu-execute 1)
+      (should (equal "(x)" (buffer-string))))))
+
+(ert-deftest surround-dispatch-add-repeat ()
+  "Repeat a `t x' add with repeat-fu (`q').
+
+Verifies: a `t x' delimiter add replays under repeat-fu - the named event command
+(`meep-surround-add-event') the run-time delimiter keymap routes to is recorded
+and replayed by its key sequence."
+  (require 'repeat-fu-preset-meep)
+  (let ((repeat-fu-backend (repeat-fu-preset-meep))
+        (text-initial "ab"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 1)
+      (simulate-input-for-meep
+        "tx(")
+      (should (equal "()ab" (buffer-string)))
+      ;; Repeat with repeat-fu; called directly because it uses
+      ;; `execute-kbd-macro' internally which cannot nest in the simulation.
+      (repeat-fu-execute 1)
+      (should (equal "(())ab" (buffer-string))))))
+
+;; Delete and change find the pair enclosing their anchor.  The anchor is point
+;; (the common case - the pair is removed from inside it) or, when set, an active
+;; selection (which lets the search reach a pair *outside* the selection).  An
+;; implied region a prior motion left behind is deliberately ignored, else a move
+;; that crossed a delimiter on its way in would pull the target outward.  Add, by
+;; contrast, wraps the implied region (see `surround-dispatch-add-parens').  The
+;; motion runs in its own `simulate-input-for-meep', leaving the mark set, so
+;; these pin that the verbs ignore it rather than relying on `last-command'.
+
+(ert-deftest surround-dispatch-delete-ignores-implied-region ()
+  "Delete acts around point, not the implied region from a prior motion.
+
+Verifies: after a motion whose span crosses the inner `(', `t' still deletes the
+innermost pair around point, not the outer pair enclosing the motion span."
+  (let ((text-initial "[(foo)]"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Point on the inner `('; the motion spans into `foo', leaving a mark that
+      ;; delete must not treat as a selection.
+      (goto-char 2)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-symbol-next))
+      (simulate-input-for-meep
+        "tt")
+      (should (equal "[foo]" (buffer-string))))))
+
+(ert-deftest surround-dispatch-replace-ignores-implied-region ()
+  "Change acts around point, not the implied region from a prior motion.
+
+Verifies: after a motion, `g' then `{' replaces the innermost pair around point."
+  (let ((text-initial "[(foo)]"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 2)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-symbol-next))
+      (simulate-input-for-meep
+        "tg{")
+      (should (equal "[{foo}]" (buffer-string))))))
+
+(ert-deftest surround-dispatch-delete-lines-ignores-implied-region ()
+  "Line-wise delete acts on the current line, not the implied region's span.
+
+Verifies: after a vertical motion, `T' strips only the line point lands on, not
+every line the motion spanned."
+  (let ((text-initial "(aa)\n(bb)\n(cc)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Start in line 2 and move up to line 1; the motion spans both, but
+      ;; line-wise delete acts only on line 1 (where point lands).
+      (goto-char 7)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-prev))
+      ;; `T T' (the line-wise activation key) deletes via a double-tap.
+      (simulate-input-for-meep
+        "TT")
+      (should (equal "aa\n(bb)\n(cc)" (buffer-string))))))
+
+(ert-deftest surround-dispatch-delete-active-region-finds-outer ()
+  "An active selection lets delete reach the pair enclosing the region.
+
+Verifies: a selection running from the inner `(' out past its close cannot be
+enclosed by the inner `()', so the outer `[]' is the only enclosing pair and `t'
+deletes that - the point-based default would take the inner `()' (see
+`surround-dispatch-delete-ignores-implied-region').  This pins the
+region-vs-point contrast only; the fixture returns the outer pair with or without
+the cursor-on-open behaviour, which is covered by
+`surround-replace-cursor-on-open' and
+`selection-mark-bounds-of-char-on-delimiter'."
+  (let ((text-initial "[(a)b]"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select `(a)b': it includes the inner close, so the inner `()' no longer
+      ;; encloses the whole selection.
+      (goto-char 2)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (goto-char 6)
+      (simulate-input-for-meep
+        "tt")
+      (should (equal "(a)b" (buffer-string))))))
+
+;; By-type surround (`s t' / `s T') is verb-first: the verb comes first
+;; (`g' replaces via `meep-surround-replace-by-type', `t' / `DEL' delete via
+;; `meep-surround-delete'), then a source delimiter names which pair type to act on
+;; - the nearest pair of *that* type, skipping closer pairs of other types, unlike
+;; `meep-surround' which takes the closest of any type.
+
+(ert-deftest surround-by-type-delete-targets-named-pair ()
+  "Picking a delimiter deletes that pair, skipping nearer pairs of other types.
+
+Verifies: with point inside `([{x}])', `s t t (' removes the `()', even though
+`{}' and `[]' enclose point more tightly; `s t t {' removes the middle `{}'.  The
+`t' verb deletes, the following delimiter names which type."
+  (let ((text-initial "([{x}])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        "stt(")
+      (should (equal "[{x}]" (buffer-string)))))
+  ;; A different source picks a different pair (here the middle `{}').
+  (let ((text-initial "([{x}])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        "stt{")
+      (should (equal "([x])" (buffer-string))))))
+
+(ert-deftest surround-by-type-replace-targets-named-pair ()
+  "Picking a delimiter changes that pair, skipping nearer pairs of other types.
+
+Verifies: with point inside `([{x}])', `s t g ( [' changes the `()' to `[]' - the
+`g' verb replaces, `(' names the source type, `[' the destination."
+  (let ((text-initial "([{x}])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        "stg([")
+      (should (equal "[[{x}]]" (buffer-string))))))
+
+(ert-deftest surround-region-activate-at-point-inner ()
+  "Region-activate selects the inner content of the surrounding pair.
+
+Verifies: `t d' finds the enclosing pair contextually and activates the region over
+the text between the delimiters, without editing the buffer."
+  (let ((text-initial "(hello)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 2) ; Inside the parens, on `h'.
+      (simulate-input-for-meep
+        "td")
+      (should (equal 'visual (bray-state)))
+      (should (equal "hello" (meep-test-region-as-string)))
+      ;; Never modifies the buffer.
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest surround-region-activate-by-type ()
+  "By-type region-activate selects the named pair, skipping nearer pairs.
+
+Verifies: `s t d (' activates the region over the parens' content even though `[]'
+encloses point more tightly - the read delimiter is a type filter, as for by-type
+delete."
+  (let ((text-initial "([hello])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 3) ; On `h', inside both pairs.
+      (simulate-input-for-meep
+        "std(")
+      (should (equal 'visual (bray-state)))
+      (should (equal "[hello]" (meep-test-region-as-string)))
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest surround-region-activate-count-nth ()
+  "A count selects the Nth enclosing pair's content, not the innermost.
+
+Verifies: `C-u 2 t d' in `((x))' activates the outer parens' content, leaving the
+inner pair for count 1."
+  (let ((text-initial "((x))"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 3) ; On `x'.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        "td")
+      (should (equal 'visual (bray-state)))
+      (should (equal "(x)" (meep-test-region-as-string)))
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest surround-region-activate-no-pair ()
+  "Region-activate with no surrounding pair activates nothing and leaves the buffer.
+
+Verifies: with nothing enclosing point, `t d' reports the miss without entering
+visual state."
+  (let ((text-initial "foo"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 2)
+      (simulate-input-for-meep
+        "td")
+      (should (equal 'normal (bray-state)))
+      (should-not (region-active-p))
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest surround-region-activate-works-read-only ()
+  "Region-activate selects in a read-only buffer, since it never edits.
+
+Verifies: unlike the delete / replace verbs, the command has no `*' interactive
+guard, so it still activates the region when the buffer is read-only."
+  (let ((text-initial "(hello)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 2)
+      (let ((buffer-read-only t))
+        (simulate-input-for-meep
+          "td"))
+      (should (equal 'visual (bray-state)))
+      (should (equal "hello" (meep-test-region-as-string)))
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest surround-by-type-count-selects-nth ()
+  "A numeric prefix selects the Nth enclosing pair of the named type.
+
+Verifies: in `([(x)])', `C-u 2 s t t (' deletes the 2nd enclosing `()' (the
+outer), skipping the closer `[]' of another type.  The fixture distinguishes the
+count - count 1 would give `([x])', count 2 gives `[(x)]' - so a regression to the
+innermost pair is caught (the old `((x))' fixture yielded `(x)' either way)."
+  (let ((text-initial "([(x)])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        "stt(")
+      (should (equal "[(x)]" (buffer-string))))))
+
+(ert-deftest surround-by-type-pick-does-not-leak ()
+  "The pick is one-shot: a later plain `meep-surround' still takes the closest.
+
+Verifies: after a targeted delete, `meep-surround' then `t' removes the innermost
+pair of any type, proving the picked pair did not persist."
+  (let ((text-initial "([{x}])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      ;; Target the outer `()'.
+      (simulate-input-for-meep
+        "stt(")
+      (should (equal "[{x}]" (buffer-string)))
+      ;; A plain surround delete now takes the closest pair (the `{}'), not a
+      ;; lingering `()' pick.
+      (goto-char 3)
+      (simulate-input-for-meep
+        "tt")
+      (should (equal "[x]" (buffer-string))))))
+
+(ert-deftest surround-by-type-delete-repeat ()
+  "Repeat a by-type delete with repeat-fu.
+The delete routes each source key to `meep-surround-delete-event', so this pins that
+repeat-fu records and replays it: the replayed keys re-run the dispatch.
+
+The first delete only primes repeat-fu's command history.  repeat-fu extracts the
+replay macro from its recent-command ring; interactively the replayed `q' key adds
+its own entry, but a test must call `repeat-fu-execute' directly (it runs a kbd
+macro that cannot nest in the simulation), so it leaves only the commands the test
+itself ran - prime the ring with a prior delete rather than replay from a lone one."
+  (require 'repeat-fu-preset-meep)
+  (let ((repeat-fu-backend (repeat-fu-preset-meep))
+        (text-initial "[x][y][z]"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Prime the command ring.
+      (goto-char 2)
+      (simulate-input-for-meep
+        "stt[")
+      (should (equal "x[y][z]" (buffer-string)))
+      ;; The by-type delete the repeat replays (`t' deletes, `[' names the type).
+      (goto-char 3)
+      (simulate-input-for-meep
+        "stt[")
+      (should (equal "xy[z]" (buffer-string)))
+      ;; Repeat on the third group; the replayed `s t t [' re-runs the dispatch.
+      (goto-char 4)
+      (repeat-fu-execute 1)
+      (should (equal "xyz" (buffer-string))))))
+
+(ert-deftest surround-by-type-delete-literal-repeat ()
+  "Repeat a by-type delete of a typed-literal source with repeat-fu.
+A literal source (not an alias or `meep-symmetrical-chars' entry) reaches
+`meep-surround-delete-event' through the delete reader's `[t]' catch-all, so this
+pins that its key sequence replays.  The first delete primes repeat-fu's command
+history, see `surround-by-type-delete-repeat'."
+  (require 'repeat-fu-preset-meep)
+  (let ((repeat-fu-backend (repeat-fu-preset-meep))
+        (text-initial "\"x\" \"y\" \"z\""))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Prime the command ring.  `"' is a literal source: `s t t' enters delete,
+      ;; `"' picks via the catch-all.
+      (goto-char 2)
+      (simulate-input-for-meep
+        "stt\"")
+      (should (equal "x \"y\" \"z\"" (buffer-string)))
+      ;; The by-type delete the repeat replays.
+      (goto-char 4)
+      (simulate-input-for-meep
+        "stt\"")
+      (should (equal "x y \"z\"" (buffer-string)))
+      ;; Repeat on the third group; the replayed `s t t "' re-runs the dispatch.
+      (goto-char 6)
+      (repeat-fu-execute 1)
+      (should (equal "x y z" (buffer-string))))))
+
+(ert-deftest surround-by-type-replace-repeat ()
+  "Repeat a by-type replace with repeat-fu.
+The keymap-traversed replace routes each source key to a destination map ending in
+`meep-surround-replace-by-type-event', a named command (it recovers the source from
+the key sequence rather than a closure), so this pins that repeat-fu records and
+replays it: the replayed `s t g ( [' re-runs the dispatch.
+
+The first replace only primes repeat-fu's command history, see
+`surround-by-type-delete-repeat'."
+  (require 'repeat-fu-preset-meep)
+  (let ((repeat-fu-backend (repeat-fu-preset-meep))
+        (text-initial "(a)(b)(c)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Prime the command ring.
+      (goto-char 2)
+      (simulate-input-for-meep
+        "stg([")
+      (should (equal "[a](b)(c)" (buffer-string)))
+      ;; The by-type replace the repeat replays (`g' replaces, `(' names the source
+      ;; type, `[' the destination).
+      (goto-char 5)
+      (simulate-input-for-meep
+        "stg([")
+      (should (equal "[a][b](c)" (buffer-string)))
+      ;; Repeat on the third group; the replayed `s t g ( [' re-runs the dispatch.
+      (goto-char 8)
+      (repeat-fu-execute 1)
+      (should (equal "[a][b][c]" (buffer-string))))))
+
+(ert-deftest surround-by-type-replace-prompting-source ()
+  "Replace a prompting source pair without losing the destination key.
+A function-valued source spec prompts via the minibuffer when it resolves, which
+overwrites `last-command-event'; the destination must be the key pressed after the
+source, not the prompt's terminating `RET', see
+`meep--surround-replace-by-type-from-events'."
+  (let ((meep-surround-alist '((?z . ztag)))
+        ;; A prompting source: resolving it runs a minibuffer read that clobbers
+        ;; `last-command-event', as a tag-name alias would.
+        (meep-surround-pairs
+         (list
+          (cons
+           'ztag
+           (lambda ()
+             (read-string "tag: ")
+             (cons "<z>" "</z>")))))
+        (text-initial "<z>x</z>"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      ;; `s t g' enters replace, `z' picks the source, `[' replaces with `[]'; the
+      ;; trailing `RET' answers the source prompt that fires as the replace commits.
+      (simulate-input-for-meep
+        "stgz[\r")
+      (should (equal "[x]" (buffer-string))))))
+
+(ert-deftest surround-by-type-replace-literal-source ()
+  "Replace a typed-literal source pair, reached through the transient pick path.
+A literal source (not an alias or `meep-symmetrical-chars' entry) reaches the
+destination step via the `[t]' catch-all and `meep-surround-replace-by-type-pick' -
+the transient fall-back - so this pins that its replace path works, a different
+chain than the keymap-traversed replace."
+  (let ((text-initial "\"x\" \"y\""))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 2)
+      ;; `"' is a literal source: `s t g' enters replace, `"' picks via the
+      ;; catch-all, `(' replaces with `()'.
+      (simulate-input-for-meep
+        "stg\"(")
+      (should (equal "(x) \"y\"" (buffer-string))))))
+
+(ert-deftest surround-by-type-replace-pick-repeat ()
+  "Repeat a by-type replace whose source is a typed literal, via repeat-fu.
+A literal source reaches the destination step through
+`meep-surround-replace-by-type-pick' and the named
+`meep-surround-replace-by-type-picked-event' (it reads the stashed source, not a
+closure), so this pins that the transient pick path replays too.  The first replace
+primes repeat-fu's command history, see `surround-by-type-delete-repeat'."
+  (require 'repeat-fu-preset-meep)
+  (let ((repeat-fu-backend (repeat-fu-preset-meep))
+        (text-initial "\"x\" \"y\" \"z\""))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Prime the command ring.
+      (goto-char 2)
+      (simulate-input-for-meep
+        "stg\"[")
+      (should (equal "[x] \"y\" \"z\"" (buffer-string)))
+      ;; The pick-path replace the repeat replays.
+      (goto-char 6)
+      (simulate-input-for-meep
+        "stg\"[")
+      (should (equal "[x] [y] \"z\"" (buffer-string)))
+      ;; Repeat on the third group.
+      (goto-char 10)
+      (repeat-fu-execute 1)
+      (should (equal "[x] [y] [z]" (buffer-string))))))
+
+(ert-deftest surround-by-type-command-installs-transient-map ()
+  "Drive the by-type verbs as commands, reaching their transient source map.
+The verb-first by-type verbs (`meep-surround-delete', `meep-surround-replace-by-type')
+install their source map - and, for replace, its nested destination map - under
+`set-transient-map'.  Invoking them directly as commands, rather than through the
+`s t' prefix keys the other by-type tests use, pins that the transient chain reaches
+both delete and replace."
+  ;; Delete via the command path: `(' picks `()' and strips it.
+  (let ((text-initial "([{x}])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        '(:state normal :command meep-surround-delete)
+        "(")
+      (should (equal "[{x}]" (buffer-string)))))
+  ;; Replace via the command path: `( [' changes the `()' to `[]'.
+  (let ((text-initial "([{x}])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        '(:state normal :command meep-surround-replace-by-type)
+        "([")
+      (should (equal "[[{x}]]" (buffer-string))))))
+
+;; The `s T' line-wise siblings of `s t': the verb step is the same, with each
+;; verb operating on the line's pair of the named type rather than at point.
+
+(ert-deftest surround-by-type-delete-lines ()
+  "Line-wise by-type delete strips the line's pair of the named type.
+
+Verifies: `s T t (' deletes the line's `()', skipping the closer `[]', line-wise."
+  (let ((text-initial "([x])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        "sTt(")
+      (should (equal 'normal (bray-state)))
+      (should (equal "[x]" (buffer-string))))))
+
+(ert-deftest surround-by-type-replace-lines ()
+  "Line-wise by-type replace changes the line's pair of the named type.
+
+Verifies: `s T g ( [' replaces the line's `()' with `[]', skipping the closer `[]',
+line-wise."
+  (let ((text-initial "([x])"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        "sTg([")
+      (should (equal 'normal (bray-state)))
+      (should (equal "[[x]]" (buffer-string))))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -9275,10 +10445,10 @@ Verifies: char-insert replaces active region with character."
       (should (equal '(1 . 0) (meep-test-point-line-column)))
       (should (equal ?X (char-after))))))
 
-(ert-deftest char-surround-insert-lines-basic ()
+(ert-deftest surround-add-lines-basic ()
   "Surround current line with character pair.
 
-Verifies: char-surround-insert-lines wraps line with matching delimiters."
+Verifies: `T x' (`meep-surround-add-lines') wraps the line with matching delimiters."
   (let ((text-initial "hello")
         (text-expected "(hello)"))
     (with-meep-test text-initial
@@ -9289,10 +10459,9 @@ Verifies: char-surround-insert-lines wraps line with matching delimiters."
       (should (equal '(1 . 0) (meep-test-point-line-column)))
       (should (equal 'normal (bray-state)))
       (should (equal ?h (char-after)))
-      ;; Surround current line with parens.
+      ;; Surround current line with parens (`T x' line-wise add verb).
       (simulate-input-for-meep
-        '(:state normal :command meep-char-surround-insert-lines)
-        "(")
+        "Tx(")
       ;; Line surrounded, cursor moves right due to inserted open paren.
       ;; Cursor: (hello)
       ;;          ^
@@ -9300,6 +10469,1124 @@ Verifies: char-surround-insert-lines wraps line with matching delimiters."
       (should (equal text-expected (buffer-string)))
       (should (equal '(1 . 1) (meep-test-point-line-column)))
       (should (equal ?h (char-after))))))
+
+(ert-deftest surround-replace-cursor-on-open ()
+  "Replace the surrounding pair with point on the opening delimiter.
+
+Verifies: the surround finder matches an opening delimiter at point, not only
+one strictly before it; point on the open behaves like point on the close."
+  (let ((text-initial "a(bc)d")
+        (text-expected "a[bc]d"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 2) ; On the opening "(".
+      (should (equal ?\( (char-after)))
+      ;; `t g [' replaces the surrounding pair with brackets.
+      (simulate-input-for-meep
+        "tg[")
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-replace-lines-current ()
+  "Line-wise replace swaps the current line's pair when no region is active."
+  (let ((text-initial "(a)")
+        (text-expected "[a]"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 2) ; Inside the pair.
+      ;; `T g [' replaces the line's pair with brackets.
+      (simulate-input-for-meep
+        "Tg[")
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-add-implied-region ()
+  "Add wraps an inactive mark's span, falling back to point when no mark is set.
+A set mark is the selection even when the region is inactive, so add wraps
+mark..point; with no mark, an empty pair is inserted at point.  See
+`meep--region-or-mark-bounds'."
+  ;; Inactive mark: the mark..point span is wrapped.  `mark-even-if-inactive' nil
+  ;; (a common user setting) so the span must be read from the mark directly.
+  (let ((text-initial "hello world")
+        (text-expected "hel(lo world)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (let ((mark-even-if-inactive nil))
+        (goto-char 4) ; hel|lo world
+        (set-mark (point-max))
+        (deactivate-mark)
+        (should-not (region-active-p))
+        (simulate-input-for-meep
+          "t("))
+      (should (equal text-expected (buffer-string)))))
+  ;; No mark at all: an empty pair is inserted at point.
+  (let ((text-initial "hello world")
+        (text-expected "hel()lo world"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (set-marker (mark-marker) nil)
+      (goto-char 4)
+      (should (null (mark t)))
+      (simulate-input-for-meep
+        "t(")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-add-zero-count-clamps-to-one ()
+  "A zero count wraps once, matching the delete/replace clamp.
+`C-u 0' must not be a silent no-op."
+  (let ((text-initial "foo")
+        (text-expected "(foo)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (set-mark 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        [?\C-u ?0]
+        "t(")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-add-lines-respects-partial-columns ()
+  "Line-wise add wraps only the selected columns on a partial first / last line.
+Add is constructive, so a boundary line wraps its selected span, not text outside
+the selection."
+  (let ((text-initial "abc def\nghi jkl")
+        (text-expected "abc (def)\n(ghi) jkl"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 5) ; Start at "def" on line 1.
+      (set-mark 13) ; End after "ghi" on line 2.
+      (simulate-input-for-meep
+        "T(")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-add-lines-contracts-boundary-indentation ()
+  "Line-wise add over partial lines leaves blank-space outside the delimiters."
+  (let ((text-initial "    foo bar\n  baz qux")
+        (text-expected "    foo (bar)\n  (baz) qux"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 9) ; Start at "bar" on line 1.
+      (set-mark 18) ; End after "baz" on line 2.
+      (simulate-input-for-meep
+        "T(")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-add-lines-full-lines-wrap-whole ()
+  "Line-wise add over fully-selected lines wraps each whole line."
+  (let ((text-initial "abc\nghi")
+        (text-expected "(abc)\n(ghi)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (set-mark (point-max))
+      (simulate-input-for-meep
+        "T(")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-add-lines-empty-mark-wraps-line ()
+  "Line-wise add with a set-but-unmoved mark wraps the line, like the no-mark case.
+A mark at point is an empty span, not a selection."
+  (let ((text-initial "foo")
+        (text-expected "(foo)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 2)
+      (set-mark 2) ; Mark at point: an empty (P . P) span.
+      (should (eq (mark t) (point)))
+      (simulate-input-for-meep
+        "T(")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-add-lines-region-edge-before-indent ()
+  "Line-wise add leaves the region's left edge before the indentation.
+Regression: the tail fixup shifted point/mark by the prefix length even when the
+prefix went in past the indent, not at the region edge."
+  (let ((text-initial "   foo\n   bar\n")
+        (text-expected "   [foo]\n   [bar]\n"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (set-mark 1) ; Left edge at column 0, before the indent.
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "T[")
+      (should (equal text-expected (buffer-string)))
+      (should (eq 1 (mark t))))))
+
+(ert-deftest surround-add-content-starts-with-open-delimiter ()
+  "Add tracks the inserted open with a marker, not by matching text.
+When the wrapped content begins with the same character as the open delimiter,
+point and the mark must still land just inside the inserted pair - a text-match
+on the prefix could not tell the inserted open from the identical leading
+content.  See `meep--surround-add-impl'."
+  (let ((text-initial "(abc")
+        (text-expected "((abc)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (set-mark 1) ; Left edge before the leading `('.
+      (goto-char 5) ; Right edge after `abc'.
+      (simulate-input-for-meep
+        "t(")
+      (should (equal text-expected (buffer-string)))
+      ;; Just inside the inserted outer pair, not on the delimiters.
+      (should (eq 2 (mark t)))
+      (should (eq 6 (point))))))
+
+(ert-deftest surround-add-lines-trims-blank-space ()
+  "Line-wise add wraps each line's content, not its surrounding blank-space.
+Pins the deliberate trim: leading and trailing whitespace stay outside the
+delimiters and an all-blank line is left unwrapped (an intended change from the
+old full-line wrap, which included the indentation).  See
+`meep--surround-add-impl'."
+  (let ((text-initial "  foo  \n   \n  bar")
+        (text-expected "  (foo)  \n   \n  (bar)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (set-mark (point-min))
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "T(")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-add-lines-active-region-marks-inside ()
+  "Line-wise add over an active region steps the left edge just inside the open.
+The complement of `surround-add-lines-region-edge-before-indent' (indented, where
+the edge stays put): with no indentation the prefix goes in at the edge, so the
+edge steps inside the inserted open."
+  (let ((text-initial "foo\nbar")
+        (text-expected "(foo)\n(bar)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (set-mark 1)
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "T(")
+      (should (equal text-expected (buffer-string)))
+      (should (eq 2 (mark t))))))
+
+(ert-deftest surround-add-rectangle-keeps-multi-row-selection ()
+  "Rectangle add wraps each row's column span; left corner steps inside the open.
+The left corner (mark, top-left) advances past the inserted open on its row;
+the right corner (point) stays on its original row.  See `meep--surround-add-impl'."
+  (let ((text-initial "abcd\nefgh\nijkl")
+        (text-expected "a(bc)d\ne(fg)h\ni(jk)l"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 2) ; Row 1, column 1 (before "b").
+      (set-mark 2)
+      (rectangle-mark-mode 1)
+      (goto-char 14) ; Row 3, column 3 (before "l").
+      (simulate-input-for-meep
+        "t(")
+      (should (equal text-expected (buffer-string)))
+      ;; Corners stay on their respective rows.
+      (should (eq 1 (line-number-at-pos (mark t))))
+      (should (eq 3 (line-number-at-pos (point)))))))
+
+(ert-deftest surround-add-rectangle-single-row-adjusts-left-edge ()
+  "Rectangle surround-add steps the left corner inside the open on a single row.
+Validated by inserting a marker character at each edge; the result encodes both
+positions in the expected text.
+Regression: the rectangle path skipped the left-edge adjustment, leaving
+point before the inserted open.  See `meep--surround-add-impl'."
+  (let ((text-initial "abcde")
+        (text-expected "a(|bc|)de"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        "l2" ; Move to column 3 (before "d"): one step, then repeat x2.
+        "sd" ; Activate rectangle mark; anchor at column 3.
+        "hh" ; Move left to column 1 (before "b"); point becomes left corner.
+        "t(" ; Surround: "bc" -> "(bc)"; point steps inside "(".
+        "G|" ; Insert "|" at point (just inside "(").
+        "uud" ; Activate region, swap point/mark, deactivate: now at right edge.
+        "G|") ; Insert "|" at right edge (just before ")").
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-add-rectangle-multiple-rows-adjusts-left-edge ()
+  "Rectangle surround-add over 3 rows steps the top-left corner inside the open.
+Validated by inserting a marker character at each edge; the result encodes both
+positions in the expected text.
+See `meep--surround-add-impl'."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcd\n"
+          "efgh\n"
+          "ijkl"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "a(|bc)d\n"
+          "e(fg)h\n"
+          "i(jk|)l")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        "jj" ; Move to row 3, col 0 (before "i").
+        "l2" ; Move to col 3 (before "l"): one step, then repeat x2.
+        "sd" ; Activate rectangle mark; anchor at (row 3, col 3).
+        "kk" ; Move up to row 1, col 3 (before "d").
+        "hh" ; Move left to col 1 (before "b"); point becomes top-left corner.
+        "t(" ; Surround: wraps bc/fg/jk; top-left steps inside "(" on row 1.
+        "G|" ; Insert "|" at point (just inside "(" on row 1).
+        "uud" ; Activate region, swap point/mark, deactivate: now on row 3.
+        "G|") ; Insert "|" at right edge (just before ")" on row 3).
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-add-rectangle-skips-short-row ()
+  "Rectangle add skips a row with no character in the column span.
+A row too short to reach the rectangle's columns has an empty span, so it is left
+unwrapped while the other rows wrap, see `meep--surround-row-span'."
+  (let ((text-initial "abcd\nx\nijkl")
+        (text-expected "a(bc)d\nx\ni(jk)l"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 2) ; Row 1, column 1 (before "b").
+      (set-mark 2)
+      (rectangle-mark-mode 1)
+      (goto-char 11) ; Row 3, column 3 (before "l").
+      (simulate-input-for-meep
+        "t(")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-innermost ()
+  "Delete removes the innermost enclosing pair around point."
+  (let ((text-initial "[{foo}]")
+        (text-expected "[foo]"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        "tt")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-syntax-skips-string ()
+  "Under the syntax backend, surround delete skips a string's quotes.
+
+In a `prog-mode' buffer the backend auto-resolves to `syntax', which recognizes
+only syntax-table brackets - so point inside a string finds the enclosing
+bracket, not the quotes."
+  (let ((text-initial "(foo \"bar baz\")")
+        (text-expected "foo \"bar baz\""))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      (goto-char 7) ;; inside the string, on `bar'
+      (simulate-input-for-meep
+        "tt")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-text-takes-string-quotes ()
+  "Under the text backend, surround delete in a string takes the quotes.
+
+The text backend recognizes quotes, so point inside the string deletes the
+quote pair - the contrast to `surround-delete-syntax-skips-string'."
+  (let ((text-initial "(foo \"bar baz\")")
+        (text-expected "(foo bar baz)"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      (goto-char 7)
+      (let ((meep-syntax-backend 'text))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-replace-innermost ()
+  "Replace swaps the innermost enclosing pair."
+  (let ((text-initial "[{foo}]")
+        (text-expected "[(foo)]"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        "tg(")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-replace-multi-char ()
+  "Replace swaps the surrounding pair for multi-character delimiters."
+  (let ((text-initial "(foo)")
+        (text-expected "**foo**"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 3) ; Inside "foo".
+      (setq-local meep-surround-pairs '((bold . ("**" . "**"))))
+      (simulate-input-for-meep
+        "tg*")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-count-nth ()
+  "A count deletes the Nth enclosing pair, leaving the inner one intact."
+  (let ((text-initial "[{foo}]")
+        (text-expected "{foo}"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        "tt")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-count-past-depth-clamps ()
+  "A count past the nesting depth deletes the outermost pair, not nothing."
+  (let ((text-initial "[{x}]")
+        (text-expected "{x}"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 3)
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        "tt")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-replace-count-past-depth-clamps ()
+  "A count past the nesting depth changes the outermost pair, not nothing."
+  (let ((text-initial "[{x}]")
+        (text-expected "<{x}>"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 3)
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        "tg<")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-count-clamped-to-one ()
+  "A zero count peels one layer for both line-wise and region delete."
+  (let ((text-initial "(a)")
+        (text-expected "a"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        [?\C-u ?0]
+        "TT")
+      (should (equal text-expected (buffer-string)))))
+  (let ((text-initial "(a)")
+        (text-expected "a"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 2)
+      (simulate-input-for-meep
+        [?\C-u ?0]
+        "tt")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-edges-strip-selection ()
+  "Delete strips a selection that already includes the delimiters."
+  (let ((text-initial "(foo)")
+        (text-expected "foo"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "tt")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-edges-strip-outermost ()
+  "Edges-first strips the outer pair when the whole nested span is selected.
+A selection of `[{foo}]' has the outer brackets at its own edges, so they are the
+pair stripped and the inner `{}' is kept - the contrast to the point-anchored
+`surround-delete-innermost', which takes the inner pair."
+  (let ((text-initial "[{foo}]")
+        (text-expected "{foo}"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "tt")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-sets-mark-to-opposite-end ()
+  "Delete leaves point and mark spanning the unwrapped content, region inactive.
+Point lands just inside the former open, the mark (inactive) just inside the
+former close, so the content is reachable as a region without re-selecting."
+  (let ((text-initial "[{foo}]")
+        (text-expected "[foo]"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (let ((meep-surround-mark-result t))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string)))
+      (should (eq (point) 2))
+      (should (eq (mark t) 5))
+      (should-not (region-active-p))
+      (should (equal (buffer-substring (point) (mark t)) "foo")))))
+
+(ert-deftest surround-replace-sets-mark-to-opposite-end ()
+  "Replace leaves point and mark spanning the content between the new delimiters."
+  (let ((text-initial "[{foo}]")
+        (text-expected "[(foo)]"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (let ((meep-surround-mark-result t))
+        (simulate-input-for-meep
+          "tg("))
+      (should (equal text-expected (buffer-string)))
+      (should (eq (point) 3))
+      (should (eq (mark t) 6))
+      (should (equal (buffer-substring (point) (mark t)) "foo")))))
+
+(ert-deftest surround-delete-mark-result-nil-keeps-point ()
+  "With `meep-surround-mark-result' nil, delete leaves point put and sets no mark."
+  (let ((text-initial "[{foo}]")
+        (text-expected "[foo]"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (set-marker (mark-marker) nil)
+      (goto-char 4) ; First `o' of `foo'.
+      (let ((meep-surround-mark-result nil))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string)))
+      ;; Same `o', shifted left by the removed opening delimiter.
+      (should (eq (point) 3))
+      (should (eq (char-after) ?o))
+      (should (null (mark t))))))
+
+(ert-deftest surround-delete-lines-leaves-mark-unset ()
+  "Line-wise delete does not leak a stray mark, unlike the region path."
+  (let ((text-initial "(foo)")
+        (text-expected "foo"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (set-marker (mark-marker) nil)
+      (goto-char 3)
+      (should (null (mark t)))
+      (let ((meep-surround-mark-result t))
+        (simulate-input-for-meep
+          "TT"))
+      (should (equal text-expected (buffer-string)))
+      (should (null (mark t))))))
+
+(ert-deftest surround-delete-multi-char ()
+  "Delete removes multi-character delimiters."
+  (let ((text-initial "**foo**")
+        (text-expected "foo"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (let ((meep-match-bounds-of-char-contextual '(("**" . "**"))))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-multi-char-not-split-by-single ()
+  "With both `**' and `*' recognized, point on a `**' token deletes the whole pair.
+The shorter `*' must not split the `**' token into two single delimiters, whether
+point sits on the opening or the closing `**'."
+  ;; Point on the opening `**'.
+  (let ((text-initial "**foo**")
+        (text-expected "foo"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 1)
+      (let ((meep-match-bounds-of-char-contextual '(("**" . "**") ("*" . "*"))))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string)))))
+  ;; Point on the closing `**'.
+  (let ((text-initial "**foo**")
+        (text-expected "foo"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 6)
+      (let ((meep-match-bounds-of-char-contextual '(("**" . "**") ("*" . "*"))))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-distinct-bracket-case-sensitive ()
+  "Distinct multi-char delimiters match case-sensitively, ignoring `case-fold-search'.
+A differing-case token (here `<B>') is not the configured `<b>' delimiter, so the
+valid `<b>...</b>' pair is still found - both via the outward finder and the
+edges-strip path."
+  ;; Outward finder: point inside the lowercase pair.
+  (let ((text-initial "<b>x<B>y</b>")
+        (text-expected "x<B>y"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4) ; On "x", inside the lowercase pair.
+      (let ((meep-match-bounds-of-char-contextual '(("<b>" . "</b>")))
+            (case-fold-search t))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string)))))
+  ;; Edges strip: a whole-pair selection is balanced only when the inner `<B>'
+  ;; is not counted as an opening `<b>'.
+  (let ((text-initial "<b>x<B>y</b>")
+        (text-expected "x<B>y"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (goto-char (point-max))
+      (let ((meep-match-bounds-of-char-contextual '(("<b>" . "</b>")))
+            (case-fold-search t))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-same-delimiter-across-lines ()
+  "Delete strips the nearer quotes, not a wrong enclosing bracket."
+  (let ((text-initial "foo(\"first\nbar\" \"second\")")
+        (text-expected "foo(\"first\nbar\" second)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 20) ; Inside "second".
+      (let ((meep-match-bounds-of-char-contextual '(("\"" . "\"") ("(" . ")"))))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-same-delimiter-stray-on-earlier-line ()
+  "Delete strips a single-line quote pair despite a stray quote on an earlier line."
+  (let ((text-initial "(intro \" note\nthe \"word\" x)")
+        (text-expected "(intro \" note\nthe word x)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 21) ; Inside "word".
+      (let ((meep-match-bounds-of-char-contextual '(("\"" . "\"") ("(" . ")"))))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-same-delimiter-stray-earlier-paragraph ()
+  "Delete strips a multi-line span's quotes despite a stray quote in a prior paragraph.
+The multi-line `first' span defeats the per-line opener parity, so the
+paragraph-scope fall-back runs; counting from `point-min' would let the lone quote
+in the first paragraph flip the parity and reject the real `second' pair, while
+counting from the paragraph recovers it - a blank line breaks a same-delimiter
+span."
+  (let ((text-initial "x\"y\n\nfoo(\"first\nbar\" \"second\")")
+        (text-expected "x\"y\n\nfoo(\"first\nbar\" second)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 25) ; Inside "second".
+      (let ((meep-match-bounds-of-char-contextual '(("\"" . "\"") ("(" . ")"))))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-same-delimiter-cursor-on-open ()
+  "Delete strips the pair with point on the opening quote, like point on the close."
+  (let ((text-initial "a\"bc\"d")
+        (text-expected "abcd"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 2) ; On the opening ".
+      (let ((meep-match-bounds-of-char-contextual '(("\"" . "\""))))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-same-delimiter-cursor-on-open-multiline ()
+  "Point on an opening quote finds that quote's pair, not a prior token's span."
+  (let ((text-initial "\"line one\ntwo\" plain \"three\"")
+        (text-expected "\"line one\ntwo\" plain three"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 22) ; On the opening quote of "three".
+      (let ((meep-match-bounds-of-char-contextual '(("\"" . "\""))))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-same-delimiter-cursor-on-open-after-blank ()
+  "Cursor-on-open does not pair across a blank line with a stray in a prior paragraph."
+  (let ((text-initial "p's\n\n'XY' q")
+        (text-expected "p's\n\nXY q"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 6) ; On the opening ' of 'XY'.
+      (let ((meep-match-bounds-of-char-contextual '(("'" . "'"))))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-configured-bracket-without-syntax ()
+  "Delete finds a configured bracket pair even when its open lacks paren syntax."
+  (let ((text-initial "a<x>b")
+        (text-expected "axb"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (with-syntax-table (make-syntax-table)
+        (modify-syntax-entry ?< ".")
+        (modify-syntax-entry ?> ".")
+        (let ((meep-surround-pairs '((angle . ("<" . ">"))))
+              (meep-match-bounds-of-char-contextual nil)
+              (meep-symmetrical-chars nil))
+          (goto-char 3) ; Inside the `<x>'.
+          (simulate-input-for-meep
+            "tt")
+          (should (equal text-expected (buffer-string))))))))
+
+(ert-deftest surround-delete-configured-bracket-under-syntax-backend ()
+  "The syntax backend trusts an explicit non-paren pair from `meep-surround-pairs'.
+
+The backend narrows only the generic fall-backs to paren-syntax brackets; an
+explicit configured pair is exempt and located by the text backend, so a non-paren
+`<' `>' still deletes - the contrast to `surround-delete-syntax-skips-string',
+where the quote pair is a fall-back and so is dropped."
+  (let ((text-initial "a<x>b")
+        (text-expected "axb"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (with-syntax-table (make-syntax-table)
+        (modify-syntax-entry ?< ".")
+        (modify-syntax-entry ?> ".")
+        (let ((meep-syntax-backend 'syntax)
+              (meep-surround-pairs '((angle . ("<" . ">"))))
+              (meep-match-bounds-of-char-contextual nil)
+              (meep-symmetrical-chars nil))
+          (goto-char 3) ; Inside the `<x>'.
+          (simulate-input-for-meep
+            "tt")
+          (should (equal text-expected (buffer-string))))))))
+
+(ert-deftest surround-delete-configured-quote-under-syntax-backend ()
+  "The syntax backend trusts an explicit `meep-surround-pairs' quote.
+The backend drops auto-detected quote fall-backs but exempts an explicit configured
+quote, located by the text fall-back, so it still deletes - the quote counterpart of
+`surround-delete-configured-bracket-under-syntax-backend'."
+  (let ((text-initial "foo `bar` baz")
+        (text-expected "foo bar baz"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (let ((meep-syntax-backend 'syntax)
+            (meep-surround-pairs '((code . ("`" . "`"))))
+            (meep-match-bounds-of-char-contextual nil)
+            (meep-symmetrical-chars nil))
+        (goto-char 7) ; Inside `bar`.
+        (simulate-input-for-meep
+          "tt")
+        (should (equal text-expected (buffer-string)))))))
+
+(ert-deftest surround-delete-syntax-drops-markup-fallback ()
+  "A generic markup fall-back deletes under `text' but is dropped under `syntax'.
+The backend narrows generic fall-backs to paren brackets; an auto-detected markup
+pair - not an explicit `meep-surround-pairs' entry, which would be trusted - is
+dropped under `syntax', so delete skips it.  Same fixture and point, only the
+backend differs, see `meep--surround-fallback-recognizable-p'."
+  ;; Text backend: the markup fall-back is recognized and deletes.
+  (let ((text-initial "<b>foo</b>")
+        (text-expected "foo"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (let ((meep-syntax-backend 'text)
+            (meep-match-bounds-of-char-contextual '(("<b>" . "</b>")))
+            (meep-symmetrical-chars nil))
+        (goto-char 5) ; Inside "foo".
+        (simulate-input-for-meep
+          "tt")
+        (should (equal text-expected (buffer-string))))))
+  ;; Syntax backend: the same fall-back is dropped, so delete finds nothing.
+  (let ((text-initial "<b>foo</b>"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (let ((meep-syntax-backend 'syntax)
+            (meep-match-bounds-of-char-contextual '(("<b>" . "</b>")))
+            (meep-symmetrical-chars nil))
+        (goto-char 5) ; Inside "foo".
+        (simulate-input-for-meep
+          "tt")
+        (should (equal text-initial (buffer-string)))))))
+
+(ert-deftest surround-delete-operator-bracket-tracks-syntax ()
+  "An operator `<' `>' is unrecognized for delete until given paren syntax.
+The fall-back drops a single-char bracket lacking paren syntax, so delete finds
+nothing; promoting it to paren syntax is picked up on the next delete because the
+recognition memo carries a syntax snapshot, see `meep--surround-recognition-pairs'."
+  (with-meep-test "a<x>b"
+    (text-mode)
+    (bray-mode 1)
+    (with-syntax-table (make-syntax-table)
+      (let ((meep-match-bounds-of-char-contextual nil)
+            (meep-symmetrical-chars '(("<" . ">")))
+            (meep-syntax-backend 'text))
+        ;; `<' `>' as punctuation: not a recognized bracket, so delete finds nothing.
+        (modify-syntax-entry ?< ".")
+        (modify-syntax-entry ?> ".")
+        (goto-char 3) ; Inside `<x>'.
+        (simulate-input-for-meep
+          "tt")
+        (should (equal "a<x>b" (buffer-string)))
+        ;; Promote `<' `>' to paren syntax: the next delete recomputes and strips them.
+        (modify-syntax-entry ?< "(>")
+        (modify-syntax-entry ?> ")<")
+        (goto-char 3)
+        (simulate-input-for-meep
+          "tt")
+        (should (equal "axb" (buffer-string)))))))
+
+(ert-deftest surround-delete-ignores-function-spec-pair ()
+  "A function-valued surround pair is not auto-recognized for delete.
+A function spec yields delimiters only when its key is pressed (add); it is skipped
+from the recognition set, so delete does not strip it, see
+`meep--surround-recognition-pairs'."
+  (with-meep-test "<x>foo</x>"
+    (text-mode)
+    (bray-mode 1)
+    (setq-local meep-match-bounds-of-char-contextual nil)
+    (setq-local meep-symmetrical-chars nil)
+    (setq-local meep-surround-pairs (list (cons 'tag (lambda () (cons "<x>" "</x>")))))
+    (goto-char 5) ; Inside "foo".
+    (simulate-input-for-meep
+      "tt")
+    (should (equal "<x>foo</x>" (buffer-string)))))
+
+(ert-deftest surround-delete-ignores-malformed-literal-pair ()
+  "A malformed `(OPEN . nil)' literal pair is filtered from recognition, not used.
+A forgotten close would hand the finder a nil delimiter; the recognition filter
+drops the invalid pair, so delete finds nothing rather than crashing, see
+`meep--surround-recognition-pairs'."
+  (with-meep-test "axb"
+    (text-mode)
+    (bray-mode 1)
+    (setq-local meep-match-bounds-of-char-contextual nil)
+    (setq-local meep-symmetrical-chars nil)
+    (setq-local meep-surround-pairs '((bad . ("x" . nil))))
+    (goto-char 2) ; On `x'.
+    (simulate-input-for-meep
+      "tt")
+    (should (equal "axb" (buffer-string)))))
+
+(ert-deftest surround-delete-no-pair-unchanged ()
+  "Delete with no surrounding pair reports it and leaves the buffer unchanged."
+  (let ((text-initial "foo bar"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        "tt")
+      (should (member "No surrounding pair found" (meep-test-messages)))
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest surround-delete-lines-no-pair-unchanged ()
+  "Line-wise delete with no surrounding pair reports it, like the region path.
+The per-line path tracks its own edits rather than routing through
+`meep--surround-operate-apply', so it must emit the same no-match message."
+  (let ((text-initial "foo bar"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (simulate-input-for-meep
+        "TT")
+      (should (member "No surrounding pair found" (meep-test-messages)))
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest surround-delete-single-undo ()
+  "A delete is a single undo step (both delimiters restored at once)."
+  (let ((text-initial "[{foo}]")
+        (text-expected "{foo}"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 4)
+      (undo-boundary)
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        "tt")
+      (should (equal text-expected (buffer-string)))
+      (primitive-undo 1 buffer-undo-list)
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest surround-delete-lines-skips-unwrapped ()
+  "Line-wise delete strips each wrapped line and skips the rest."
+  (let ((text-initial "(a)\nbc\n(d)")
+        (text-expected "a\nbc\nd"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "TT")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-lines-contracts-indent ()
+  "Line-wise delete leaves indentation outside the delimiters."
+  (let ((text-initial "  (a)\n  (b)")
+        (text-expected "  a\n  b"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "TT")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-lines-peels-layers ()
+  "Line-wise count peels that many outer layers."
+  (let ((text-initial "[{x}]")
+        (text-expected "x"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        "TT")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-lines-peels-spaced-layers ()
+  "Line-wise count peels nested layers even when padded by spaces."
+  (let ((text-initial "[ {x} ]")
+        (text-expected " x "))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        "TT")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-lines-peels-fewer-than-count ()
+  "Line-wise peel stops at the available layers when count exceeds the depth."
+  (let ((text-initial "(foo)\n(bar)")
+        (text-expected "foo\nbar"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        "TT")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-replace-lines ()
+  "Line-wise replace swaps each wrapped line's outermost pair."
+  (let ((text-initial "(a)\n(b)")
+        (text-expected "[a]\n[b]"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "Tg[")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-lines-no-pair-keeps-region ()
+  "A line-wise delete that edits nothing leaves the selection active."
+  (let ((text-initial "foo\nbar"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "TT")
+      (should (region-active-p))
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest surround-delete-lines-applied-deactivates-region ()
+  "A line-wise delete that edits at least one line drops the selection."
+  (let ((text-initial "(a)\nbc")
+        (text-expected "a\nbc"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "TT")
+      (should-not (region-active-p))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-rectangle ()
+  "Rectangle delete strips the pair in each row's column span."
+  (let ((text-initial "(a)\n(b)\n(c)")
+        (text-expected "a\nb\nc"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (set-mark (point-min))
+      (rectangle-mark-mode 1)
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "tt")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-rectangle-mark-result-no-stray-mark ()
+  "Rectangle delete ignores `meep-surround-mark-result' (many rows, no single span).
+With the option on, the bug left point inside the first row's content; the
+multi-target path now restores point instead of marking only the first row."
+  (let ((text-initial "(a)\n(b)\n(c)")
+        (text-expected "a\nb\nc"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (set-mark (point-min))
+      (rectangle-mark-mode 1)
+      (goto-char (point-max))
+      (let ((meep-surround-mark-result t))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string)))
+      ;; Point is restored to the last row, not jumped into the first row's content.
+      (should (eq (line-number-at-pos (point)) 3)))))
+
+(ert-deftest surround-delete-rectangle-single-row-mark-result-inert ()
+  "A single-row rectangle delete ignores `meep-surround-mark-result'.
+A one-row, one-pair rectangle collects a single target - the same shape the
+region path marks - but the rectangle path leaves the mark to the region verbs.
+The bug entered the mark branch here (no `save-mark-and-excursion' shields it),
+jumping point to the content start and setting the mark; point is now restored."
+  (let ((text-initial "(ab)")
+        (text-expected "ab"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (set-mark (point-min))
+      (rectangle-mark-mode 1)
+      (goto-char (point-max))
+      (let ((meep-surround-mark-result t))
+        (simulate-input-for-meep
+          "tt"))
+      (should (equal text-expected (buffer-string)))
+      ;; Point restored to the user's position, not jumped to the content start.
+      (should (eq (point) 3))
+      ;; No feature-set mark at the content end (the bug left the mark at 3).
+      (should-not (eq (mark t) 3)))))
+
+(ert-deftest surround-delete-rectangle-row-anchored-on-open ()
+  "A row whose column span starts on the open delimiter is edited, not skipped."
+  (let ((text-initial "(aa)\n(b)")
+        (text-expected "aa\nb"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (set-mark (point-min))
+      (rectangle-mark-mode 1)
+      (goto-char 8) ; Line 2, on the close `)' (column 2).
+      (simulate-input-for-meep
+        "tt")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest surround-delete-rectangle-pair-outside-span-skipped ()
+  "A rectangle delete skips a pair whose open lies outside the column span."
+  (let ((text-initial "x(ab)y"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 3) ; Column 2, on "a".
+      (set-mark 3)
+      (rectangle-mark-mode 1)
+      (goto-char 5) ; Column 4, on ")"; the rectangle covers only "ab".
+      (simulate-input-for-meep
+        "tt")
+      (should (member "No surrounding pair found" (meep-test-messages)))
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest surround-delete-rectangle-no-pair-keeps-region ()
+  "A rectangle delete that edits nothing leaves the selection active."
+  (let ((text-initial "foo\nbar"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (set-mark (point-min))
+      (rectangle-mark-mode 1)
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "tt")
+      (should (member "No surrounding pair found" (meep-test-messages)))
+      (should (region-active-p))
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest surround-replace-rectangle ()
+  "Rectangle replace swaps the pair in each row's column span."
+  (let ((text-initial "(a)\n(b)")
+        (text-expected "[a]\n[b]"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (set-mark (point-min))
+      (rectangle-mark-mode 1)
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "tg[")
+      (should (equal text-expected (buffer-string))))))
 
 (ert-deftest message-capture-basic ()
   "Verify message capture is working.

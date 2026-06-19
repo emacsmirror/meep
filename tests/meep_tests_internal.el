@@ -434,6 +434,60 @@ over the bundled preset."
       ;; Text scan: the stray `(' inside the string is mistaken for the open.
       (let ((meep-syntax-backend 'text))
         (should (equal '(5 . 10) (meep--syntax-enclosing-pair bounds-init bounds-limit pair)))))))
+;; ---------------------------------------------------------------------------
+;; Bounds-of-char and bounds-of-thing motion
+
+(ert-deftest bounds-of-char-calc-distinct-honours-count ()
+  "The distinct-bracket finder peels to the Nth enclosing pair, like same-delimiter.
+Previously N was dropped for brackets, so a count always returned the innermost; a
+count past the available depth clamps to the outermost."
+  (with-temp-buffer
+    (insert "((a))") ; `(' at 1 and 2, `)' at 4 and 5.
+    (let ((clamp (cons (point-min) (point-max)))
+          (anchor (cons 3 3))) ; Point inside `a'.
+      (should
+       (equal '(2 . 5) (meep--region-mark-bounds-of-char-calc anchor clamp 1 '("(" . ")") t)))
+      (should
+       (equal '(1 . 6) (meep--region-mark-bounds-of-char-calc anchor clamp 2 '("(" . ")") t)))
+      (should
+       (equal '(1 . 6) (meep--region-mark-bounds-of-char-calc anchor clamp 9 '("(" . ")") t))))))
+
+(ert-deftest bounds-of-char-calc-same-delim-cursor-on-open-honours-count ()
+  "Cursor-on-open same-delimiter peels outward by N, like the other branches.
+Previously the forward search dropped N, so every count returned the innermost
+pair.  With the open anchored at point the tokens forward alternate close, open,
+close ..., so the Nth pair's close is the (2N-1)th token and the span ends on a
+closing delimiter (counting raw tokens would land on an opening one for N > 1)."
+  (with-temp-buffer
+    (insert "a 'one' 'two' 'three' b") ; Quotes at 3, 7, 9, 13, 15, 21.
+    (let ((clamp (cons (point-min) (point-max)))
+          (anchor (cons 3 3))) ; Point on the first quote (cursor-on-open).
+      ;; N=1 is `'one'', N=2 spans out to the close of `'two'' (3 . 14), not its
+      ;; open (3 . 10) - the span must end on a closing delimiter.
+      (should
+       (equal '(3 . 8) (meep--region-mark-bounds-of-char-calc anchor clamp 1 '("'" . "'") t)))
+      (should
+       (equal '(3 . 14) (meep--region-mark-bounds-of-char-calc anchor clamp 2 '("'" . "'") t)))
+      ;; N=1 and N=2 must differ - the regression returned the innermost for both.
+      (should-not
+       (equal
+        (meep--region-mark-bounds-of-char-calc anchor clamp 1 '("'" . "'") t)
+        (meep--region-mark-bounds-of-char-calc anchor clamp 2 '("'" . "'") t)))
+      ;; A count past the available delimiters returns nil, not the outermost.
+      (should
+       (null (meep--region-mark-bounds-of-char-calc anchor clamp 9 '("'" . "'") t))))))
+
+(ert-deftest move-bounds-of-thing-echo-escapes-percent ()
+  "A `%' in a bounds-motion key or description does not crash the transient help.
+The echo escapes user-interpolated `%' before `set-transient-map' reads it through
+`format-spec', see `meep--set-transient-map-echo'."
+  (with-temp-buffer
+    (let ((meep-bounds-commands '((?% meep-move-char-next "pc%t")))
+          (inhibit-message t))
+      ;; The bare `%' in the key and description would be an invalid format spec.
+      (let ((exit (meep--move-bounds-of-thing-impl 1)))
+        (should (functionp exit))
+        (funcall exit)))))
 
 (provide 'meep_tests_internal)
 ;; Local Variables:

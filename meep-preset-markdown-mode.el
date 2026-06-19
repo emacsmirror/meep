@@ -20,7 +20,13 @@
       ("~~" . "~~") ; Strike-through (GFM).
       ("(" . ")") ; Parens.
       ("[" . "]") ; Link.
-      ("{" . "}"))))) ; Brace.
+      ("{" . "}"))) ; Brace.
+   (cons
+    'meep-surround-pairs
+    '((bold . ("**" . "**")) ; Strong emphasis.
+      (italic . ("*" . "*")) ; Emphasis.
+      (code . ("`" . "`")) ; Inline code.
+      (strike . ("~~" . "~~")))))) ; Strike-through (GFM).
 
 (provide 'meep-preset-markdown-mode)
 ;; Local Variables:

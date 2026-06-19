@@ -91,7 +91,10 @@
   ;; For convenience of re-assigning these common prefix keys.
   (let ((my-find "f ")
         ;; Extended functionality.
-        (my-ex "s "))
+        (my-ex "s ")
+        ;; Surround verbs, char-wise and line-wise.
+        (my-surround "t ")
+        (my-surround-lines "T "))
 
     (my-meep-keymap-set-many meep-state-keymap-motion
 
@@ -143,13 +146,24 @@
       '("R" . meep-clipboard-only-yank)
       (cons (concat my-ex "r") 'meep-delete-char-ring-yank)
 
-      '("t" . meep-char-surround-insert)
-      '("T" . meep-char-surround-insert-lines)
+      (cons (concat my-surround "t") 'meep-surround-delete-at-point)
+      (cons (concat my-surround-lines "T") 'meep-surround-delete-lines-at-point)
+      (cons (concat my-surround "<deletechar>") 'meep-surround-delete-at-point)
+      (cons (concat my-surround-lines "<deletechar>") 'meep-surround-delete-lines-at-point)
+      (cons (concat my-surround "c") 'meep-surround-delete)
+      (cons (concat my-surround-lines "c") 'meep-surround-delete-lines)
+      (cons (concat my-surround "d") 'meep-surround-region-activate-at-point)
+      ;; By-type surround: `s t' is a plain prefix, the verb keys lead to commands.
+      (cons (concat my-ex "t g") 'meep-surround-replace-by-type)
+      (cons (concat my-ex "t t") 'meep-surround-delete)
+      (cons (concat my-ex "t <deletechar>") 'meep-surround-delete)
+      (cons (concat my-ex "t d") 'meep-surround-region-activate)
+      (cons (concat my-ex "T g") 'meep-surround-replace-by-type-lines)
+      (cons (concat my-ex "T t") 'meep-surround-delete-lines)
+      (cons (concat my-ex "T <deletechar>") 'meep-surround-delete-lines)
 
       ;; Left Hand: Row 2.
 
-      ;; NOTE: A more comprehensive surround map is really needed.
-      ;; This is only character-level surround insertion.
       '("a" . meep-keypad)
       '("A" . my-key-free)
 
@@ -166,6 +180,8 @@
 
       '("g" . meep-char-replace)
       '("G" . meep-char-insert)
+      (cons (concat my-surround "g") 'meep-surround-replace)
+      (cons (concat my-surround-lines "g") 'meep-surround-replace-lines)
 
       ;; Left Hand: Row 3.
       '("z" . undo-only)
@@ -173,6 +189,11 @@
 
       '("x" . meep-insert)
       '("X" . meep-insert-overwrite)
+      (cons (concat my-surround "x") 'meep-surround-add)
+      (cons (concat my-surround-lines "x") 'meep-surround-add-lines)
+      ;; Space is more of a convenience.
+      (cons (concat my-surround "SPC") 'meep-surround-add)
+      (cons (concat my-surround-lines "SPC") 'meep-surround-add-lines)
 
       '("c" . meep-delete-char-ring-next)
       '("C" . meep-delete-char-ring-prev)
@@ -273,7 +294,13 @@
       '("<home>" . meep-move-line-beginning)
       (cons (concat my-ex "<home>") 'beginning-of-buffer)
       '("<end>" . meep-move-line-end)
-      (cons (concat my-ex "<end>") 'end-of-buffer)))
+      (cons (concat my-ex "<end>") 'end-of-buffer))
+
+    ;; Direct surround delimiters, avoids the need for an explicit insert for common characters.
+    (dolist (ch '("[" "]" "(" ")" "{" "}" "'" "\"" "`"))
+      (keymap-set meep-state-keymap-motion (concat my-surround ch) 'meep-surround-add-event)
+      (keymap-set
+       meep-state-keymap-motion (concat my-surround-lines ch) 'meep-surround-add-lines-event)))
 
   (my-meep-keymap-set-many meep-state-keymap-normal)
 
