@@ -103,9 +103,12 @@ Custom Variables
      strings and comments and nests correctly, but applies only to single-character
      paren-syntax brackets - every other delimiter always scans text regardless of
      this setting (same-delimiter quotes and markup never consult it; multi-character
-     and non-paren pairs fall back to ``text``).
+     and non-paren pairs fall back to ``text``).  Auto-detected quote and markup pairs
+     are dropped from surround recognition, so surround-delete inside a top-level
+     string with no enclosing bracket is a no-op (use ``text``, or configure the quote
+     in ``meep-surround-pairs``, to delete a string’s own quotes).
 
-   Affects the mark-bounds-of-char motions.
+   Affects the surround delete / replace verbs and the mark-bounds-of-char motions.
 
 ``meep-bounds-commands``: ``((112 meep-move-to-bounds-of-paragraph-inner "paragraph inner") (80 meep-move-to-bounds-of-paragraph "paragraphs") (99 meep-move-to-bounds-of-comment-inner "comment inner") (67 meep-move-to-bounds-of-comment "comment") (115 meep-move-to-bounds-of-string-inner "string inner") (83 meep-move-to-bounds-of-string "string") (108 meep-move-to-bounds-of-line-inner "line inner") (76 meep-move-to-bounds-of-line "line") (86 meep-move-to-bounds-of-visual-line-inner "visual line inner") (118 meep-move-to-bounds-of-visual-line "visual line") (100 meep-move-to-bounds-of-defun-inner "defun inner") (68 meep-move-to-bounds-of-defun "defun") (105 meep-move-to-bounds-of-list-item-inner "list item inner") (73 meep-move-to-bounds-of-list-item "list item") (46 meep-move-to-bounds-of-sentence-inner "sentence inner") (62 meep-move-to-bounds-of-sentence "sentence"))``
    List of commands for bounds movement.
@@ -126,6 +129,54 @@ Custom Variables
    So motion drops the selection.
 
    Useful for pasting while stepping over search results.
+
+``meep-surround-alist``: ``((42 . bold) (47 . italic) (96 . code) (126 . strike))``
+   Alist mapping a surround key to a semantic symbol.
+
+   Each entry is ‘(KEY . SYMBOL)’ where KEY is the character read after the
+   surround dispatch key and SYMBOL names the markup intent (e.g. ``bold``).  The
+   symbol is resolved to concrete delimiters via ``meep-surround-pairs``, typically
+   populated per ``major-mode`` by a preset.
+
+   This layer is shared across modes so a key means the same intent everywhere,
+   with the mode supplying the syntax.  A key absent from this alist is taken
+   literally as a delimiter (paired via ``meep-symmetrical-chars``).
+
+``meep-surround-pairs``: ``nil``
+   Alist mapping a surround SYMBOL to its delimiter pair.
+
+   Each entry is ‘(SYMBOL . SPEC)’ where SYMBOL matches a value in
+   ``meep-surround-alist`` and SPEC is either:
+
+     (OPEN . CLOSE)   two delimiter strings (single or multi-character), or
+     FUNCTION         a function of no arguments returning such a cons
+		      (used for prompted delimiters such as tags).
+
+   When nil, falls back to the preset for the current ``major-mode``.  A mode that
+   does not define a symbol simply has no surround for that key, rather than
+   wrapping with the wrong characters.
+
+   To add your own kind, bind a key to a new symbol in ``meep-surround-alist`` (e.g.
+   ‘(?h . heading)’), then map that symbol to its pair here for each mode - in a
+   ‘meep-preset-MODE.el’, a mode hook, or as a global default.  The symbol is
+   arbitrary; nothing is special about the built-in ``bold`` / ``italic`` / ``code`` /
+   ``strike``.
+
+   A pair declared here is also recognized by delete and replace, even a
+   single-character bracket the syntax table does not mark as one (e.g. ‘<’ ‘>’) -
+   unlike the generic fall-back, which drops such brackets to avoid mistaking
+   operators for them, see ``meep--surround-recognition-pairs``.
+
+``meep-surround-mark-result``: ``nil``
+   When non-nil, surround delete and replace mark the affected content.
+   Point is left just inside the opening delimiter and the mark just inside the
+   closing delimiter - without activating the region - so the operated-on content
+   spans point..mark and can be re-selected (e.g. with ``meep-region-activate``).
+   When nil, point and the mark are left where they were before the command.
+
+   Applies to the region / point verbs only.  The line-wise and rectangle verbs
+   operate on multiple disjoint spans with no single span to mark, so they are
+   unaffected by this option.
 
 
 Other Variables
@@ -187,7 +238,7 @@ Other Variables
 
    Used by ``meep-clipboard-register-actions``.
 
-``meep-preset-variables``: ``(meep-bounds-for-inner-comment meep-match-bounds-of-char-contextual meep-list-item-bounds)``
+``meep-preset-variables``: ``(meep-bounds-for-inner-comment meep-match-bounds-of-char-contextual meep-list-item-bounds meep-surround-pairs)``
    Variables that meep presets are allowed to set.
 
    A bundled ‘meep-preset-MODE.el’ must restrict the keys of its
@@ -269,9 +320,9 @@ Motion: Symbol/Word
 ^^^^^^^^^^^^^^^^^^^
 
 Command properties:
-Commands may have a `meep' property which is expected to be a PLIST of properties.
+Commands may have a ``meep`` property which is expected to be a PLIST of properties.
 
-:mark-on-motion
+``:mark-on-motion``
    - t: Mark on motion.
    - 'adjust: Adjust the previous motion.
 
@@ -284,10 +335,10 @@ Commands may have a `meep' property which is expected to be a PLIST of propertie
 
    - nil: don't mark on motion (same as missing).
 
-:mark-on-motion-no-repeat
+``:mark-on-motion-no-repeat``
    - t: Motions that should not be repeated, such as search.
      (used by repeat-fu).
-:digit-repeat
+``:digit-repeat``
    - t: The command is a digit command.
 
      This command can repeat other commands multiple times.
@@ -826,22 +877,175 @@ Text Editing: Character Operations
    Read a character CH and insert it or replace the active region.
    Insert ARG times.
 
-Text Editing: Surround Insert/Delete
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Text Editing: Surround
+^^^^^^^^^^^^^^^^^^^^^^
 
-``(meep-char-surround-insert CH ARG)``
-   Read a character CH and surround the selection with it.
-   Insert ARG times.
+Surround is just commands the user binds directly - separate add / replace /
+delete verbs, plus their line-wise variants - the same as the rest of the
+keymap.  Each verb reads at most one further key, the delimiter; only
+``meep-surround-delete-at-point`` (and its line-wise variant) reads none.
 
-   When there is no active region, surround the current point.
+That delimiter read is a real keymap, built at run-time from the buffer's
+``meep-surround-pairs`` (see ``meep--surround-make-delimiter-map``) and installed
+transiently (``meep--surround-set-keymap``), so it always reflects the current
+buffer and the echo leads with the verb's prompt.  Every key in the map routes
+to the verb's named event command (see ``meep--surround-event-command``), which
+resolves the invoking key with ``meep--surround-from-event``; the verb lives in
+the binding, so one command resolves any delimiter (alias, literal,
+multi-character, or ``RET`` to prompt).  The one map serves a key-bound verb and a
+direct ``M-x`` call alike - there is no prefix keymap to dispatch through.
 
-``(meep-char-surround-insert-lines CH ARG)``
-   Read a character CH and surround the selected lines with it.
-   Insert ARG times.
+Resolving the delimiter from the event - rather than capturing it in a closure -
+is what keeps each a *named* command, so ``repeat-fu`` can record and replay the
+gesture.  The dispatch commands below rely on this and do not restate it.
 
-   When multiple lines are in the active region,
-   surround each line individually.
-   When there is no active region, surround the current line.
+By-type surround is not a separate dispatch: it is the same verbs bound directly.
+``meep-surround-replace-by-type`` replaces and ``meep-surround-delete`` deletes, each
+reading a source delimiter that names which pair *type* to act on (the nearest
+pair of that type, skipping closer pairs of other types).  The default binds them
+under a plain ``s t`` / ``s T`` prefix.
+
+``(meep-surround-add)``
+   Read a delimiter, then surround the region with it.
+   Reads the delimiter through a run-time keymap of the buffer's ``meep-surround-pairs``
+   installed transiently, whether called by key or ``M-x``.  A numeric prefix is the
+   repeat count; the target is the active or implied region, see
+   ``meep--region-or-mark-bounds``.
+
+``(meep-surround-add-lines)``
+   Read a delimiter, then surround each line's content with it.
+   The line-wise variant of ``meep-surround-add``.
+
+``(meep-surround-add-event ARG)``
+   Surround the region with the delimiter named by the invoking key, ARG times.
+   A direct shortcut for ``meep-surround-add`` followed by that delimiter: bind a
+   delimiter key to this and it wraps with that delimiter immediately, with no
+   separate delimiter read.  The delimiter is ``last-command-event``, resolved by
+   ``meep--surround-from-event``; the target is the active or implied region, as for
+   ``meep-surround-add``.
+
+``(meep-surround-add-lines-event ARG)``
+   Surround each line's content with the delimiter named by the invoking key.
+   Wrap ARG times.  The line-wise variant of ``meep-surround-add-event``.
+
+``(meep-surround-replace-event ARG)``
+   Replace the surrounding pair with the delimiter named by the invoking key.
+   Replace ARG times (the nesting depth).  The replace counterpart of
+   ``meep-surround-add-event``: the delimiter is ``last-command-event``, resolved by
+   ``meep--surround-from-event``.  Routed to by the run-time delimiter keymap, and
+   bindable directly to a delimiter key.
+
+``(meep-surround-replace-lines-event ARG)``
+   Replace each line's surrounding pair with the delimiter named by the invoking key.
+   The line-wise variant of ``meep-surround-replace-event``.
+
+``(meep-surround-delete-event ARG)``
+   Delete the surrounding pair of the type named by the invoking key, ARG times.
+   The by-type delete counterpart of ``meep-surround-add-event``: the delimiter is
+   ``last-command-event``, resolved by ``meep--surround-from-event``, and names which
+   pair type to strip - a closer pair of another type is skipped.  To strip the
+   nearest pair of any type with no read, use ``meep-surround-delete-at-point``.
+
+``(meep-surround-delete-lines-event ARG)``
+   Delete each line's surrounding pair of the type named by the invoking key.
+   The line-wise variant of ``meep-surround-delete-event``.
+
+``(meep-surround-replace)``
+   Read a delimiter, then replace the surrounding pair to it.
+   A numeric prefix is the nesting depth.  Reads the delimiter through a run-time
+   keymap of the buffer's ``meep-surround-pairs`` installed transiently, whether called
+   by key or ``M-x``.
+
+``(meep-surround-replace-lines)``
+   Read a delimiter, then replace each line's surrounding pair to it.
+   The line-wise variant of ``meep-surround-replace``.
+
+``(meep-surround-delete)``
+   Read a delimiter, then delete the surrounding pair of that type.
+   Reading a delimiter parallels ``meep-surround-replace``; here it names which pair
+   type to strip, so only a surrounding pair of that type is removed - a closer pair
+   of another type is skipped, as in the by-type surround flow (``s t t``).  A numeric
+   prefix takes the Nth enclosing pair of the type.  To strip the nearest pair of any
+   type with no prompt, use ``meep-surround-delete-at-point``.
+
+``(meep-surround-delete-lines)``
+   Read a delimiter, then delete each line's surrounding pair of that type.
+   A numeric prefix strips that many nested layers per line.  The line-wise variant
+   of ``meep-surround-delete``.
+
+``(meep-surround-delete-at-point ARG)``
+   Delete the delimiters surrounding the region or point, ARG times.
+   No delimiter is read - the surrounding pair is found contextually (innermost when
+   ARG is 1, the ARG-th enclosing pair otherwise).  To choose which delimiter type to
+   strip, use ``meep-surround-delete``.
+
+``(meep-surround-delete-lines-at-point ARG)``
+   Delete each line's outermost surrounding delimiters, ARG times.
+   The line-wise variant of ``meep-surround-delete-at-point``.
+   When a region is active, every line it spans is processed; lines without a
+   surrounding pair are skipped.  ARG peels that many nested layers per line.
+
+``(meep-surround-region-activate-event ARG)``
+   Select the content of the surrounding pair of the type named by the invoking key.
+   The region-activate counterpart of ``meep-surround-delete-event``: the delimiter is
+   ``last-command-event``, resolved by ``meep--surround-from-event``, and names which pair
+   type to select - a closer pair of another type is skipped.  ARG is the nesting
+   depth.  To select the nearest pair of any type with no read, use
+   ``meep-surround-region-activate-at-point``.
+
+``(meep-surround-region-activate)``
+   Read a delimiter, then activate the region inside the surrounding pair of that type.
+   Reading a delimiter parallels ``meep-surround-delete``; here it names which pair type
+   to select, so the region is activated over the content of the nearest surrounding
+   pair of that type - a closer pair of another type is skipped.  A numeric prefix
+   takes the Nth enclosing pair.  To select the nearest pair of any type with no
+   prompt, use ``meep-surround-region-activate-at-point``.  Never modifies the buffer.
+
+``(meep-surround-region-activate-at-point ARG)``
+   Activate the region inside the delimiters surrounding the region or point, ARG times.
+   No delimiter is read - the surrounding pair is found contextually (innermost when
+   ARG is 1, the ARG-th enclosing pair otherwise).  To choose which delimiter type to
+   select, use ``meep-surround-region-activate``.
+
+``(meep-surround-replace-by-type-picked-event ARG)``
+   Replace the picked by-type source pair with the destination named by the invoking key.
+   The destination step of ``meep-surround-replace-by-type-pick``, replacing ARG times.
+   Bound only in that command's transient map; reads the stashed source from
+   ``meep--surround-replace-by-type-picked-pair``.
+
+``(meep-surround-replace-by-type-picked-lines-event ARG)``
+   Replace each line's picked by-type source pair with the destination key.
+   The line-wise variant of ``meep-surround-replace-by-type-picked-event``.
+
+``(meep-surround-replace-by-type-event ARG)``
+   Replace a surrounding pair of one type with another, both named by the key sequence.
+   The source - the pair type to act on - is the key pressed just before this one, the
+   destination is the invoking key; replace ARG times (the nesting depth).  Routed to
+   by the by-type replace source map (``meep--surround-replace-by-type-map``); the
+   keymap-traversed gesture stays a single named command.
+
+``(meep-surround-replace-by-type-lines-event ARG)``
+   Replace each line's surrounding pair of one type with another, named by the key sequence.
+   The line-wise variant of ``meep-surround-replace-by-type-event``.
+
+``(meep-surround-replace-by-type-pick)``
+   Pick a typed source delimiter, then read a destination and replace that pair.
+   The region / point variant; see ``meep--surround-replace-by-type-pick-impl``.
+
+``(meep-surround-replace-by-type-lines-pick)``
+   Pick a typed source delimiter, then replace each line's surrounding pair of that type.
+   The line-wise variant of ``meep-surround-replace-by-type-pick``.
+
+``(meep-surround-replace-by-type)``
+   Read a source delimiter, then a destination, and replace that surrounding pair.
+   The source names which pair type to replace - the nearest enclosing pair of that
+   delimiter, skipping closer pairs of other types - and the destination is the new
+   pair.  A numeric prefix is the nesting depth.  Installs the source delimiter map
+   transiently, whether called by key (the default binds ``s t g`` / ``s T g``) or ``M-x``.
+
+``(meep-surround-replace-by-type-lines)``
+   Read a source delimiter and destination, replacing each line's surrounding pair of that type.
+   The line-wise variant of ``meep-surround-replace-by-type``.
 
 Text Editing: Join Lines
 ^^^^^^^^^^^^^^^^^^^^^^^^

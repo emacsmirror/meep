@@ -16,7 +16,13 @@
       ("+" . "+") ; Strike-through.
       ("(" . ")") ; Parens.
       ("[" . "]") ; Link / bracket.
-      ("{" . "}"))))) ; Macro `{{{...}}}' / brace.
+      ("{" . "}"))) ; Macro `{{{...}}}' / brace.
+   (cons
+    'meep-surround-pairs
+    '((bold . ("*" . "*")) ; Bold.
+      (italic . ("/" . "/")) ; Italic.
+      (code . ("~" . "~")) ; Code.
+      (strike . ("+" . "+")))))) ; Strike-through.
 
 (provide 'meep-preset-org-mode)
 ;; Local Variables:

@@ -566,15 +566,20 @@ were to be made into the active region."
 (defun meep--region-or-mark-bounds ()
   "Return the active or implied region as `(BEG . END)', or nil when no mark.
 The implied region is whatever span the mark bounds while inactive (it stays
-readable via `mark-even-if-inactive').  The cut and copy verbs use this so they
-act on a selection even when it is not active.  Return nil when no mark is set,
-so the caller falls back to point."
+readable via `mark-even-if-inactive').  Verbs that operate on the region as a
+noun - cut, surround add - use this so they act on a selection even when it is
+not active, like `meep-clipboard-killring-cut'.  Return nil when no mark is set,
+so the caller falls back to point.
+
+Surround delete and replace instead search for an enclosing pair, so they anchor
+on point and do not use this, see `meep--surround-operate-region'."
   (declare (important-return-value t))
   ;; NOTE: `(mark t)' accepts any set mark - active or not, and regardless of the
-  ;; command that set it - not only a mark a motion left behind.  The mark *is* the
-  ;; selection in Emacs (`mark-even-if-inactive'), so gating on how it was set would
-  ;; surprise the user.  A stale mark left far from point therefore widens the
-  ;; region, which is consistent with treating it as a noun, so accept it.
+  ;; command that set it - not only a mark a motion left behind.  The mark *is*
+  ;; the selection in Emacs (`mark-even-if-inactive'), so gating on how it was set
+  ;; would surprise the user and diverge from `meep-clipboard-killring-cut', which
+  ;; wraps the same span.  A stale mark left far from point therefore widens the
+  ;; add, which is consistent with treating the region as a noun, so accept it.
   ;;
   ;; Read the span from the mark directly, not via `region-beginning' /
   ;; `region-end': those call `(mark)' which signals `(mark-inactive)' for a set
@@ -2229,21 +2234,46 @@ generated from `meep-symmetrical-chars' (see `meep--list-item-bounds-default')."
      (cons (character :tag "Open") (character :tag "Close"))
      (choice (repeat (string :tag "Separator")) (const :tag "Whitespace" t)))))
 
-(defun meep--symmetrical-char-other-any (ch-str)
-  "Return the symmetrical character of CH-STR or nil."
+(defun meep--symmetrical-char-entry (ch-str)
+  "Return the `meep-symmetrical-chars' `(OPEN . CLOSE)' entry CH-STR names, or nil.
+CH-STR may match either side of the entry.  The shared scan behind
+`meep--symmetrical-char-other-any' and `meep--symmetrical-char-pair-canonical',
+which differ only in what they read from the matched entry."
   (declare (important-return-value t))
   (let ((chars meep-symmetrical-chars)
         (result nil))
     (while chars
       (let ((item (pop chars)))
-        (cond
-         ((string-equal ch-str (car item))
-          (setq result (cdr item))
-          (setq chars nil))
-         ((string-equal ch-str (cdr item))
-          (setq result (car item))
-          (setq chars nil)))))
+        (when (or (string-equal ch-str (car item)) (string-equal ch-str (cdr item)))
+          (setq result item)
+          (setq chars nil))))
     result))
+
+(defun meep--symmetrical-char-other-any (ch-str)
+  "Return the symmetrical character of CH-STR or nil.
+Leads with the side opposite CH-STR (the one the bounds-of-char motion searches
+for); see `meep--symmetrical-char-pair-canonical' for the canonically-ordered pair."
+  (declare (important-return-value t))
+  (let ((entry (meep--symmetrical-char-entry ch-str)))
+    (and entry
+         (cond
+          ((string-equal ch-str (car entry))
+           (cdr entry))
+          (t
+           (car entry))))))
+
+(defun meep--symmetrical-char-pair-canonical (ch-str)
+  "Return the `(OPEN . CLOSE)' pair CH-STR belongs to, open first, or nil.
+CH-STR may name either side of a `meep-symmetrical-chars' entry, so a closing
+delimiter resolves to the same pair as its opener.  Unlike
+`meep--symmetrical-char-other-any', which leads with the typed character (for the
+bounds-of-char motion that searches for it), this orders the pair canonically -
+what surround needs to wrap a region the same way whichever side is typed.
+Conses a fresh pair rather than returning the matched entry, so a caller may
+mutate it without touching `meep-symmetrical-chars'."
+  (declare (important-return-value t))
+  (let ((entry (meep--symmetrical-char-entry ch-str)))
+    (and entry (cons (car entry) (cdr entry)))))
 
 (defcustom meep-syntax-backend nil
   "Backend for locating the bracket pair enclosing point.
@@ -2257,9 +2287,12 @@ generated from `meep-symmetrical-chars' (see `meep--list-item-bounds-default')."
   strings and comments and nests correctly, but applies only to single-character
   paren-syntax brackets - every other delimiter always scans text regardless of
   this setting (same-delimiter quotes and markup never consult it; multi-character
-  and non-paren pairs fall back to `text').
+  and non-paren pairs fall back to `text').  Auto-detected quote and markup pairs
+  are dropped from surround recognition, so surround-delete inside a top-level
+  string with no enclosing bracket is a no-op (use `text', or configure the quote
+  in `meep-surround-pairs', to delete a string's own quotes).
 
-Affects the mark-bounds-of-char motions."
+Affects the surround delete / replace verbs and the mark-bounds-of-char motions."
   :type
   '(choice
     (const :tag "Automatic (syntax in prog-mode, text elsewhere)" nil)
@@ -2302,10 +2335,35 @@ Both delimiters are quoted; shared by the depth-counting bracket scans."
   (declare (important-return-value t))
   (concat "\\(" (regexp-quote open) "\\)\\|\\(" (regexp-quote close) "\\)"))
 
-(defun meep--syntax-enclosing-pair-from-text (bounds-init bounds-limit ch-str-pair)
+(defun meep--bracket-open-token-start (open pos limit-min)
+  "Return the start of an OPEN token covering POS, or nil.
+POS may sit on the token's first character or, for a multi-character bracket,
+inside it - on the `b' of `<b>' - so each candidate start from POS down to one
+short of the token length is matched against the buffer text.  LIMIT-MIN bounds
+the scan.  Unlike the same-delimiter case there is no opener / closer ambiguity
+to resolve by parity (see `meep--region-mark-same-delim-open-start'), so the
+first covering token wins."
+  (declare (important-return-value t))
+  (let* ((len (length open))
+         (start-min (max limit-min (- pos (1- len))))
+         (start (min pos (- (point-max) len)))
+         (found nil))
+    (while (and (null found) (>= start start-min))
+      (cond
+       ((string-equal (buffer-substring-no-properties start (+ start len)) open)
+        (setq found start))
+       (t
+        (setq start (1- start)))))
+    found))
+
+(defun meep--syntax-enclosing-pair-from-text
+    (bounds-init bounds-limit ch-str-pair &optional match-at-start)
   "Find the pair of matching brackets around BOUNDS-INIT.
 BOUNDS-LIMIT constrains the search bounds.
 CH-STR-PAIR provides the bracket strings (supports multi-character brackets).
+When MATCH-AT-START is non-nil, an opening bracket sitting exactly at the start of
+BOUNDS-INIT counts as the match (cursor-on-open); when nil the search begins
+strictly outside it, so a caller peeling outward from a pair reaches the next one.
 Return the bounds or nil if no matching brackets are found."
   (declare (important-return-value t))
   ;; Match case-sensitively, as the same-delimiter branch of
@@ -2313,7 +2371,7 @@ Return the bounds or nil if no matching brackets are found."
   ;; delimiter (e.g. `<b>') does not pair with a different-case token (`<B>') under
   ;; an ambient `case-fold-search' (the default, and `t' in `html-mode').
   (let* ((case-fold-search nil)
-         (has-region (/= (car bounds-init) (cdr bounds-init)))
+         (has-region (not (eq (car bounds-init) (cdr bounds-init))))
          (open-str (car ch-str-pair))
          (close-str (cdr ch-str-pair))
          (open-str-quote (regexp-quote open-str))
@@ -2365,27 +2423,61 @@ Return the bounds or nil if no matching brackets are found."
                        (meep--incf depth))))
                    found))))))
 
-      (save-excursion
-        ;; Search from the beginning of the region.
-        (goto-char (car bounds-init))
-        (let* ((open-pos (funcall find-open-bracket-backward-fn))
-               (result nil))
-          (when open-pos
-            ;; Now find the matching closing bracket.
-            (goto-char open-pos)
-            (let ((close-pos (funcall find-close-bracket-forward-fn)))
-              (when (and close-pos
-                         (cond
-                          (has-region
-                           ;; When region is active, ensure brackets contain the region.
-                           (and (<= open-pos (car bounds-init)) (>= close-pos (cdr bounds-init))))
-                          (t
-                           ;; When no region, ensure point is between brackets.
-                           (>= close-pos (car bounds-init)))))
-                (setq result (cons open-pos close-pos)))))
-          result)))))
+      (let ((pair-from-open-fn
+             (lambda (open-pos)
+               ;; Find the matching close and validate it; nil when OPEN-POS's
+               ;; pair does not enclose BOUNDS-INIT.
+               (save-excursion
+                 (goto-char open-pos)
+                 (let ((close-pos (funcall find-close-bracket-forward-fn)))
+                   (and close-pos
+                        (cond
+                         (has-region
+                          ;; When region is active, ensure brackets contain the region.
+                          (and (<= open-pos (car bounds-init)) (>= close-pos (cdr bounds-init))))
+                         (t
+                          ;; When no region, ensure point is between brackets.
+                          (>= close-pos (car bounds-init))))
+                        (cons open-pos close-pos)))))))
+        (save-excursion
+          ;; Search from the beginning of the region.
+          (goto-char (car bounds-init))
+          (or
+           ;; Point may sit exactly on an opening bracket - or, for a
+           ;; multi-character bracket, inside its token (on the `b' of `<b>').
+           ;; `re-search-backward' only matches strictly before point, so the
+           ;; backward scan would step past this open to an outer pair (or miss
+           ;; entirely) - the close-side search has no such blind spot, so
+           ;; cursor-on-open and cursor-on-close disagreed.  Try an open token
+           ;; covering point first so the two behave alike; when its close does
+           ;; not contain BOUNDS-INIT, fall through to the backward scan below,
+           ;; which skips it for the enclosing pair.  MATCH-AT-START gates this:
+           ;; a caller peeling outward passes it nil so the open it is anchored
+           ;; on is skipped.
+           (and match-at-start
+                (let ((open-start (meep--bracket-open-token-start open-str (point) limit-min)))
+                  (and open-start (funcall pair-from-open-fn open-start))))
+           (let ((open-pos (funcall find-open-bracket-backward-fn)))
+             (and open-pos (funcall pair-from-open-fn open-pos)))))))))
 
-(defun meep--syntax-enclosing-pair-from-syntax (bounds-init bounds-limit ch-str-pair)
+(defun meep--syntax-stack-opens (ppss pos &optional at-pos)
+  "Return PPSS's open-paren positions enclosing POS, innermost-first.
+PPSS is a `syntax-ppss' result for POS.  `nth 9' lists the open positions
+outermost-first; reversing runs them innermost-first, so the first encloser found
+is the nearest.  When AT-POS is non-nil and POS is outside a string or comment
+\(`nth 8'), an open sitting at POS - not yet on the stack - is prepended as the
+innermost candidate (cursor-on-open).  Callers match the open character and
+resolve the matching close themselves (e.g. with `scan-sexps')."
+  (declare (important-return-value t))
+  (let ((opens (reverse (nth 9 ppss))))
+    (cond
+     ((and at-pos (not (nth 8 ppss)))
+      (cons pos opens))
+     (t
+      opens))))
+
+(defun meep--syntax-enclosing-pair-from-syntax
+    (bounds-init bounds-limit ch-str-pair &optional match-at-start)
   "Syntax-tree backend of `meep--syntax-enclosing-pair'.
 The enclosing pair is read from the `syntax-ppss' open-paren stack, so a bracket
 inside a string or comment is never matched.  OPEN of CH-STR-PAIR must be a
@@ -2401,18 +2493,21 @@ encloses BOUNDS-INIT within BOUNDS-LIMIT."
     (let ((has-region (not (eq beg end)))
           (ppss (syntax-ppss beg))
           (result nil))
-      ;; `nth 9' lists the open-paren positions enclosing BEG outermost-first;
-      ;; reversing runs them innermost-first, so the first to qualify is the nearest
-      ;; enclosing pair.  An outer pair is never nearer on the clamp - its open is
-      ;; smaller and its close larger - so rejecting and continuing cannot skip a
-      ;; closer in-clamp match.
-      (let ((opens (reverse (nth 9 ppss))))
+      ;; Open-paren positions enclosing BEG, innermost-first; MATCH-AT-START adds an
+      ;; open sitting at BEG (cursor-on-open), which the per-candidate char test
+      ;; below rejects when its char is not OPEN-CHAR.
+      (let ((opens (meep--syntax-stack-opens ppss beg match-at-start)))
         (while (and opens (null result))
           (let* ((open-beg (pop opens))
                  (close-end
                   (and (eq (char-after open-beg) open-char)
                        (ignore-errors
                          (scan-sexps open-beg 1)))))
+            ;; A pair qualifies when it lies within the clamp and contains
+            ;; BOUNDS-INIT; candidates run innermost-first, so the first to qualify
+            ;; is the nearest enclosing pair.  An outer pair is never nearer on the
+            ;; clamp - its open is smaller and its close larger - so rejecting and
+            ;; continuing cannot skip a closer in-clamp match.
             (when (and close-end
                        (>= open-beg clamp-min) (<= close-end clamp-max)
                        (cond
@@ -2432,7 +2527,7 @@ the syntax backend is skipped for it."
   (let ((open (car ch-str-pair)))
     (and (length= open 1) (eq (char-syntax (string-to-char open)) ?\())))
 
-(defun meep--syntax-enclosing-pair (bounds-init bounds-limit ch-str-pair)
+(defun meep--syntax-enclosing-pair (bounds-init bounds-limit ch-str-pair &optional match-at-start)
   "Return the bracket pair around BOUNDS-INIT as `(OPEN-POS . CLOSE-POS)', or nil.
 Routes to a backend per `meep-syntax-backend': the syntax tree when it is
 `syntax' and CH-STR-PAIR is a paren-syntax bracket, otherwise the text scan.  The
@@ -2440,9 +2535,81 @@ arguments and return value match `meep--syntax-enclosing-pair-from-text'."
   (declare (important-return-value t))
   (cond
    ((and (eq (meep--syntax-backend-resolve) 'syntax) (meep--syntax-pair-is-paren-p ch-str-pair))
-    (meep--syntax-enclosing-pair-from-syntax bounds-init bounds-limit ch-str-pair))
+    (meep--syntax-enclosing-pair-from-syntax bounds-init bounds-limit ch-str-pair match-at-start))
    (t
-    (meep--syntax-enclosing-pair-from-text bounds-init bounds-limit ch-str-pair))))
+    ;; NOTE: the text fall-back is not only for the `text' backend - under
+    ;; `syntax' it is what locates an explicitly configured non-paren pair (a
+    ;; quote or markup token a mode surrounds with).
+    ;; `meep--surround-recognition-pairs' drops such pairs from *auto*-detection
+    ;; under `syntax' yet still trusts the explicit config, relying on this
+    ;; fall-back to find them.  Keep it.
+    (meep--syntax-enclosing-pair-from-text bounds-init bounds-limit ch-str-pair match-at-start))))
+
+(defun meep--region-mark-same-delim-opener-p (delim pos clamp-min paragraph-parity)
+  "Return non-nil when same-delimiter DELIM sitting at POS opens a pair, by parity.
+Toggle for each DELIM from the parity-scope start up to POS; an even count (t)
+means POS opens a pair, odd (nil) means it closes one.
+
+When PARAGRAPH-PARITY is non-nil the scope starts at POS's paragraph (the first
+blank line above POS, bounded below by CLAMP-MIN), else at POS's line start.  A
+same-delimiter span never crosses a blank line, so paragraph scope is correct for
+matching a multi-line span; counting from CLAMP-MIN (`point-min' on the region
+path) instead would let a stray token in unrelated prose - an apostrophe in a
+contraction, say - flip the count and reject a real pair.  Per-line scope, the
+bounds-of-char motion default, ignores a stray on an earlier line of the same
+paragraph (so a single-line pair after such a stray is still found) but cannot
+validate a span whose open is on an earlier line."
+  (declare (important-return-value t))
+  ;; NOTE: a stray DELIM earlier on POS's *own* line flips the count, so a real
+  ;; opener reads as a closer and the pair is rejected (e.g. a literal `*' from
+  ;; `2 * 3' before `*bold*').  Both scopes count POS's line, so neither per-line
+  ;; nor the paragraph retry can exclude it.  This is inherent - a lone
+  ;; same-delimiter token has no opener / closer identity, so a literal token is
+  ;; indistinguishable from a delimiter; proximity matching cannot help, as it
+  ;; would accept an adjacent close + open (`*a* *b*') as a pair just the same.
+  ;; Rare in practice, so accept the limitation.
+  (save-excursion
+    (save-match-data
+      (let ((case-fold-search nil)
+            (parity-start
+             (cond
+              (paragraph-parity
+               (goto-char pos)
+               (cond
+                ((re-search-backward "\n[[:blank:]]*\n" clamp-min t)
+                 (match-end 0))
+                (t
+                 clamp-min)))
+              (t
+               (goto-char pos)
+               (pos-bol))))
+            (is-open t))
+        (goto-char parity-start)
+        (while (search-forward delim pos t)
+          (setq is-open (not is-open)))
+        is-open))))
+
+(defun meep--region-mark-same-delim-open-start (delim pos clamp-min)
+  "Return the start of a DELIM token covering POS that opens a pair, or nil.
+POS may sit on the token's first character or, for a multi-character DELIM,
+inside it - between the two `*' of a `**' token is an ordinary cursor position -
+so every candidate start from POS back to one short of the token length is
+matched against the buffer text.  The first covering token validated as an
+opener by paragraph-scope parity wins, see
+`meep--region-mark-same-delim-opener-p'; CLAMP-MIN bounds both."
+  (declare (important-return-value t))
+  (let* ((len (length delim))
+         (start-min (max clamp-min (- pos (1- len))))
+         (start (min pos (- (point-max) len)))
+         (found nil))
+    (while (and (null found) (>= start start-min))
+      (cond
+       ((and (string-equal (buffer-substring-no-properties start (+ start len)) delim)
+             (meep--region-mark-same-delim-opener-p delim start clamp-min t))
+        (setq found start))
+       (t
+        (setq start (1- start)))))
+    found))
 
 (defun meep--peel-outward (seed count step-fn)
   "Return the COUNT-th layer outward from SEED, clamping to the outermost.
@@ -2463,59 +2630,120 @@ layer found so far.  Return nil when SEED is nil."
           (setq i count)))))
     found))
 
-(defun meep--region-mark-same-delim-opener-p (delim pos)
-  "Return non-nil when same-delimiter DELIM sitting at POS opens a pair, by parity.
-Toggle for each DELIM from POS's line start up to POS; an even count (t) means POS
-opens a pair, odd (nil) means it closes one.
-
-Only POS's own line is counted, so a multi-line span whose open is on an earlier
-line cannot be validated, and a stray DELIM earlier on the line (a literal `*'
-from `2 * 3' before `*bold*') flips the count - inherent to telling an opener from
-a lone same-delimiter token, and rare in practice, so accept it."
-  (declare (important-return-value t))
-  (save-excursion
-    (save-match-data
-      (let ((case-fold-search nil)
-            (is-open t))
-        (goto-char pos)
-        (goto-char (pos-bol))
-        (while (search-forward delim pos t)
-          (setq is-open (not is-open)))
-        is-open))))
-
-(defun meep--region-mark-bounds-of-char-calc (bounds-init bounds-limit n ch-str-pair)
+(defun meep--region-mark-bounds-of-char-calc
+    (bounds-init bounds-limit n ch-str-pair &optional match-at-start paragraph-fallback)
   "Calculate the bounds around CH-STR-PAIR from BOUNDS-INIT N times.
-BOUNDS-LIMIT constrains the search bounds."
+BOUNDS-LIMIT constrains the search bounds.
+MATCH-AT-START, when non-nil, treats a delimiter sitting exactly at BOUNDS-INIT's
+start as the open (cursor-on-open) - for the distinct-bracket case via
+`meep--syntax-enclosing-pair', and for the same-delimiter case via the
+parity-validated branch below.
+PARAGRAPH-FALLBACK, when non-nil, also accepts a same-delimiter opener validated
+by paragraph-scope parity when the per-line scope (the bounds-of-char motion
+default, always tried first) rejects it, recovering a multi-line span whose open
+sits on an earlier line; both scopes reuse one forward+backward scan.  See
+`meep--region-mark-same-delim-opener-p'."
   (declare (important-return-value t))
   (cond
    ((string-equal (car ch-str-pair) (cdr ch-str-pair))
-    (let ((beg nil)
-          (end nil)
-          (bounds nil)
-          (case-fold-search nil))
+    (let* ((delim (car ch-str-pair))
+           (delim-len (length delim))
+           (clamp-min (car bounds-limit))
+           (beg nil)
+           (end nil)
+           (bounds nil)
+           (case-fold-search nil)
+           ;; Cursor-on-open: point sits on - or, for a multi-character delimiter,
+           ;; inside - a token that opens a pair.  `search-backward' would skip it
+           ;; (it matches strictly before point) and `search-forward' would take it
+           ;; (or its remaining characters) as the close, pairing prior tokens or
+           ;; the token's own halves; so anchor BEG on the token's start instead.
+           ;; The opener test is paragraph-scoped unconditionally - a closer earlier
+           ;; on the same line must not make the opener at point read as a close,
+           ;; which is exactly the wrong match the per-line search can otherwise
+           ;; return.  Honoured only when MATCH-AT-START is set (the outward peel
+           ;; passes it nil so it steps past its own open).
+           (cursor-on-open
+            (and match-at-start
+                 (meep--region-mark-same-delim-open-start delim (car bounds-init) clamp-min))))
       (save-match-data
         (save-excursion
-          (goto-char (cdr bounds-init))
-          (when (search-forward (cdr ch-str-pair) (cdr bounds-limit) t n)
-            (setq end (point))
-            (goto-char (car bounds-init))
-            (when (and (search-backward (car ch-str-pair) (car bounds-limit) t n)
-                       ;; Verify the match opens a pair (is not a stray closing
-                       ;; delimiter) before accepting it.
-                       (meep--region-mark-same-delim-opener-p (car ch-str-pair) (point)))
-              (setq beg (point))
-              (setq bounds (cons beg end))))))
+          (cond
+           (cursor-on-open
+            (setq beg cursor-on-open)
+            ;; Search the close past the open's own end, so the open at point is
+            ;; not re-matched as the close.  Thread N so the branch peels outward
+            ;; like the ordinary and distinct-bracket paths: with BEG anchored at
+            ;; the open, the tokens forward alternate close, open, close ... so the
+            ;; Nth pair's close is the (2N-1)th token.  Counting raw tokens (N)
+            ;; instead would land the Nth-forward token on an *opening* delimiter
+            ;; for N > 1, returning an unbalanced span that ends mid-pair; (2N-1)
+            ;; keeps the span ending on a close.  A count past the available
+            ;; delimiters returns nil (not found), matching the ordinary
+            ;; same-delimiter branch rather than clamping.
+            ;;
+            ;; Count from the open's end, *not* the region end: a token inside an
+            ;; active region takes part in the close/open alternation, so skipping
+            ;; the region span breaks the count and mispairs the open with a later
+            ;; pair's opener.  A close landing before the region end is instead
+            ;; rejected below - the pair does not contain the region.
+            (goto-char (+ beg delim-len))
+            (when (search-forward delim (cdr bounds-limit) t (1- (* 2 n)))
+              (setq end (point))
+              (when (>= end (cdr bounds-init))
+                (setq bounds (cons beg end)))))
+           (t
+            ;; Start the close search a token's-width short of the span end (for a
+            ;; multi-character delimiter), so a closing token the span end
+            ;; straddles - point between the two `*' of a closing `**' - is still
+            ;; found; any token found from there still ends past the span end.
+            (goto-char (max clamp-min (- (cdr bounds-init) (1- delim-len))))
+            (when (search-forward delim (cdr bounds-limit) t n)
+              (setq end (point))
+              (goto-char (car bounds-init))
+              (when (and (search-backward delim clamp-min t n)
+                         ;; Per-line scope first; accept paragraph scope as a
+                         ;; fall-back (the surround search) to recover a multi-line
+                         ;; span - both reuse this one forward+backward scan.
+                         (or (meep--region-mark-same-delim-opener-p delim (point) clamp-min nil)
+                             (and paragraph-fallback
+                                  (meep--region-mark-same-delim-opener-p
+                                   delim (point) clamp-min t))))
+                (setq beg (point))
+                (setq bounds (cons beg end))))))))
       bounds))
    (t
     ;; Distinct brackets: peel outward to the Nth enclosing pair (a depth count),
-    ;; matching the same-delimiter branch which honours N.  Each layer searches
-    ;; strictly outside the pair found so far, so a count past the available depth
-    ;; clamps to the outermost.
+    ;; matching the same-delimiter branch which honours N.  The first find may match
+    ;; a bracket at point (MATCH-AT-START); each further layer searches strictly
+    ;; outside the pair found so far (nil match-at-start steps past its own open), so
+    ;; a count past the available depth clamps to the outermost.
     (meep--peel-outward
-     (meep--syntax-enclosing-pair bounds-init bounds-limit ch-str-pair)
-     n
-     (lambda (layer)
-       (meep--syntax-enclosing-pair layer bounds-limit ch-str-pair))))))
+     (meep--syntax-enclosing-pair bounds-init bounds-limit ch-str-pair match-at-start) n
+     (lambda (layer) (meep--syntax-enclosing-pair layer bounds-limit ch-str-pair nil))))))
+
+(defun meep--bounds-within-pair-delimiter-p (inner-bounds outer-bounds outer-pair)
+  "Return non-nil when INNER-BOUNDS falls inside OUTER-BOUNDS' own delimiter.
+OUTER-PAIR gives the delimiter lengths.  A shorter same-character delimiter can
+mis-pair the two halves of a longer token - cursor-on-open `*' matching the two
+`*' of a `**' - and that match lands entirely within the longer pair's opening or
+closing delimiter rather than nesting inside its content.  A caller comparing
+candidate pairs rejects such a match in favour of the longer pair, honouring the
+multi-character-first order of the recognized pairs."
+  (declare (important-return-value t))
+  (let ((content-start (+ (car outer-bounds) (length (car outer-pair))))
+        (content-end (- (cdr outer-bounds) (length (cdr outer-pair)))))
+    (or (<= (cdr inner-bounds) content-start) (>= (car inner-bounds) content-end))))
+
+(defun meep--bounds-supersedes-p (bounds-test best best-pair)
+  "Return non-nil when BOUNDS-TEST should replace BEST as the innermost pair.
+BOUNDS-TEST is a fresh candidate; BEST is the kept pair so far (nil when none)
+with delimiter BEST-PAIR.  A non-nil candidate wins unless it only re-pairs
+BEST's own delimiter - a shorter same-character delimiter inside a longer token -
+so the more-specific markup is kept; see `meep--bounds-within-pair-delimiter-p'."
+  (declare (important-return-value t))
+  (and bounds-test
+       (not (and best (meep--bounds-within-pair-delimiter-p bounds-test best best-pair)))))
 
 (defun meep--region-mark-bounds-init ()
   "Return the initial bounds."
@@ -2604,8 +2832,10 @@ When INNER is non-nil, mark the inner bounds."
           (let ((bounds-test
                  (meep--region-mark-bounds-of-char-calc
                   bounds-init bounds-limit n ch-str-pair-test)))
-            ;; Only update the clamp beginning, since the end may increase and that's OK.
-            (when bounds-test
+            ;; Keep the innermost across pair types (`meep--surround-bounds-search'
+            ;; runs the same reduction).  Only update the clamp beginning, since the
+            ;; end may increase and that's OK.
+            (when (meep--bounds-supersedes-p bounds-test bounds ch-str-pair)
               (setq bounds bounds-test)
               (setcar bounds-limit (car bounds-test))
               (setq ch-str-pair ch-str-pair-test)))))
@@ -3727,6 +3957,14 @@ Each element is (key function description)."
      (function :tag "Function")
      (string :tag "Description"))))
 
+(defun meep--set-transient-map-echo (km live escaped)
+  "Activate KM as a transient map echoing LIVE then the `%'-escaped ESCAPED.
+`set-transient-map' reads its message through `format-spec', so a literal `%' in
+user-interpolated text (a bound key or a symbol name) would be an invalid spec and
+error; ESCAPED is that text, with each `%' doubled.  LIVE is fixed message text
+where a `%k' key-list hint stays live for `format-spec' to expand."
+  (set-transient-map km nil nil (concat live (string-replace "%" "%%" escaped))))
+
 (defun meep--move-bounds-of-thing-impl (n)
   "Initiate a bounds motion, forward when N is positive."
   (let ((km nil)
@@ -3738,15 +3976,13 @@ Each element is (key function description)."
       (setq prefix-arg -1))
     (dolist (cmd (reverse meep-bounds-commands))
       (keymap-set km (string (nth 0 cmd)) (nth 1 cmd)))
-    (set-transient-map km
-                       nil nil
-                       (concat
-                        (format "Jump to the %s of" (or (and (< n 0) "beginning") "end"))
-                        ": %k or any other to exit\n"
-                        ;; Escape `%' in user-bound keys / descriptions; the
-                        ;; `format-spec' in `set-transient-map' would read a bare
-                        ;; `%' as an invalid spec and error.  `%k' above stays live.
-                        (string-replace "%" "%%" (mapconcat #'identity info-text ", "))))))
+    (meep--set-transient-map-echo
+     km
+     (concat
+      (format "Jump to the %s of"
+              (or (and (< n 0) "beginning") "end"))
+      ": %k or any other to exit\n")
+     (mapconcat #'identity info-text ", "))))
 
 ;;;###autoload
 (defun meep-move-to-bounds-of-thing-beginning (arg)
@@ -5546,140 +5782,1557 @@ Insert ARG times."
 
 
 ;; ---------------------------------------------------------------------------
+;; Text Editing: Surround Configuration
+;;
+;; Surround resolves a single key-press into a delimiter pair via two layers:
+;; `meep-surround-alist' maps a key to a semantic symbol (shared across modes),
+;; and `meep-surround-pairs' maps that symbol to the concrete delimiters for the
+;; current mode (set per-mode by presets).  A key with no alias is taken
+;; literally, paired the same way as the bounds-of-char machinery.
+
+(defcustom meep-surround-alist
+  ;; Mnemonic markup characters, not initials (b/i/c/s): the key stays clear of
+  ;; the letter keys the verbs borrow (replace tracks `meep-char-replace' /
+  ;; `meep-insert-change'), so an alias never masks a verb.
+  '((?* . bold) (?/ . italic) (?\` . code) (?~ . strike))
+  "Alist mapping a surround key to a semantic symbol.
+
+Each entry is `(KEY . SYMBOL)' where KEY is the character read after the
+surround dispatch key and SYMBOL names the markup intent (e.g. `bold').  The
+symbol is resolved to concrete delimiters via `meep-surround-pairs', typically
+populated per `major-mode' by a preset.
+
+This layer is shared across modes so a key means the same intent everywhere,
+with the mode supplying the syntax.  A key absent from this alist is taken
+literally as a delimiter (paired via `meep-symmetrical-chars')."
+  :type '(alist :key-type character :value-type symbol))
+
+(defcustom meep-surround-pairs nil
+  "Alist mapping a surround SYMBOL to its delimiter pair.
+
+Each entry is `(SYMBOL . SPEC)' where SYMBOL matches a value in
+`meep-surround-alist' and SPEC is either:
+
+  (OPEN . CLOSE)   two delimiter strings (single or multi-character), or
+  FUNCTION         a function of no arguments returning such a cons
+                   (used for prompted delimiters such as tags).
+
+When nil, falls back to the preset for the current `major-mode'.  A mode that
+does not define a symbol simply has no surround for that key, rather than
+wrapping with the wrong characters.
+
+To add your own kind, bind a key to a new symbol in `meep-surround-alist' (e.g.
+`(?h . heading)'), then map that symbol to its pair here for each mode - in a
+`meep-preset-MODE.el', a mode hook, or as a global default.  The symbol is
+arbitrary; nothing is special about the built-in `bold' / `italic' / `code' /
+`strike'.
+
+A pair declared here is also recognized by delete and replace, even a
+single-character bracket the syntax table does not mark as one (e.g. `<' `>') -
+unlike the generic fall-back, which drops such brackets to avoid mistaking
+operators for them, see `meep--surround-recognition-pairs'."
+  :type
+  '(alist
+    :key-type symbol
+    :value-type (choice (cons (string :tag "Open") (string :tag "Close")) (function :tag "Builder"))))
+
+(defcustom meep-surround-mark-result nil
+  "When non-nil, surround delete and replace mark the affected content.
+Point is left just inside the opening delimiter and the mark just inside the
+closing delimiter - without activating the region - so the operated-on content
+spans point..mark and can be re-selected (e.g. with `meep-region-activate').
+When nil, point and the mark are left where they were before the command.
+
+Applies to the region / point verbs only.  The line-wise and rectangle verbs
+operate on multiple disjoint spans with no single span to mark, so they are
+unaffected by this option."
+  :type 'boolean)
+
+(defun meep--surround-pairs-config ()
+  "Return the resolved `meep-surround-pairs' alist for the current buffer."
+  (declare (important-return-value t))
+  (meep-preset-ensure-variable 'meep-surround-pairs))
+
+(defun meep--surround-pair-valid-p (pair)
+  "Return non-nil when PAIR is a `(OPEN . CLOSE)' cons of two non-empty strings.
+An empty delimiter would wrap with nothing (and match a zero-width span), so a
+builder returning `(\"\" . \"\")' is rejected rather than silently no--op'ing."
+  (declare (important-return-value t))
+  (and (consp pair)
+       (stringp (car pair))
+       (not (string-empty-p (car pair)))
+       (stringp (cdr pair))
+       (not (string-empty-p (cdr pair)))))
+
+(defun meep--surround-pair-from-symbol (sym &optional config)
+  "Return the `(OPEN . CLOSE)' pair for SYM, or nil when undefined or malformed.
+A function-valued spec is called to build the pair (for prompted delimiters); a
+cons of strings is returned as-is.  A spec - literal or builder result - that is
+not a cons of two strings yields nil, so a caller cancels cleanly rather than
+crashing or silently dropping a delimiter.
+
+A signaling builder also yields nil rather than propagating its error out of the
+interactive verb; a `quit' (the user pressing `C-g' at a builder's own prompt) is
+not caught, so it still cancels the command.
+
+CONFIG is the resolved `meep--surround-pairs-config' when the caller already holds
+it, so an alias resolution need not re-resolve it; it defaults to a fresh resolve."
+  (declare (important-return-value t))
+  (let* ((spec (cdr (assq sym (or config (meep--surround-pairs-config)))))
+         (pair
+          (cond
+           ((functionp spec)
+            (ignore-errors
+              (funcall spec)))
+           (t
+            spec))))
+    (and (meep--surround-pair-valid-p pair) pair)))
+
+(defun meep--surround-pair-from-key (ch)
+  "Return the `(OPEN . CLOSE)' surround pair for key CH, or nil.
+CH is resolved as an alias via `meep-surround-alist' (its symbol looked up in
+`meep-surround-pairs'); otherwise CH is taken literally and paired the same way
+as the bounds-of-char machinery, see `meep--region-mark-ch-pair-from-char'.
+
+A key that names an alias *unconfigured* in this buffer falls back to a literal
+pair, but only when CH is not alphanumeric.  This matters for a delimiter that
+doubles as an alias: backtick maps to the `code' alias, so without the fall-back
+`t `' (and the direct binding) would fail with \"No surround for that key\" in a
+buffer whose pairs lack a `code' entry, rather than wrapping with a literal
+backtick - so it behaves like the other eight direct delimiters, none of which is
+an alias.  An alphanumeric alias key is a mnemonic (e.g. `b' for bold), so it
+stays nil rather than wrapping with the letter itself; and a *configured* alias
+whose builder returns nil (a cancelled prompt) is also left nil, so cancelling
+still cancels."
+  (declare (important-return-value t))
+  (let* ((sym (cdr (assq ch meep-surround-alist)))
+         ;; Resolve the config once here so the alias branch does not re-resolve it
+         ;; inside `meep--surround-pair-from-symbol'; only needed when CH is an alias.
+         (config (and sym (meep--surround-pairs-config))))
+    (cond
+     ((and sym (assq sym config))
+      (meep--surround-pair-from-symbol sym config))
+     ;; Unconfigured *mnemonic* alias (an alphanumeric key like `b' for bold):
+     ;; leave it unresolved rather than wrap with the letter, see above.  The
+     ;; `[:alnum:]' class covers non-ASCII letters too (an accented or Greek
+     ;; mnemonic), so the test matches the policy, not just the ASCII subset.
+     ((and sym (string-match-p "[[:alnum:]]" (char-to-string ch)))
+      nil)
+     (t
+      ;; Order the pair `(OPEN . CLOSE)' regardless of which side CH names, so a
+      ;; close delimiter (`]') still wraps as `[...]' rather than `]...['.  The
+      ;; motion helper `meep--region-mark-ch-pair-from-char' leads with the typed
+      ;; character - right for a search that looks for it, wrong for wrapping - so
+      ;; it is the fall-back only for a non-symmetrical CH (a quote or `*'), where
+      ;; the order does not matter.
+      (or (meep--symmetrical-char-pair-canonical (char-to-string ch))
+          ;; A bracket the buffer's syntax table pairs but `meep-symmetrical-chars'
+          ;; does not (e.g. guillemets in a mode that gives them paren syntax):
+          ;; honour the syntax table, ordered by CH's own syntax class, so the wrap
+          ;; is properly paired whichever side is typed.
+          (let ((other (matching-paren ch)))
+            (and other
+                 (cond
+                  ((eq (char-syntax ch) ?\()
+                   (cons (char-to-string ch) (char-to-string other)))
+                  (t
+                   (cons (char-to-string other) (char-to-string ch))))))
+          (meep--region-mark-ch-pair-from-char ch))))))
+
+(defun meep--surround-recognizable-pair-p (pair)
+  "Return non-nil when PAIR may be auto-detected as a surrounding pair.
+A single-character bracket (distinct open/close) is excluded unless its open has
+paren syntax in the current buffer, so operators like `<' / `>' in code are not
+mistaken for brackets.  Same-delimiter and multi-character pairs are always kept.
+
+Applied only to the generic fall-back pairs; an explicitly configured
+`meep-surround-pairs' bracket bypasses this, see `meep--surround-recognition-pairs'."
+  (declare (important-return-value t))
+  (let ((open (car pair))
+        (close (cdr pair)))
+    (or
+     ;; Same delimiter both sides (quotes, markup tokens).
+     (string-equal open close)
+     ;; Multi-character delimiters (tags, markup tokens).
+     (not (and (length= open 1) (length= close 1)))
+     ;; Single-character bracket - require real paren syntax in this buffer.
+     ;; `open' is already length 1 here (the multi-character arm above).
+     (meep--syntax-pair-is-paren-p pair))))
+
+(defun meep--surround-fallback-recognizable-p (pair)
+  "Return non-nil when generic fall-back PAIR may be auto-detected in this buffer.
+PAIR must be recognizable by shape (`meep--surround-recognizable-pair-p') and, under
+the `syntax' backend, additionally be a single paren-syntax bracket.  The fall-back
+eligibility predicate for `meep--surround-recognition-pairs', which owns the policy
+and its rationale; the mechanism that *locates* a recognized pair is
+`meep--syntax-enclosing-pair'."
+  (declare (important-return-value t))
+  (and (meep--surround-recognizable-pair-p pair)
+       (or (not (eq (meep--syntax-backend-resolve) 'syntax)) (meep--syntax-pair-is-paren-p pair))))
+
+(defvar-local meep--surround-recognition-pairs-cache nil
+  "Buffer-local memo `(INPUTS . PAIRS)' for `meep--surround-recognition-pairs'.
+INPUTS is the resolved configuration PAIRS derives from, plus a snapshot of the
+syntax class of each single-character fall-back delimiter; the memo is reused while
+INPUTS stays `equal', so a preset switch, a `setq' of a source variable, or a
+`modify-syntax-entry' that flips a tracked bracket's paren syntax at run-time
+recomputes.")
+
+(defun meep--surround-recognition-pairs ()
+  "Return the `(OPEN . CLOSE)' string pairs surround can recognize.
+Combines the literal pairs of `meep-surround-pairs' (skipping prompted,
+function-valued entries) with `meep-match-bounds-of-char-contextual' and
+`meep-symmetrical-chars'.  Duplicates are removed (the earlier entry wins) and
+the result is ordered longest-delimiter-first, so the more specific markup wins.
+
+A `meep-surround-pairs' entry is an explicit choice, so it is trusted as-is - a
+mode may surround with a bracket the syntax table does not mark as one (e.g. `<'
+`>').  The generic fall-backs instead drop single-character brackets lacking
+paren syntax, so operators are not mistaken for brackets, see
+`meep--surround-recognizable-pair-p'.
+
+Under the `syntax' backend (see `meep-syntax-backend') the generic fall-backs are
+narrowed to single-character paren-syntax brackets, so auto-detected quotes and
+markup are dropped and point inside a string lands on the enclosing real bracket.
+An explicit `meep-surround-pairs' entry is still trusted; a non-paren pair it
+names is located by the text backend, see `meep--syntax-enclosing-pair'.
+
+The result is memoized per buffer, see `meep--surround-recognition-pairs-cache'."
+  (declare (important-return-value t))
+  ;; Resolve the inputs once - they key the memo and feed the build, so a config
+  ;; change recomputes without re-running the `seq-filter' / `delete-dups' on every
+  ;; surround command.  `major-mode' and `meep-syntax-backend' together fix the
+  ;; resolved backend (`meep--syntax-backend-resolve').
+  (let* ((configured-src (meep--surround-pairs-config))
+         (contextual (meep-preset-ensure-variable 'meep-match-bounds-of-char-contextual))
+         ;; Snapshot each single-character fall-back open delimiter's syntax class, so
+         ;; a `modify-syntax-entry' that flips a bracket's paren syntax at run-time
+         ;; (no mode change) invalidates the memo - the fall-back filter consults it,
+         ;; see `meep--surround-recognizable-pair-p' / `meep--syntax-pair-is-paren-p'.
+         (syntax-snapshot
+          (mapcar
+           (lambda (pair)
+             (let ((open (car pair)))
+               (and (length= open 1) (char-syntax (string-to-char open)))))
+           (append contextual meep-symmetrical-chars)))
+         ;; The stored key is a *copy* (made below, at store time): the memo
+         ;; compares with `equal', so keying on the live objects would compare an
+         ;; in-place mutation (a `setcdr' / `setf' of an existing entry) against
+         ;; itself and never invalidate.  Comparing the live lists against the
+         ;; frozen copy still detects the mutation - `equal' is structural - so
+         ;; the copy is not repeated on every cache hit.
+         (inputs
+          (list
+           major-mode
+           meep-syntax-backend
+           configured-src
+           contextual
+           meep-symmetrical-chars
+           syntax-snapshot)))
+    (cond
+     ((and meep--surround-recognition-pairs-cache
+           (equal (car meep--surround-recognition-pairs-cache) inputs))
+      (cdr meep--surround-recognition-pairs-cache))
+     (t
+      ;; Keep only `(OPEN . CLOSE)' string pairs; a function-valued (prompted)
+      ;; entry or a malformed spec cannot be recognized, see
+      ;; `meep--surround-pair-valid-p'.
+      (let* ((configured
+              (mapcar
+               #'cdr
+               (seq-filter
+                (lambda (entry) (meep--surround-pair-valid-p (cdr entry))) configured-src)))
+             ;; The generic fall-backs are filtered by the backend's eligibility
+             ;; policy, see `meep--surround-fallback-recognizable-p'.
+             (fallbacks
+              (seq-filter
+               #'meep--surround-fallback-recognizable-p
+               (append contextual meep-symmetrical-chars)))
+             ;; Trust the explicit config; both parts are freshly consed, so
+             ;; `delete-dups' and `sort' may mutate the spine safely.
+             ;;
+             ;; Longest delimiters first: the innermost-pair reduction relies on a
+             ;; longer token being searched before a shorter one that could re-pair
+             ;; its halves (`**' before `*'), see `meep--bounds-supersedes-p' and
+             ;; the clamp narrowing in `meep--surround-bounds-search'.  The
+             ;; configured / fall-back concatenation does not guarantee that on its
+             ;; own - a configured single-character delimiter would precede a
+             ;; longer fall-back - so impose the order here.  The sort is stable,
+             ;; so between equal lengths the config still wins.
+             (pairs
+              (sort (delete-dups (append configured fallbacks))
+                    (lambda (a b)
+                      (> (max (length (car a)) (length (cdr a)))
+                         (max (length (car b)) (length (cdr b))))))))
+        ;; Freeze the key so a later in-place config mutation compares unequal,
+        ;; see the `inputs' note above.
+        (setq meep--surround-recognition-pairs-cache (cons (copy-tree inputs) pairs))
+        pairs)))))
+
+
+;; ---------------------------------------------------------------------------
+;; Text Editing: Surround Finder
+;;
+;; Locate the delimiter pair around an anchor for delete/replace.  The same
+;; finder serves both the point-anchored (innermost) and line-anchored
+;; (outermost) cases: it prefers the pair formed by the anchor's own edges,
+;; falling back to an outward search for the nearest enclosing pair.  A
+;; line-anchored caller passes the line's content as the anchor and the line as
+;; the search clamp, so the outward search finds nothing and only the
+;; edges-first case can match (cleanly wrapped lines).
+
+(defun meep--surround-edges-balanced-p (inner-beg inner-end open close)
+  "Return non-nil when OPEN left of INNER-BEG pairs with CLOSE right of INNER-END.
+INNER-BEG..INNER-END is the span between the two delimiters; it must be balanced
+so the outer OPEN pairs with the outer CLOSE rather than a delimiter inside."
+  (declare (important-return-value t))
+  (save-excursion
+    (save-match-data
+      (cond
+       ;; Same delimiter both sides (quotes, markdown): the span must not contain
+       ;; the token, else the first token would pair with an inner one.  Match
+       ;; case-sensitively, as `meep--region-mark-bounds-of-char-calc' does for this
+       ;; case, so a letter-bearing token does not pair with a different-case one.
+       ((string-equal open close)
+        (let ((case-fold-search nil))
+          (goto-char inner-beg)
+          (not (search-forward open inner-end t))))
+       (t
+        ;; Distinct brackets: the depth must stay non-negative and end at zero
+        ;; (no premature close, no leftover open within the span).  Match
+        ;; case-sensitively, as the same-delimiter branch above and the outward
+        ;; search `meep--syntax-enclosing-pair-from-text' both do, so a
+        ;; different-case token inside the span is not counted as a delimiter.
+        (let ((case-fold-search nil)
+              (re (meep--bracket-pair-regex open close))
+              (depth 0)
+              (ok t))
+          (goto-char inner-beg)
+          (while (and ok (re-search-forward re inner-end t))
+            (cond
+             ((match-beginning 1)
+              (meep--incf depth))
+             ((zerop depth)
+              ;; Premature close, the outer open pairs inside the span.
+              (setq ok nil))
+             (t
+              (meep--decf depth))))
+          (and ok (zerop depth))))))))
+
+(defun meep--surround-bounds-edges (anchor pairs)
+  "Return `((BEG . END) . (OPEN . CLOSE))' when ANCHOR's own edges form a pair.
+Try each entry in PAIRS; the first whose OPEN starts ANCHOR and whose CLOSE
+ends it (with a balanced span between) wins.  Return nil otherwise."
+  (declare (important-return-value t))
+  (let ((beg (car anchor))
+        (end (cdr anchor))
+        (result nil))
+    (while (and pairs (null result))
+      (let* ((pair (pop pairs))
+             (open (car pair))
+             (close (cdr pair))
+             (olen (length open))
+             (clen (length close)))
+        ;; Need room for both delimiters without overlap.
+        (when (and (<= (+ beg olen clen) end)
+                   (string-equal (buffer-substring-no-properties beg (+ beg olen)) open)
+                   (string-equal (buffer-substring-no-properties (- end clen) end) close)
+                   (meep--surround-edges-balanced-p (+ beg olen) (- end clen) open close))
+          (setq result (cons (cons beg end) pair)))))
+    result))
+
+(defun meep--surround-bounds-search (anchor clamp pairs &optional match-at-start clamp-single-line)
+  "Return the nearest enclosing pair around ANCHOR as `((BEG . END) . PAIR)'.
+ANCHOR is the `(BEG . END)' search anchor and CLAMP the `(MIN . MAX)' search
+limit.  Each entry in PAIRS is tried; the innermost enclosing pair across all
+delimiter types wins.  MATCH-AT-START is passed to
+`meep--region-mark-bounds-of-char-calc': non-nil treats a delimiter sitting at
+ANCHOR's start as enclosing (cursor-on-open); the outward peel passes it nil so
+the pair ANCHOR already spans is skipped for the one enclosing it.
+CLAMP-SINGLE-LINE non-nil means CLAMP spans one line, so the paragraph-parity
+fall-back - which only recovers a *multi-line* same-delimiter span - is skipped,
+saving a forward+backward scan per same-delimiter pair.  `meep--surround-targets-enclosing'
+resolves it once (CLAMP is fixed across the outward peel) so it is not re-probed
+per layer.  Return nil when none enclose ANCHOR within CLAMP."
+  (declare (important-return-value t))
+  ;; Copy CLAMP, narrowed in-place to the best enclosing pair as nearer ones
+  ;; are found.
+  (let ((bounds-limit (cons (car clamp) (cdr clamp)))
+        (result nil)
+        (result-pair nil))
+    (dolist (pair pairs)
+      ;; Same-delimiter: try per-line parity first, then paragraph parity on a miss.
+      ;; Per-line is tried first because it ignores a stray same-delimiter token on
+      ;; an earlier line of the same paragraph (which paragraph parity would wrongly
+      ;; count, rejecting a real single-line pair); paragraph parity then catches a
+      ;; genuine multi-line span the per-line scan cannot.  Cursor-on-open is handled
+      ;; inside the calc (paragraph-scoped) regardless, so a wrong per-line match
+      ;; cannot stand in for the pair at point.
+      (let* ((paragraph-fallback
+              ;; A same-delimiter span may cross lines, so let the calc accept a
+              ;; paragraph-scope opener when per-line parity rejects it; a
+              ;; single-line clamp (every rectangle row) can hold no such span, so
+              ;; skip the fall-back there.
+              (and (not clamp-single-line) (string-equal (car pair) (cdr pair))))
+             (bounds-test
+              (meep--region-mark-bounds-of-char-calc anchor bounds-limit 1 pair
+                                                     match-at-start
+                                                     paragraph-fallback)))
+        ;; Keep the innermost across pair types; the recognized pairs are ordered
+        ;; multi-character-first (`meep-region-mark-bounds-of-char-contextual-impl'
+        ;; runs the same reduction with a one-sided clamp).
+        (when (meep--bounds-supersedes-p bounds-test result result-pair)
+          (setq result bounds-test)
+          (setq result-pair pair)
+          ;; Narrow the search window to the found pair so a later pair wins only
+          ;; when it is nearer the anchor (the innermost enclosing pair).  Both
+          ;; edges tighten, else a same-delimiter forward scan re-runs to the
+          ;; clamp end (`point-max' in the region path) every iteration.
+          (setcar bounds-limit (car bounds-test))
+          (setcdr bounds-limit (cdr bounds-test)))))
+    (when result
+      (cons result result-pair))))
+
+(defun meep--surround-bounds-at (anchor clamp pairs &optional clamp-single-line)
+  "Return the surrounding pair for ANCHOR as `((BEG . END) . (OPEN . CLOSE))'.
+ANCHOR is the `(BEG . END)' search anchor, CLAMP the `(MIN . MAX)' search limit,
+and PAIRS the recognized delimiter list.  Prefer the pair formed by ANCHOR's own
+edges (the outermost / region-strip case); otherwise search outward within CLAMP
+for the nearest enclosing pair.  BEG sits at the open delimiter and END just past
+the close, so the delimiters occupy `[BEG BEG+len(OPEN))' and `[END-len(CLOSE)
+END)'.  CLAMP-SINGLE-LINE is forwarded to `meep--surround-bounds-search'.  Return
+nil when no pair is found."
+  (declare (important-return-value t))
+  ;; This is the innermost find, so match a delimiter at ANCHOR's start
+  ;; (cursor-on-open); the count-peel searches outward from here without it.
+  (or (meep--surround-bounds-edges anchor pairs)
+      (meep--surround-bounds-search anchor clamp pairs t clamp-single-line)))
+
+
+;; ---------------------------------------------------------------------------
 ;; Text Editing: Surround Insert/Delete
 
-(defun meep--char-surround-insert-impl (ch arg line-wise)
-  "Surround the region with CH, repeated ARG times.
-When LINE-WISE is non-nil, surround each line, otherwise use region bounds."
-  ;; Sanitize numeric prefix.
-  (when (< arg 0)
-    (setq arg (abs arg)))
+;; Scope iteration helpers shared by the add (insert) and delete/replace paths,
+;; so both agree on what "each line's content" and "a rectangle row" mean.
 
-  (meep--char-is-ok-or-error "Surround" ch)
+(defun meep--surround-row-span (col-beg col-end)
+  "Return the line's `(BEG . END)' span between COL-BEG/COL-END, or nil when empty.
+An empty span (BEG equals END) means the line is too short or the columns fall
+within a TAB - there is no character to surround, so the row is skipped.  Built
+on `meep--rectangle-row-span'."
+  (declare (important-return-value t))
+  (let ((span (meep--rectangle-row-span col-beg col-end)))
+    (and (< (car span) (cdr span)) span)))
 
-  (let* ((buffer-len-old (- (point-max) (point-min)))
-         (ch-end (or (matching-paren ch) ch))
+(defmacro meep--with-temp-marker (spec &rest body)
+  "Evaluate BODY with a marker bound per SPEC, released afterward.
+SPEC is `(VAR POSITION &optional INSERTION-TYPE)': VAR is bound to a marker at
+POSITION (INSERTION-TYPE as in `copy-marker'), then set to nil on exit - via
+`unwind-protect' so it is released even when BODY signals (a read-only edit or a
+quit), rather than dangling in the buffer."
+  (declare (indent 1))
+  (let ((var (nth 0 spec))
+        (position (nth 1 spec))
+        (insertion-type (nth 2 spec)))
+    `(let ((,var (copy-marker ,position ,insertion-type)))
+       (unwind-protect
+           (progn
+             ,@body)
+         (set-marker ,var nil)))))
+
+(defun meep--surround-for-each-line-content (beg end fn &optional clamp-to-span)
+  "Call FN once per line spanning BEG..END with that line's content bounds.
+FN is called as `(FN CONTENT LINE-BOUNDS)' where CONTENT is the `(CBEG . CEND)'
+bounds contracted past surrounding blank-space and LINE-BOUNDS the raw
+`(BOL . EOL)'.  When CLAMP-TO-SPAN is non-nil, CONTENT is the line clamped to
+BEG..END before contracting, so a partial first / last line yields only its
+selected columns (the end marker tracks delimiters inserted on earlier lines);
+otherwise CONTENT spans the whole line.  Point and the mark are restored on exit
+\(`save-mark-and-excursion') and the end marker is managed here; FN must not rely
+on point.  The mark is held to protect against an FN that moves it - the
+line-wise `meep--surround-apply-targets' deliberately does not (it leaves the
+mark to the region path, see `meep-surround-mark-result'), so callers handle
+`deactivate-mark' themselves."
+  (save-mark-and-excursion
+    (meep--with-temp-marker (end-mark end)
+      (goto-char beg)
+      (forward-line 0)
+      (while (< (point) (marker-position end-mark))
+        (let* ((line-bounds (cons (pos-bol) (pos-eol)))
+               (span
+                (cond
+                 (clamp-to-span
+                  (cons
+                   (max (car line-bounds) beg) (min (cdr line-bounds) (marker-position end-mark))))
+                 (t
+                  line-bounds)))
+               (content (meep--bounds-contract-by-chars span "[:blank:]" "[:blank:]")))
+          (funcall fn content line-bounds))
+        (forward-line 1)))))
+
+(defun meep--surround-add-scope ()
+  "Return the implied region for a surround add, or nil when there is none.
+Like `meep--region-or-mark-bounds', but an empty `(P . P)' span - a mark set at
+point - counts as no selection, so the caller wraps point (or the whole line)
+instead of an empty span."
+  (declare (important-return-value t))
+  (let ((scope (meep--region-or-mark-bounds)))
+    (and scope (< (car scope) (cdr scope)) scope)))
+
+(defun meep--surround-count-sanitize (n)
+  "Clamp a surround repeat / depth count N to at least one.
+A negative N folds to its magnitude and zero clamps to one.  Shared by the add path
+\(`meep--surround-add-impl', where N repeats the delimiter) and the verbs that take N
+as an enclosing-pair depth (`meep--surround-operate' for delete / replace,
+`meep--surround-region-activate-impl' for region-activate).
+
+Unlike the bounds-of-char motions, where a zero count is a no-op (see
+`meep--region-mark-bounds-of-char-impl'), a surround verb always acts: a stray
+`C-u 0' wraps or peels once rather than doing nothing - a leftover prefix is likelier
+than an intent to wrap zero times.  See test `surround-add-zero-count-clamps-to-one'."
+  (declare (important-return-value t))
+  (max 1 (abs n)))
+
+(defun meep--surround-add-impl (open close arg line-wise)
+  "Surround the region with OPEN and CLOSE strings, each repeated ARG times.
+When LINE-WISE is non-nil, surround each line's content, contracted past
+surrounding blank-space so indentation and trailing blanks stay outside the
+delimiters and an all-blank line is left unwrapped; with a rectangle region,
+surround each row's column span; otherwise use the region bounds.
+A negative ARG folds to its magnitude; zero clamps to one repetition."
+  (setq arg (meep--surround-count-sanitize arg))
+
+  (let* ((prefix (apply #'concat (make-list arg open)))
+         (suffix (apply #'concat (make-list arg close)))
+         (prefix-len (length prefix))
 
          (surround-in-range-fn
-          `(lambda (beg end n)
-             ;; Make the values global.
-             (let ((ch-prefix (make-string n ,ch))
-                   (ch-suffix (make-string n ,ch-end)))
-               (save-excursion
-                 (goto-char end)
-                 (insert ch-suffix)
-                 (goto-char beg)
-                 (insert ch-prefix))
-               (+ (length ch-prefix) (length ch-suffix)))))
-
-         (surround-in-range-from-columns-fn
-          `(lambda (col-beg col-end n)
-             ;; Make the values global.
-             (let ((ch-prefix (make-string n ,ch))
-                   (ch-suffix (make-string n ,ch-end))
-                   (beg nil)
-                   (end nil)
-                   (col-beg-found nil)
-                   (col-end-found nil)
-                   (result 0))
-
-               (save-excursion
-                 (setq col-beg-found (move-to-column col-beg))
-                 (setq beg (point))
-                 (setq col-end-found (move-to-column col-end))
-                 (setq end (point))
-
-                 ;; The region doesn't intersect this line at all, skip it.
-                 (unless (eq col-beg-found col-end-found)
-                   (goto-char end)
-                   (insert ch-suffix)
-                   (goto-char beg)
-                   (insert ch-prefix)
-
-                   (meep--incf result (+ (length ch-prefix) (length ch-suffix)))))
-
-               result))))
-
-    (cond
-     ((bound-and-true-p rectangle-mark-mode)
-      (apply-on-rectangle
-       ;; Make the values global.
-       `(lambda (col-beg col-end)
-          (funcall ,surround-in-range-from-columns-fn col-beg col-end ,arg))
-       (region-beginning) (region-end)))
-     (t
-      ;; Surround the implied region too: activate any set mark (active or not)
-      ;; so the active-region branch below handles it.  The mark *is* the
-      ;; selection in Emacs (`mark-even-if-inactive'), so use it unconditionally.
-      (when (and (mark t) (null (region-active-p)))
-        (setq deactivate-mark nil)
-        (activate-mark t))
-      (cond
-       ((region-active-p)
-        (let ((beg (region-beginning))
-              (end (region-end)))
-          (cond
-           ;; Surround each line.
-           (line-wise
+          (lambda (beg end)
             (save-excursion
+              (goto-char end)
+              (insert suffix)
               (goto-char beg)
-              (while (< (point) end)
-                (let ((end-iter (min end (pos-eol))))
-                  (when (< (point) end-iter)
-                    (let ((n-add (funcall surround-in-range-fn (point) end-iter arg)))
-                      (meep--incf end n-add)
-                      (meep--incf end-iter n-add)))
-                  (cond
-                   ((eq end-iter end)
-                    ;; Break.
-                    (goto-char end))
-                   (t
-                    (goto-char (1+ end-iter))
-                    (skip-chars-forward "\n\r" end)))))))
+              (insert prefix))))
+
+         ;; A rectangle row is wrapped exactly like any range, on its column span;
+         ;; an empty span (too short, or columns inside a TAB) is skipped.
+         (surround-in-range-from-columns-fn
+          (lambda (col-beg col-end)
+            (let ((span (meep--surround-row-span col-beg col-end)))
+              (when span
+                (funcall surround-in-range-fn (car span) (cdr span))))))
+
+         ;; Capture the region edges before editing.  Only the left edge (the
+         ;; smaller of point / mark, or point alone when no mark is set) is
+         ;; adjusted afterward: it must step past a prefix inserted exactly there
+         ;; to sit just inside the open, while the right edge tracks that prefix on
+         ;; its own (its position shifts by the prefix length as the prefix goes in
+         ;; to its left).
+         (p-orig (point))
+         (m-orig (mark t))
+         (lo (min p-orig (or m-orig p-orig)))
+         (point-is-left (eq p-orig lo)))
+
+    ;; A marker at the left edge, with an advancing insertion-type, lands just
+    ;; inside the open when a prefix goes in exactly there and stays put when the
+    ;; prefix goes in further along - line-wise / rectangle add inserts at each
+    ;; line's content-start, past any indentation, not at the region edge.  This
+    ;; replaces matching the inserted text (which could not tell an inserted prefix
+    ;; from identical leading content) with the marker mechanism the delete /
+    ;; replace path already uses, see `meep--surround-apply-edits'.
+    (meep--with-temp-marker (left-mark lo t)
+      (let ((wrapped-empty nil)
+            (rect (bound-and-true-p rectangle-mark-mode)))
+        (cond
+         (rect
+          (apply-on-rectangle surround-in-range-from-columns-fn (region-beginning) (region-end)))
+         ;; Surround each line's content, contracted past blank-space so
+         ;; indentation and trailing blanks stay outside the delimiters.  A partial
+         ;; first / last line wraps only its selected columns, not text outside the
+         ;; selection: add is constructive so it must not wrap what was never
+         ;; selected (delete / replace instead operate on the whole line).  The
+         ;; scope is the active or implied region, else the current line.  See
+         ;; `meep--region-or-mark-bounds'.
+         (line-wise
+          (let* ((scope (meep--surround-add-scope))
+                 ;; Fall back to the whole line when there is no selection (an empty
+                 ;; span included), else every line clamps to nothing and the add
+                 ;; silently no-ops, the opposite of the no-mark state.
+                 (bounds (or scope (cons (pos-bol) (pos-eol))))
+                 (beg (car bounds))
+                 (end (cdr bounds)))
+            ;; CLAMP-TO-SPAN so the iterator hands back each line's selected,
+            ;; blank-contracted span directly; a blank or fully-trimmed line
+            ;; collapses to an empty span and is skipped.
+            (meep--surround-for-each-line-content beg end
+                                                  (lambda (content _line-bounds)
+                                                    (when (< (car content) (cdr content))
+                                                      (funcall surround-in-range-fn
+                                                               (car content)
+                                                               (cdr content))))
+                                                  t)))
+         (t
+          (let ((scope (meep--surround-add-scope)))
+            (cond
+             (scope
+              (funcall surround-in-range-fn (car scope) (cdr scope)))
+             (t
+              ;; No selection: wrap the empty span at point.  There is no left edge
+              ;; to preserve, so step point inside the inserted pair directly.
+              (setq wrapped-empty t)
+              (funcall surround-in-range-fn (point) (point))
+              (goto-char (+ (point) prefix-len))
+              ;; A mark set at point (the empty implied span) rides inside with
+              ;; it, keeping the implied region an empty span rather than one
+              ;; covering the open delimiter - an implied-region verb run next
+              ;; (a cut, say) would otherwise consume the open and unbalance the
+              ;; pair.
+              (when (and m-orig (eq m-orig p-orig))
+                (set-marker (mark-marker) (point))))))))
+
+        ;; Move the region's left edge to just inside the open.  The right edge
+        ;; already sits inside, before the suffix, so it is never moved - vital for
+        ;; a symmetric delimiter, where the suffix equals the prefix.  For a
+        ;; rectangle the advancing marker at `lo' tracks the prefix on the first
+        ;; row, so the same single-edge adjustment applies (point / mark stay on
+        ;; their respective rows; only the column of the left corner shifts).
+        ;;
+        ;; NOTE: when the left edge sits in a line's leading blank-space (an
+        ;; indented or blank-led line-wise edge) the prefix goes in further along,
+        ;; at the content-start, so the advancing marker never tracks it and the
+        ;; edge stays put - point / mark then land just *outside* the wrap.  This
+        ;; reads like a bug but is deliberate: the edge is kept where the caller put
+        ;; it, and only steps inside when the prefix lands exactly there.  A naive
+        ;; "fix" re-homes the marker onto the content-start to drag it inside, which
+        ;; reintroduces the prefix-length shift this design dropped and breaks
+        ;; `surround-add-lines-region-edge-before-indent'.  Do *not* "fix" it.
+        (unless wrapped-empty
+          (cond
+           (point-is-left
+            (goto-char left-mark))
            (t
-            (funcall surround-in-range-fn beg end arg)))))
+            (set-marker (mark-marker) left-mark))))))))
+
+
+;; Surround delete/replace share a finder pass (the targets) and an edit pass.
+;; Delete removes each delimiter, replace swaps in new ones; the targeting and the
+;; right-to-left edit application are common to both.
+
+(defun meep--surround-content-start (target)
+  "Return the content start of TARGET `((BEG . END) . (OPEN . CLOSE))'.
+That is the position just inside the opening delimiter."
+  (declare (important-return-value t))
+  (let ((bounds (car target))
+        (pair (cdr target)))
+    (+ (car bounds) (length (car pair)))))
+
+(defun meep--surround-content-end (target)
+  "Return the content end of TARGET `((BEG . END) . (OPEN . CLOSE))'.
+That is the position just inside the closing delimiter."
+  (declare (important-return-value t))
+  (let ((bounds (car target))
+        (pair (cdr target)))
+    (- (cdr bounds) (length (cdr pair)))))
+
+(defun meep--surround-targets-lines (anchor pairs count)
+  "Return the outermost COUNT nested pairs around ANCHOR, outermost first.
+Each target is `((BEG . END) . (OPEN . CLOSE))'.  ANCHOR is the `(BEG . END)'
+search anchor and PAIRS the recognized delimiters.  Peel inward: each layer is
+formed by the shrinking inner's own edges (`meep--surround-bounds-edges'), so the
+outward enclosing-pair fall-back is not used - with the clamp staying the whole
+line it would re-find the same pair as ANCHOR contracts, emitting duplicate
+targets that double-delete.  Fewer than COUNT layers stops early.  Return nil when
+none are found.  The line-wise counterpart of `meep--surround-targets-enclosing'."
+  (declare (important-return-value t))
+  (let ((targets nil)
+        (i 0))
+    (while (< i count)
+      (let ((found (meep--surround-bounds-edges anchor pairs)))
+        (cond
+         (found
+          (push found targets)
+          ;; Next layer lives inside this pair's delimiters; contract past
+          ;; blank-space so an inner pair padded by spaces is still found.
+          (setq anchor
+                (meep--bounds-contract-by-chars
+                 (cons
+                  (meep--surround-content-start found) (meep--surround-content-end found))
+                 "[:blank:]" "[:blank:]"))
+          (meep--incf i))
+         (t
+          ;; Fewer than COUNT layers, stop.
+          (setq i count)))))
+    (nreverse targets)))
+
+(defun meep--surround-targets-enclosing (anchor clamp pairs count &optional single-line)
+  "Return the COUNT-th enclosing pair around ANCHOR as a one-element list, or nil.
+The target is `((BEG . END) . (OPEN . CLOSE))'.  ANCHOR is the `(BEG . END)'
+search anchor, CLAMP the `(MIN . MAX)' search limit, and PAIRS the recognized
+delimiters.  Peel outward from the innermost; when COUNT exceeds the available
+depth, clamp to the outermost pair rather than discard the pair already found,
+matching `meep--surround-targets-lines' which peels what exists.  SINGLE-LINE
+asserts CLAMP spans one line (every rectangle row); CLAMP is fixed across the
+peel, so its single-line-ness is resolved once here (honouring SINGLE-LINE, else
+probing for a newline) rather than re-probed per layer."
+  (declare (important-return-value t))
+  (let* ((clamp-single-line
+          (or single-line
+              ;; Probe outward from the anchor, not from `(car clamp)': any
+              ;; newline within CLAMP proves it multi-line, and the nearest one
+              ;; to the cursor settles it without scanning the leading span.  On
+              ;; the region path CLAMP is `point-min'/`point-max', so a probe from
+              ;; its start would scan every character before the cursor on a
+              ;; single-long-line (minified) buffer.  The two probes meet at the
+              ;; anchor and together cover the whole clamp.
+              (save-match-data
+                (save-excursion
+                  (goto-char (car anchor))
+                  (and (not (search-forward "\n" (cdr clamp) t))
+                       (progn
+                         (goto-char (car anchor))
+                         (not (search-backward "\n" (car clamp) t))))))))
+         (found
+          (meep--peel-outward
+           (meep--surround-bounds-at anchor clamp pairs clamp-single-line) count
+           ;; Search outward without matching at the start: the layer's bounds
+           ;; begin on its own open delimiter, so cursor-on-open would re-find it
+           ;; instead of the pair enclosing it.
+           (lambda (layer)
+             (meep--surround-bounds-search (car layer) clamp pairs nil clamp-single-line)))))
+    (when found
+      (list found))))
+
+(defun meep--surround-edits-from-targets (targets new-pair)
+  "Return edit specs `(START END REPLACEMENT)' for TARGETS.
+NEW-PAIR nil deletes each delimiter, otherwise replaces the open and close with
+its `(OPEN . CLOSE)' strings."
+  (declare (important-return-value t))
+  (let ((edits nil)
+        (new-open (car new-pair))
+        (new-close (cdr new-pair)))
+    (dolist (target targets)
+      (let* ((bounds (car target))
+             (beg (car bounds))
+             (end (cdr bounds)))
+        (push (list beg (meep--surround-content-start target) new-open) edits)
+        (push (list (meep--surround-content-end target) end new-close) edits)))
+    edits))
+
+(defun meep--surround-apply-edits (edits content-start)
+  "Apply EDITS right-to-left, leaving point at CONTENT-START.
+Each edit is `(START END REPLACEMENT)'; a nil REPLACEMENT deletes the span.
+Applying from the rightmost span keeps earlier positions valid."
+  (meep--with-temp-marker (m content-start t)
+    (dolist (edit (sort edits (lambda (a b) (> (car a) (car b)))))
+      (let ((start (nth 0 edit))
+            (end (nth 1 edit))
+            (repl (nth 2 edit)))
+        (delete-region start end)
+        (when repl
+          (goto-char start)
+          (insert repl))))
+    (goto-char m)))
+
+(defun meep--surround-apply-targets (targets new-pair &optional allow-mark)
+  "Apply the surround edits for TARGETS.
+When ALLOW-MARK and `meep-surround-mark-result' are non-nil and there is a single
+target, leave point just inside the target's opening delimiter and set the mark
+\(without activating the region) just inside its closing delimiter, so the
+operated-on content spans point..mark and can be re-selected; otherwise leave
+point and the mark where they were.  ALLOW-MARK is set only by the single-span
+region path; the line-wise and rectangle paths leave it nil - their edits run
+inside a `save-mark-and-excursion' (or span disjoint content) so a mark would be
+restored away or have no single span to cover.  NEW-PAIR nil deletes each
+delimiter, otherwise replaces with its `(OPEN . CLOSE)'.  Empty TARGETS is a
+no-op."
+  (when targets
+    (let ((edits (meep--surround-edits-from-targets targets new-pair))
+          (content-start (meep--surround-content-start (car targets))))
+      (cond
+       ((and allow-mark meep-surround-mark-result (null (cdr targets)))
+        ;; Mark the content end before editing; the marker tracks the edits so it
+        ;; lands just inside the (new) closing delimiter, opposite the point that
+        ;; `meep--surround-apply-edits' leaves at the opening.
+        (meep--with-temp-marker (end-mark (meep--surround-content-end (car targets)) nil)
+          (meep--surround-apply-edits edits content-start)
+          (set-marker (mark-marker) end-mark)))
        (t
+        ;; Restore point; `meep--surround-apply-edits' would leave it at the
+        ;; content start.  The marker tracks the edits so point returns to where
+        ;; the user left it.
+        (meep--with-temp-marker (pt (point) nil)
+          (meep--surround-apply-edits edits content-start)
+          (goto-char pt)))))))
+
+(defun meep--surround-operate-finish (applied)
+  "Conclude a surround operate given whether any pair was APPLIED.
+On success drop the active region (the edit consumes the selection); on a miss
+report that no pair was found.  The region / rectangle path applies through
+`meep--surround-operate-apply', which drops the region itself before editing (to
+keep a mark it may set), so it reports only the miss here; the line-wise path,
+editing per line, calls this once after its loop."
+  (cond
+   (applied
+    (when (region-active-p)
+      (deactivate-mark)))
+   (t
+    (message "No surrounding pair found"))))
+
+(defun meep--surround-operate-apply (targets new-pair &optional allow-mark)
+  "Apply the collected TARGETS, or message when there are none.
+Drop an active region first, as a successful edit consumes the selection;
+NEW-PAIR nil deletes, otherwise replaces with its `(OPEN . CLOSE)'.  Shared by the
+region and rectangle paths; the line-wise path edits and reports per line.
+ALLOW-MARK is threaded to `meep--surround-apply-targets' - only the region path
+sets it, the rectangle path (multiple disjoint spans) leaves it nil."
+  (cond
+   (targets
+    (when (region-active-p)
+      (deactivate-mark))
+    (meep--surround-apply-targets targets new-pair allow-mark))
+   (t
+    (meep--surround-operate-finish nil))))
+
+(defun meep--surround-targets-region (count pairs)
+  "Return the COUNT-th enclosing-pair target around the region or point, or nil.
+Anchor on the active region or point - not the implied region.  The operate and
+region-activate verbs look for an enclosing pair, and that search is almost
+always run from inside the pair; a prior motion's span would only pull the
+target outward.  The shared lookup of `meep--surround-operate-region' and
+`meep--surround-region-activate-impl', so the two find the same pair from the
+same cursor position."
+  (declare (important-return-value t))
+  (meep--surround-targets-enclosing
+   (meep--region-mark-bounds-init) (cons (point-min) (point-max)) pairs count))
+
+(defun meep--surround-operate-region (count pairs new-pair)
+  "Delete or replace the COUNT-th enclosing pair around the region or point.
+PAIRS is the recognized delimiters; NEW-PAIR nil deletes, otherwise it is the
+`(OPEN . CLOSE)' replacement.  Message when no pair is found."
+  (let ((targets (meep--surround-targets-region count pairs)))
+    ;; ALLOW-MARK: the single-span region path is the only one that honours
+    ;; `meep-surround-mark-result' (the line-wise and rectangle paths leave it
+    ;; nil), see `meep--surround-apply-targets'.
+    (meep--surround-operate-apply targets new-pair t)))
+
+(defun meep--surround-region-activate-impl (count pairs)
+  "Activate the region inside the COUNT-th enclosing pair around the region or point.
+PAIRS is the recognized delimiters.  The pair is found as for surround delete (see
+`meep--surround-operate-region'), but instead of editing, the region is activated
+over the content between the delimiters - point just inside the open, mark just
+inside the close - so it can be operated on next.  This never modifies the buffer,
+so unlike the delete / replace verbs it works in a read-only buffer.  COUNT is
+clamped like the other verbs (`meep--surround-count-sanitize').  Message when no
+pair is found.
+
+Single-region only: there is no line-wise or rectangle variant, since a single
+region cannot cover the disjoint per-line / per-row spans those would target."
+  (let* ((count (meep--surround-count-sanitize count))
+         (targets (meep--surround-targets-region count pairs)))
+    (cond
+     (targets
+      ;; A single enclosing pair (the region path is single-span); activate over its
+      ;; inner content with point at the start and the mark at the end, matching the
+      ;; mark-bounds-of-char motions invoked from inside a pair.
+      (let ((target (car targets)))
+        (meep--region-mark-bounds-to-region
+         (cons (meep--surround-content-start target) (meep--surround-content-end target)) nil)))
+     (t
+      (meep--surround-operate-finish nil)))))
+
+(defun meep--surround-operate-lines (count pairs new-pair)
+  "Delete or replace the outermost COUNT pairs on each line in scope.
+PAIRS is the recognized delimiters; NEW-PAIR nil deletes, otherwise it is the
+`(OPEN . CLOSE)' replacement.  Lines with no surrounding pair are skipped."
+  ;; Scope is the active region or the current line - not the implied region,
+  ;; see `meep--surround-operate-region'.
+  (let* ((region (region-active-p))
+         (bounds
+          (cond
+           (region
+            (cons (region-beginning) (region-end)))
+           (t
+            (cons (pos-bol) (pos-eol)))))
+         (beg (car bounds))
+         (end (cdr bounds))
+         (applied nil))
+    (meep--surround-for-each-line-content
+     beg end
+     (lambda (content _line-bounds)
+       (let ((targets (meep--surround-targets-lines content pairs count)))
+         (when targets
+           (setq applied t)
+           (meep--surround-apply-targets targets new-pair)))))
+    ;; Edits run per line, so report once here rather than through
+    ;; `meep--surround-operate-apply' (which the region / rectangle paths use).
+    (meep--surround-operate-finish applied)))
+
+(defun meep--surround-operate-rectangle (count pairs new-pair)
+  "Delete or replace the surrounding pair around each rectangle row's column span.
+COUNT is the enclosing-pair depth and PAIRS the recognized delimiters; NEW-PAIR nil
+deletes, otherwise it is the `(OPEN . CLOSE)' replacement.  Rows whose column span
+holds no pair are skipped."
+  (let ((all-targets nil))
+    ;; Collect targets for every row first without editing, so the recorded
+    ;; positions stay valid; the edits are applied together afterward.
+    (apply-on-rectangle
+     (lambda (col-beg col-end)
+       ;; Skip rows the column range does not intersect.
+       (let ((span (meep--surround-row-span col-beg col-end)))
+         (when span
+           ;; Clamp the search start to the column span, not the line start, so a
+           ;; pair whose open sits left of the rectangle is not found and edited.
+           ;; Leave the end at the line so a pair opening inside the span but
+           ;; closing past it is still matched (the open-at-span-start row case).
+           (let ((targets
+                  ;; The clamp is the row's column span (single-line by
+                  ;; construction), so skip the per-row newline probe.
+                  (meep--surround-targets-enclosing span (cons (car span) (pos-eol)) pairs count
+                                                    t)))
+             (when targets
+               ;; Prepend, then reverse once below; appending per row is O(rows^2).
+               (setq all-targets (nconc targets all-targets)))))))
+     (region-beginning) (region-end))
+    (setq all-targets (nreverse all-targets))
+    (meep--surround-operate-apply all-targets new-pair)))
+
+(defun meep--surround-operate (count pairs new-pair line-wise)
+  "Route a surround delete/replace to the rectangle, line, or region handler.
+COUNT, PAIRS and LINE-WISE are forwarded to the chosen handler; NEW-PAIR nil
+deletes, otherwise it is the `(OPEN . CLOSE)' replacement."
+  (setq count (meep--surround-count-sanitize count))
+  (cond
+   ((bound-and-true-p rectangle-mark-mode)
+    (meep--surround-operate-rectangle count pairs new-pair))
+   (line-wise
+    (meep--surround-operate-lines count pairs new-pair))
+   (t
+    (meep--surround-operate-region count pairs new-pair))))
+
+(defun meep--surround-delete-impl (arg line-wise)
+  "Delete the delimiters surrounding the region or point, ARG times.
+When LINE-WISE is non-nil, operate on each line's outermost pair(s); with a
+rectangle region, operate on each row's column span.
+The pair is found among every recognized delimiter; the type-directed search of
+`meep-surround-delete' instead operates only on the pair of the source delimiter
+the user types."
+  (meep--surround-operate arg (meep--surround-recognition-pairs) nil line-wise))
+
+(defun meep--surround-replace-impl (pair arg line-wise)
+  "Replace the surrounding delimiters with PAIR's `(OPEN . CLOSE)', ARG times.
+When LINE-WISE is non-nil, operate on each line's outermost pair(s); with a
+rectangle region, operate on each row's column span.
+See `meep--surround-delete-impl' on the recognized-pair search."
+  (meep--surround-operate arg (meep--surround-recognition-pairs) pair line-wise))
+
+
+;; ---------------------------------------------------------------------------
+;; Text Editing: Surround
+;;
+;; Surround is just commands the user binds directly - separate add / replace /
+;; delete verbs, plus their line-wise variants - the same as the rest of the
+;; keymap.  Each verb reads at most one further key, the delimiter; only
+;; `meep-surround-delete-at-point' (and its line-wise variant) reads none.
+;;
+;; That delimiter read is a real keymap, built at run-time from the buffer's
+;; `meep-surround-pairs' (see `meep--surround-make-delimiter-map') and installed
+;; transiently (`meep--surround-set-keymap'), so it always reflects the current
+;; buffer and the echo leads with the verb's prompt.  Every key in the map routes
+;; to the verb's named event command (see `meep--surround-event-command'), which
+;; resolves the invoking key with `meep--surround-from-event'; the verb lives in
+;; the binding, so one command resolves any delimiter (alias, literal,
+;; multi-character, or `RET' to prompt).  The one map serves a key-bound verb and a
+;; direct `M-x' call alike - there is no prefix keymap to dispatch through.
+;;
+;; Resolving the delimiter from the event - rather than capturing it in a closure -
+;; is what keeps each a *named* command, so `repeat-fu' can record and replay the
+;; gesture.  The dispatch commands below rely on this and do not restate it.
+;;
+;; By-type surround is not a separate dispatch: it is the same verbs bound directly.
+;; `meep-surround-replace-by-type' replaces and `meep-surround-delete' deletes, each
+;; reading a source delimiter that names which pair *type* to act on (the nearest
+;; pair of that type, skipping closer pairs of other types).  The default binds them
+;; under a plain `s t' / `s T' prefix.
+
+(defun meep--surround-mirror-string (open)
+  "Return a closing delimiter mirroring the opening string OPEN.
+Each character is paired via `meep-symmetrical-chars', then the order is reversed,
+so the close is the geometric mirror of the open.  Used only as the minibuffer
+default for an arbitrary pair; the user may edit it."
+  (declare (important-return-value t))
+  ;; NOTE: `push' reverses the characters as it builds, which is intentional - the
+  ;; close is the geometric mirror of the open, so nested pairs read correctly:
+  ;; `([' -> `])', `<%' -> `%>', `{%' -> `%}'.  Do *not* add an `nreverse' here
+  ;; (that would give `)]' / `>%').  A tag-like open has no character mirror - `<div>'
+  ;; yields `<vid>', not `</div>' - but as an editable default that is acceptable.
+  (let ((result nil))
+    (dolist (ch (append open nil))
+      (push (cdr (meep--region-mark-ch-pair-from-char ch)) result))
+    (apply #'concat result)))
+
+(defun meep--surround-read-literal-pair ()
+  "Read an arbitrary `(OPEN . CLOSE)' surround pair from the minibuffer.
+An empty OPEN or CLOSE cancels (returns nil) rather than building a one-sided
+pair.  An empty close is the dangerous case: add would wrap with the open alone,
+and replace would delete the existing close and insert nothing - silently
+dropping it.  This is the same non-empty invariant `meep--surround-pair-valid-p'
+enforces for every other pair source, applied here since this reader bypasses it."
+  (let ((open (read-string "Surround open: ")))
+    (cond
+     ((string-empty-p open)
+      nil)
+     (t
+      (let ((close (read-string "Surround close: " (meep--surround-mirror-string open))))
+        (cond
+         ((string-empty-p close)
+          nil)
+         (t
+          (cons open close))))))))
+
+(defun meep--surround-key-is-delimiter-p (ch)
+  "Return non-nil when CH is a character usable as a literal surround delimiter.
+Only printable characters qualify; non-character events and control characters
+such as `C-g' and `ESC' are rejected, so they cancel the dispatch rather than
+wrapping with one."
+  (declare (important-return-value t))
+  (and (characterp ch) (aref printable-chars ch) t))
+
+(defun meep--surround-pair-from-event (&optional ev)
+  "Resolve event EV to a surround `(OPEN . CLOSE)' pair, or nil.
+EV defaults to `last-command-event'.  `RET' / `<return>' prompts for an arbitrary
+pair; a printable character names an alias or literal pair; any other event
+cancels.  Message and return nil when no pair results, so callers act only on a
+non-nil return."
+  (declare (important-return-value t))
+  (let ((ev (or ev last-command-event)))
+    ;; A GUI function-key symbol (`tab', `return', ...) names a key the terminal
+    ;; delivers as its ASCII character.  The `[t]' catch-all in the delimiter maps
+    ;; counts as a real binding, so the usual function-key remap to that
+    ;; character never runs; apply it here so a configured alias such as `TAB'
+    ;; resolves the same on both display types.  `local-function-key-map' is the
+    ;; map `read-key-sequence' would consult (it inherits from the global
+    ;; `function-key-map' and may carry terminal-local entries).  A symbol with
+    ;; no translation (`f5') stays as-is and cancels below.
+    (when (symbolp ev)
+      (let ((tr (lookup-key local-function-key-map (vector ev))))
+        (when (and (vectorp tr) (length= tr 1) (characterp (aref tr 0)))
+          (setq ev (aref tr 0)))))
+    (cond
+     ;; `RET' / `<return>' prompts for an arbitrary pair.  `C-j' / `LFD' (`?\n')
+     ;; is left out so it cancels like every other control key, keeping it free
+     ;; for a later meaning.  `return' is kept although the translation above
+     ;; already folds it to `?\r' (paranoid, and it documents the intent).
+     ((memq ev '(?\r return))
+      (meep--surround-read-literal-pair))
+     ;; A printable character names a literal delimiter; a configured alias key
+     ;; resolves even when not printable (e.g. a `TAB' alias), so it is not mistaken
+     ;; for a cancel.  Any other event (a control key, a non-character) cancels.
+     ((and (characterp ev)
+           (or (meep--surround-key-is-delimiter-p ev) (assq ev meep-surround-alist)))
+      (or (meep--surround-pair-from-key ev)
+          (progn
+            (message "No surround for that key")
+            nil)))
+     (t
+      (message "Surround cancelled")
+      nil))))
+
+(defun meep--surround-from-event (count line-wise action)
+  "Apply ACTION with the delimiter named by `last-command-event'.
+COUNT is the nesting depth and LINE-WISE selects per-line operation.  ACTION is
+`add' to wrap with the delimiter, `replace' to replace the surrounding pair with
+it, `delete' to remove the surrounding pair *of that delimiter's type* (the key
+chooses which surround to strip), or `region-activate' to select the content of
+that pair instead of editing it.  The delimiter is resolved by
+`meep--surround-pair-from-event'."
+  (let ((pair (meep--surround-pair-from-event)))
+    (when pair
+      (cond
+       ((eq action 'delete)
+        ;; NOTE: search only the read delimiter's type, so the key picks which
+        ;; surround to strip; `meep-surround-delete-at-point' instead removes the
+        ;; nearest pair of any type with no read.
+        (meep--surround-operate count (list pair) nil line-wise))
+       ((eq action 'region-activate)
+        ;; Activate the region of the read delimiter's type only, the same by-type
+        ;; choice the delete branch makes.  LINE-WISE is ignored - region-activate is
+        ;; single-region, see `meep--surround-region-activate-impl'.
+        (meep--surround-region-activate-impl count (list pair)))
+       ((eq action 'replace)
+        (meep--surround-replace-impl pair count line-wise))
+       (t
+        (meep--surround-add-impl (car pair) (cdr pair) count line-wise))))))
+
+(defun meep--surround-event-command (action line-wise)
+  "Return the named event command applying ACTION.
+ACTION is `add', `replace', `delete', or `region-activate'.  LINE-WISE selects the
+per-line variant, except for `region-activate' which is single-region and has none.
+One named command per verb / line-wise pair, so `meep--surround-make-delimiter-map'
+carries the verb in the binding it chooses; the command resolves its own invoking
+key via `meep--surround-from-event'."
+  (declare (important-return-value t))
+  (cond
+   ((eq action 'add)
+    (cond
+     (line-wise
+      #'meep-surround-add-lines-event)
+     (t
+      #'meep-surround-add-event)))
+   ((eq action 'replace)
+    (cond
+     (line-wise
+      #'meep-surround-replace-lines-event)
+     (t
+      #'meep-surround-replace-event)))
+   ((eq action 'region-activate)
+    ;; Single-region, so no line-wise variant.
+    #'meep-surround-region-activate-event)
+   (t
+    (cond
+     (line-wise
+      #'meep-surround-delete-lines-event)
+     (t
+      #'meep-surround-delete-event)))))
+
+(defun meep--surround-each-alias (config fn)
+  "Call FN with (KEY SYMBOL) for each `meep-surround-alist' alias CONFIG defines.
+KEY is the alias character and SYMBOL its semantic name; only aliases whose symbol
+the buffer's pairs (CONFIG) define are visited, in `meep-surround-alist' order.
+`single-key-description' (not `char-to-string') spells KEY for `keymap-set' - the
+kbd form (\"SPC\", \"TAB\"...) a raw character string is not.  Shared by the
+run-time keymap builders so the alias scan lives in one place."
+  (dolist (entry meep-surround-alist)
+    (when (assq (cdr entry) config)
+      (funcall fn (car entry) (cdr entry)))))
+
+(defun meep--surround-keymap-add-fallbacks (km cmd)
+  "Bind `RET' / `<return>' (arbitrary pair) and the `[t]' catch-all (literal) to CMD.
+Each carries a `menu-item' label so `which-key' shows the intent rather than the
+shared command name.  The command loop honours the `[t]' default when it
+dispatches the key; `lookup-key' only consults it with ACCEPT-DEFAULT, which
+dispatch does not need.  KM is the keymap to populate; shared by the run-time
+delimiter keymap builders."
+  (keymap-set km "RET" (list 'menu-item "arbitrary" cmd))
+  (keymap-set km "<return>" (list 'menu-item "arbitrary" cmd))
+  (define-key km [t] (list 'menu-item "literal" cmd)))
+
+(defun meep--surround-make-delimiter-map (cmd)
+  "Build a surround delimiter keymap routing every key to CMD, at run-time.
+Each `meep-surround-alist' alias the buffer's `meep-surround-pairs' defines is
+bound (carried as a `menu-item' labelled with its symbol, so `which-key' lists
+`bold' / `italic' rather than the shared command name), `RET' / `<return>' for an
+arbitrary pair, and a `[t]' catch-all for any other key as a literal delimiter.
+CMD resolves the invoking key with `meep--surround-from-event' (the verb event
+commands) or wraps it (the by-type replace).  Built fresh on each use so it always
+reflects the current buffer's configuration; shared by the verb-first verbs (via
+`meep--surround-read-delimiter-verb') and the by-type replace map."
+  (declare (important-return-value t))
+  (let ((km (make-sparse-keymap))
+        (config (meep--surround-pairs-config)))
+    ;; Alias keys, carried as menu-items so `which-key' lists the symbol name.
+    (meep--surround-each-alias
+     config
+     (lambda (key sym)
+       (keymap-set km (single-key-description key) (list 'menu-item (symbol-name sym) cmd))))
+    (meep--surround-keymap-add-fallbacks km cmd)
+    km))
+
+(defun meep--surround-read-delimiter-verb (action line-wise prompt)
+  "Install the run-time delimiter keymap transiently, echoing PROMPT.
+ACTION and LINE-WISE select the verb the delimiter keys route to, see
+`meep--surround-event-command'.  The verb commands (`meep-surround-add' etc.) call
+this for both a key-bound and an `M-x' invocation: there is no prefix keymap to
+traverse, so the delimiter map is installed as a transient map.  A numeric prefix
+carries to the delimiter's event command, see `meep--surround-set-keymap'."
+  (meep--surround-set-keymap
+   (meep--surround-make-delimiter-map (meep--surround-event-command action line-wise)) prompt))
+
+;;;###autoload
+(defun meep-surround-add ()
+  "Read a delimiter, then surround the region with it.
+Reads the delimiter through a run-time keymap of the buffer's `meep-surround-pairs'
+installed transiently, whether called by key or `M-x'.  A numeric prefix is the
+repeat count; the target is the active or implied region, see
+`meep--region-or-mark-bounds'."
+  (interactive "*")
+  (meep--surround-read-delimiter-verb 'add nil "Surround with"))
+
+;;;###autoload
+(defun meep-surround-add-lines ()
+  "Read a delimiter, then surround each line's content with it.
+The line-wise variant of `meep-surround-add'."
+  (interactive "*")
+  (meep--surround-read-delimiter-verb 'add t "Surround with"))
+
+;;;###autoload
+(defun meep-surround-add-event (arg)
+  "Surround the region with the delimiter named by the invoking key, ARG times.
+A direct shortcut for `meep-surround-add' followed by that delimiter: bind a
+delimiter key to this and it wraps with that delimiter immediately, with no
+separate delimiter read.  The delimiter is `last-command-event', resolved by
+`meep--surround-from-event'; the target is the active or implied region, as for
+`meep-surround-add'."
+  (interactive "*p")
+  (meep--surround-from-event arg nil 'add))
+
+;;;###autoload
+(defun meep-surround-add-lines-event (arg)
+  "Surround each line's content with the delimiter named by the invoking key.
+Wrap ARG times.  The line-wise variant of `meep-surround-add-event'."
+  (interactive "*p")
+  (meep--surround-from-event arg t 'add))
+
+;;;###autoload
+(defun meep-surround-replace-event (arg)
+  "Replace the surrounding pair with the delimiter named by the invoking key.
+Replace ARG times (the nesting depth).  The replace counterpart of
+`meep-surround-add-event': the delimiter is `last-command-event', resolved by
+`meep--surround-from-event'.  Routed to by the run-time delimiter keymap, and
+bindable directly to a delimiter key."
+  (interactive "*p")
+  (meep--surround-from-event arg nil 'replace))
+
+;;;###autoload
+(defun meep-surround-replace-lines-event (arg)
+  "Replace each line's surrounding pair with the delimiter named by the invoking key.
+The line-wise variant of `meep-surround-replace-event'."
+  (interactive "*p")
+  (meep--surround-from-event arg t 'replace))
+
+;;;###autoload
+(defun meep-surround-delete-event (arg)
+  "Delete the surrounding pair of the type named by the invoking key, ARG times.
+The by-type delete counterpart of `meep-surround-add-event': the delimiter is
+`last-command-event', resolved by `meep--surround-from-event', and names which
+pair type to strip - a closer pair of another type is skipped.  To strip the
+nearest pair of any type with no read, use `meep-surround-delete-at-point'."
+  (interactive "*p")
+  (meep--surround-from-event arg nil 'delete))
+
+;;;###autoload
+(defun meep-surround-delete-lines-event (arg)
+  "Delete each line's surrounding pair of the type named by the invoking key.
+The line-wise variant of `meep-surround-delete-event'."
+  (interactive "*p")
+  (meep--surround-from-event arg t 'delete))
+
+;;;###autoload
+(defun meep-surround-replace ()
+  "Read a delimiter, then replace the surrounding pair to it.
+A numeric prefix is the nesting depth.  Reads the delimiter through a run-time
+keymap of the buffer's `meep-surround-pairs' installed transiently, whether called
+by key or `M-x'."
+  (interactive "*")
+  (meep--surround-read-delimiter-verb 'replace nil "Replace surround to"))
+
+;;;###autoload
+(defun meep-surround-replace-lines ()
+  "Read a delimiter, then replace each line's surrounding pair to it.
+The line-wise variant of `meep-surround-replace'."
+  (interactive "*")
+  (meep--surround-read-delimiter-verb 'replace t "Replace surround to"))
+
+;;;###autoload
+(defun meep-surround-delete ()
+  "Read a delimiter, then delete the surrounding pair of that type.
+Reading a delimiter parallels `meep-surround-replace'; here it names which pair
+type to strip, so only a surrounding pair of that type is removed - a closer pair
+of another type is skipped, as in the by-type surround flow (`s t t').  A numeric
+prefix takes the Nth enclosing pair of the type.  To strip the nearest pair of any
+type with no prompt, use `meep-surround-delete-at-point'."
+  (interactive "*")
+  (meep--surround-read-delimiter-verb 'delete nil "Delete surround of"))
+
+;;;###autoload
+(defun meep-surround-delete-lines ()
+  "Read a delimiter, then delete each line's surrounding pair of that type.
+A numeric prefix strips that many nested layers per line.  The line-wise variant
+of `meep-surround-delete'."
+  (interactive "*")
+  (meep--surround-read-delimiter-verb 'delete t "Delete surround of"))
+
+;;;###autoload
+(defun meep-surround-delete-at-point (arg)
+  "Delete the delimiters surrounding the region or point, ARG times.
+No delimiter is read - the surrounding pair is found contextually (innermost when
+ARG is 1, the ARG-th enclosing pair otherwise).  To choose which delimiter type to
+strip, use `meep-surround-delete'."
+  (interactive "*p")
+  (meep--surround-delete-impl arg nil))
+
+;;;###autoload
+(defun meep-surround-delete-lines-at-point (arg)
+  "Delete each line's outermost surrounding delimiters, ARG times.
+The line-wise variant of `meep-surround-delete-at-point'.
+When a region is active, every line it spans is processed; lines without a
+surrounding pair are skipped.  ARG peels that many nested layers per line."
+  (interactive "*p")
+  (meep--surround-delete-impl arg t))
+
+;;;###autoload
+(defun meep-surround-region-activate-event (arg)
+  "Select the content of the surrounding pair of the type named by the invoking key.
+The region-activate counterpart of `meep-surround-delete-event': the delimiter is
+`last-command-event', resolved by `meep--surround-from-event', and names which pair
+type to select - a closer pair of another type is skipped.  ARG is the nesting
+depth.  To select the nearest pair of any type with no read, use
+`meep-surround-region-activate-at-point'."
+  (interactive "p")
+  (meep--surround-from-event arg nil 'region-activate))
+
+;;;###autoload
+(defun meep-surround-region-activate ()
+  "Read a delimiter, then activate the region inside the surrounding pair of that type.
+Reading a delimiter parallels `meep-surround-delete'; here it names which pair type
+to select, so the region is activated over the content of the nearest surrounding
+pair of that type - a closer pair of another type is skipped.  A numeric prefix
+takes the Nth enclosing pair.  To select the nearest pair of any type with no
+prompt, use `meep-surround-region-activate-at-point'.  Never modifies the buffer."
+  (interactive)
+  (meep--surround-read-delimiter-verb 'region-activate nil "Activate region of"))
+
+;;;###autoload
+(defun meep-surround-region-activate-at-point (arg)
+  "Activate the region inside the delimiters surrounding the region or point, ARG times.
+No delimiter is read - the surrounding pair is found contextually (innermost when
+ARG is 1, the ARG-th enclosing pair otherwise).  To choose which delimiter type to
+select, use `meep-surround-region-activate'."
+  (interactive "p")
+  (meep--surround-region-activate-impl arg (meep--surround-recognition-pairs)))
+
+(defun meep--surround-set-keymap (km prefix)
+  "Activate KM as a transient map echoing PREFIX.
+Used by the `M-x' fall-backs of the run-time keymaps, where there is no following
+key in a real keymap for `which-key' to display.  A numeric prefix is preserved
+here so it carries to the command KM routes to; every installer needs that, and
+a caller that forgot would silently drop the user's count."
+  (prefix-command-preserve-state)
+  ;; Don't append `%k': in `set-transient-map' it expands to *every* key bound in
+  ;; KM, which leaks the `[t]' catch-all (`meep--surround-make-delimiter-map') as
+  ;; `<t>'.  So the whole message is the escaped PREFIX (no live `%k'), see
+  ;; `meep--set-transient-map-echo'.
+  (meep--set-transient-map-echo km "" prefix))
+
+;; By-type surround is verb-first, like the at-point `t' / `T' prefixes, but bound
+;; as plain verb commands placed directly (the default uses an `s t' / `s T' prefix):
+;; `meep-surround-replace-by-type' replaces and `meep-surround-delete' deletes, each
+;; then reading a source delimiter naming which pair type to act on (the nearest
+;; enclosing pair of that type, skipping closer pairs of other types), where the
+;; at-point verbs take the pair at point instead.
+;;
+;; Delete (`meep-surround-delete') reads one source delimiter and strips that type
+;; immediately.  Replace needs a second delimiter, the destination, so each source
+;; key opens a destination delimiter map (the verbs' own
+;; `meep--surround-make-delimiter-map') routed to
+;; `meep-surround-replace-by-type-event', a named command that recovers the source
+;; from the invoking key sequence and the destination from `last-command-event'.
+;; A source resolved only when typed - an arbitrary literal via `[t]', or
+;; `RET' to prompt - cannot name itself in a later key sequence, so it defers to
+;; `meep-surround-replace-by-type-pick', which resolves the source eagerly, stashes it
+;; in `meep--surround-replace-by-type-picked-pair', and installs the destination step
+;; transiently routed to the named `meep-surround-replace-by-type-picked-event' (the
+;; source recovered from the stash rather than the keys).
+
+(defvar meep--surround-replace-by-type-picked-pair nil
+  "Source pair stashed by `meep-surround-replace-by-type-pick' for its destination step.
+The pick path resolves the source eagerly (it may prompt), then installs a transient
+destination map routed to `meep-surround-replace-by-type-picked-event', which reads
+this variable rather than a captured closure (keeping it a named command).  Read once
+and cleared by the destination command.")
+
+(defun meep--surround-replace-by-type-apply (count line-wise pair dest-event)
+  "Replace the surrounding pair of type PAIR with the destination DEST-EVENT names.
+Operate COUNT times; LINE-WISE selects per-line operation.  The destination is
+resolved from DEST-EVENT by `meep--surround-pair-from-event'.  It is passed
+explicitly - not read from the live `last-command-event' - because a source
+resolution that prompts via the minibuffer clobbers `last-command-event' with the
+terminating `RET' (see `meep--surround-replace-by-type-from-events', which captures
+the destination before resolving the source).  Message and do nothing when PAIR is
+nil or the destination names no pair.  The shared tail of the two by-type replace
+paths, `meep--surround-replace-by-type-from-events' and `-from-picked'."
+  (cond
+   (pair
+    (let ((target (meep--surround-pair-from-event dest-event)))
+      (when target
+        (meep--surround-operate count (list pair) target line-wise))))
+   (t
+    (message "No surround for that key"))))
+
+(defun meep--surround-replace-by-type-from-picked (count line-wise)
+  "Replace the surrounding pair stashed by the pick step, COUNT times.
+The source pair was resolved eagerly by `meep-surround-replace-by-type-pick' and left
+in `meep--surround-replace-by-type-picked-pair' (read once and cleared here); the
+destination is `last-command-event'.  Reading the stashed pair from a variable, not a
+captured closure, keeps this a named command.  LINE-WISE selects per-line operation."
+  ;; The source is already resolved (so no prompt clobbered `last-command-event' here,
+  ;; unlike the keymap-traversed `meep--surround-replace-by-type-from-events'), so the
+  ;; live event is already the destination.
+  (let ((pair meep--surround-replace-by-type-picked-pair))
+    (setq meep--surround-replace-by-type-picked-pair nil)
+    (meep--surround-replace-by-type-apply count line-wise pair last-command-event)))
+
+(defun meep-surround-replace-by-type-picked-event (arg)
+  "Replace the picked by-type source pair with the destination named by the invoking key.
+The destination step of `meep-surround-replace-by-type-pick', replacing ARG times.
+Bound only in that command's transient map; reads the stashed source from
+`meep--surround-replace-by-type-picked-pair'."
+  (interactive "*p")
+  (meep--surround-replace-by-type-from-picked arg nil))
+
+(defun meep-surround-replace-by-type-picked-lines-event (arg)
+  "Replace each line's picked by-type source pair with the destination key.
+The line-wise variant of `meep-surround-replace-by-type-picked-event'."
+  (interactive "*p")
+  (meep--surround-replace-by-type-from-picked arg t))
+
+(defun meep--surround-replace-by-type-from-events (count line-wise)
+  "Replace the surrounding pair of one delimiter type with another, COUNT times.
+Both delimiters come from the invoking key sequence: the source - the pair type to
+act on - is the key before last in `this-command-keys-vector', the destination is
+`last-command-event'.  Recovering the source from the key sequence (not a captured
+closure) keeps this a named command.  LINE-WISE selects per-line operation."
+  (let* ((keys (this-command-keys-vector))
+         ;; Capture the destination event before resolving the source: a
+         ;; function-valued source alias spec prompts via the minibuffer, which
+         ;; overwrites `last-command-event' with the terminating `RET', so reading
+         ;; the destination after would re-prompt for an arbitrary pair instead.
+         (dest-event last-command-event)
+         ;; The source is the key before the destination in the sequence; a
+         ;; single-key call has no preceding source key, so resolve no source
+         ;; rather than index before the vector's start.  Accept only a key the
+         ;; source map binds - an alias or a `meep-symmetrical-chars' side, see
+         ;; `meep--surround-replace-by-type-map' (a literal or prompted source goes
+         ;; through the pick path instead).  This is not just a shortcut: an `M-x'
+         ;; call records the whole `[M-x name RET]' sequence as the command keys,
+         ;; so the slot then holds the command name's last character - never typed
+         ;; as a delimiter - and must not resolve as one.  A rejected or
+         ;; non-character event resolves to no source and falls through to the
+         ;; "No surround for that key" message rather than signalling.
+         (src (and (length> keys 1) (aref keys (- (length keys) 2))))
+         (pair
+          (and (characterp src)
+               (or (assq src meep-surround-alist)
+                   (meep--symmetrical-char-other-any (char-to-string src)))
+               (meep--surround-pair-from-key src))))
+    (meep--surround-replace-by-type-apply count line-wise pair dest-event)))
+
+;;;###autoload
+(defun meep-surround-replace-by-type-event (arg)
+  "Replace a surrounding pair of one type with another, both named by the key sequence.
+The source - the pair type to act on - is the key pressed just before this one, the
+destination is the invoking key; replace ARG times (the nesting depth).  Routed to
+by the by-type replace source map (`meep--surround-replace-by-type-map'); the
+keymap-traversed gesture stays a single named command."
+  (interactive "*p")
+  (meep--surround-replace-by-type-from-events arg nil))
+
+;;;###autoload
+(defun meep-surround-replace-by-type-lines-event (arg)
+  "Replace each line's surrounding pair of one type with another, named by the key sequence.
+The line-wise variant of `meep-surround-replace-by-type-event'."
+  (interactive "*p")
+  (meep--surround-replace-by-type-from-events arg t))
+
+(defun meep--surround-replace-by-type-map (line-wise)
+  "Build the source-delimiter keymap for by-type replace at run-time.
+Each source whose key is known up-front - an alias the buffer defines, or either
+side of a `meep-symmetrical-chars' pair - opens the one destination delimiter map
+\(`meep--surround-make-delimiter-map') routed to the named by-type replace event
+command, which recovers the source from the invoking key sequence.  `RET' and the
+`[t]' catch-all defer to `meep-surround-replace-by-type-pick' for a source resolved
+only when typed.  LINE-WISE selects per-line operation."
+  (declare (important-return-value t))
+  (let* ((km (make-sparse-keymap))
+         (config (meep--surround-pairs-config))
+         (cmd
+          (cond
+           (line-wise
+            #'meep-surround-replace-by-type-lines-event)
+           (t
+            #'meep-surround-replace-by-type-event)))
+         (pick
+          (cond
+           (line-wise
+            #'meep-surround-replace-by-type-lines-pick)
+           (t
+            #'meep-surround-replace-by-type-pick)))
+         ;; One destination map shared by every source: the routed event command
+         ;; recovers the source from the invoking key sequence, not the submap, so
+         ;; the map need not be rebuilt (nor re-rendered by `which-key') per source.
+         ;; Each source binds it behind a `menu-item' carrying that source's label,
+         ;; so `which-key' lists the source keys by name though they share the map.
+         (dest-map (meep--surround-make-delimiter-map cmd)))
+    ;; Symmetrical delimiters first; an alias (bound next) wins any key collision.
+    (dolist (entry meep-symmetrical-chars)
+      (dolist (side (list (car entry) (cdr entry)))
+        ;; Single-key sources only: a multi-character `meep-symmetrical-chars' side
+        ;; cannot be typed as one source key, so skip it rather than bind a bogus
+        ;; source from its first character.
+        (when (length= side 1)
+          (let ((ch (string-to-char side)))
+            (keymap-set km (single-key-description ch) (list 'menu-item side dest-map))))))
+    (meep--surround-each-alias
+     config
+     (lambda (key sym)
+       (keymap-set km (single-key-description key) (list 'menu-item (symbol-name sym) dest-map))))
+    (meep--surround-keymap-add-fallbacks km pick)
+    km))
+
+(defun meep--surround-replace-by-type-pick-impl (line-wise)
+  "Resolve the invoking source delimiter, then read a destination and replace it.
+The `RET' / literal fall-back of `meep--surround-replace-by-type-map': a source
+resolved only when typed cannot pre-build a `which-key'-native destination map, so
+this resolves the source pair, stashes it in
+`meep--surround-replace-by-type-picked-pair', and installs the destination map
+\(routed to `meep-surround-replace-by-type-picked-event') as a transient map.
+The source is resolved by `meep--surround-pair-from-event'; LINE-WISE selects
+per-line operation."
+  ;; Resolve the source pair now, before the destination is read.  The `RET' /
+  ;; arbitrary-pair path prompts via the minibuffer here, so resolving eagerly keeps
+  ;; the result.  Stash it for the named destination command rather than capture it in
+  ;; a closure, so the gesture stays a named command.
+  (let ((pair (meep--surround-pair-from-event)))
+    (when pair
+      (setq meep--surround-replace-by-type-picked-pair pair)
+      (meep--surround-set-keymap
+       (meep--surround-make-delimiter-map
         (cond
          (line-wise
-          (funcall surround-in-range-fn (pos-bol) (pos-eol) arg))
+          #'meep-surround-replace-by-type-picked-lines-event)
          (t
-          (funcall surround-in-range-fn (point) (point) arg)))))))
-
-    (let ((buffer-len-new (- (point-max) (point-min))))
-      (unless (eq buffer-len-old buffer-len-new)
-        ;; A small nicety, if the point is on the beginning,
-        ;; keep it "inside" the surrounding characters.
-        ;; Only the left-hand side needs updating.
-        (let* ((m (mark-marker))
-               (p-pos (point))
-               ;; Can be nil (the mark may have no position).
-               (m-pos (and m (marker-position m)))
-               (update-pos (<= p-pos (or m-pos p-pos)))
-               (update-mrk (and m-pos (>= p-pos m-pos))))
-          (when update-pos
-            (goto-char (+ (point) arg)))
-          (when update-mrk
-            (set-marker m (+ (marker-position m) arg))))))))
+          #'meep-surround-replace-by-type-picked-event)))
+       "Replace surround to"))))
 
 ;;;###autoload
-(defun meep-char-surround-insert (ch arg)
-  "Read a character CH and surround the selection with it.
-Insert ARG times.
-
-When there is no active region, surround the current point."
-  (interactive "*cSurround Char:\np")
-  (meep--char-surround-insert-impl ch arg nil))
+(defun meep-surround-replace-by-type-pick ()
+  "Pick a typed source delimiter, then read a destination and replace that pair.
+The region / point variant; see `meep--surround-replace-by-type-pick-impl'."
+  (interactive "*")
+  (meep--surround-replace-by-type-pick-impl nil))
 
 ;;;###autoload
-(defun meep-char-surround-insert-lines (ch arg)
-  "Read a character CH and surround the selected lines with it.
-Insert ARG times.
+(defun meep-surround-replace-by-type-lines-pick ()
+  "Pick a typed source delimiter, then replace each line's surrounding pair of that type.
+The line-wise variant of `meep-surround-replace-by-type-pick'."
+  (interactive "*")
+  (meep--surround-replace-by-type-pick-impl t))
 
-When multiple lines are in the active region,
-surround each line individually.
-When there is no active region, surround the current line."
-  (interactive "*cSurround Lines by Char:\np")
-  (meep--char-surround-insert-impl ch arg t))
+;;;###autoload
+(defun meep-surround-replace-by-type ()
+  "Read a source delimiter, then a destination, and replace that surrounding pair.
+The source names which pair type to replace - the nearest enclosing pair of that
+delimiter, skipping closer pairs of other types - and the destination is the new
+pair.  A numeric prefix is the nesting depth.  Installs the source delimiter map
+transiently, whether called by key (the default binds `s t g' / `s T g') or `M-x'."
+  (interactive "*")
+  (meep--surround-set-keymap (meep--surround-replace-by-type-map nil) "Replace surround of"))
+
+;;;###autoload
+(defun meep-surround-replace-by-type-lines ()
+  "Read a source delimiter and destination, replacing each line's surrounding pair of that type.
+The line-wise variant of `meep-surround-replace-by-type'."
+  (interactive "*")
+  (meep--surround-set-keymap (meep--surround-replace-by-type-map t) "Replace surround of"))
 
 
 ;; ---------------------------------------------------------------------------
@@ -7289,10 +8942,11 @@ This may be used when yanking."
   "Kill the current region.
 The region need not be active."
   (interactive "*")
-  (let* ((scope (or (meep--region-or-mark-bounds)
-                    ;; No mark set: `region-beginning' signals the standard "mark
-                    ;; is not set" error, matching the prior behavior.
-                    (cons (region-beginning) (region-end))))
+  (let* ((scope
+          (or (meep--region-or-mark-bounds)
+              ;; No mark set: `region-beginning' signals the standard "mark
+              ;; is not set" error, matching the prior behavior.
+              (cons (region-beginning) (region-end))))
          (region-type (meep--state-region-type)))
     (meep--clipboard-killring-cut-or-copy (car scope) (cdr scope) region-type t)))
 
@@ -7301,10 +8955,11 @@ The region need not be active."
   "Add the current region to the `kill-ring'.
 The region need not be active."
   (interactive)
-  (let* ((scope (or (meep--region-or-mark-bounds)
-                    ;; No mark set: `region-beginning' signals the standard "mark
-                    ;; is not set" error, matching the prior behavior.
-                    (cons (region-beginning) (region-end))))
+  (let* ((scope
+          (or (meep--region-or-mark-bounds)
+              ;; No mark set: `region-beginning' signals the standard "mark
+              ;; is not set" error, matching the prior behavior.
+              (cons (region-beginning) (region-end))))
          (region-type (meep--state-region-type)))
     (meep--clipboard-killring-cut-or-copy (car scope) (cdr scope) region-type nil)))
 
@@ -8048,7 +9703,10 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 
 (defvar meep-preset-variables
   (list
-   'meep-bounds-for-inner-comment 'meep-match-bounds-of-char-contextual 'meep-list-item-bounds)
+   'meep-bounds-for-inner-comment
+   'meep-match-bounds-of-char-contextual
+   'meep-list-item-bounds
+   'meep-surround-pairs)
   "Variables that meep presets are allowed to set.
 
 A bundled `meep-preset-MODE.el' must restrict the keys of its

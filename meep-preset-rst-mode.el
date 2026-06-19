@@ -18,7 +18,13 @@
       ("|" . "|") ; Substitution reference.
       ("(" . ")") ; Parens.
       ("[" . "]") ; Link / footnote / citation.
-      ("{" . "}"))))) ; Brace.
+      ("{" . "}"))) ; Brace.
+   ;; RST has no inline strike-through, so `strike' is left undefined.
+   (cons
+    'meep-surround-pairs
+    '((bold . ("**" . "**")) ; Strong emphasis.
+      (italic . ("*" . "*")) ; Emphasis.
+      (code . ("``" . "``")))))) ; Inline literal.
 
 (provide 'meep-preset-rst-mode)
 ;; Local Variables:

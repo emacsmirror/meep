@@ -8,7 +8,13 @@
    (cons
     'meep-bounds-for-inner-comment
     '(meep-bounds-inner-from-delimiters
-      (("<!--" . "-->")))))) ; Comment.
+      (("<!--" . "-->")))) ; Comment.
+   (cons
+    'meep-surround-pairs
+    '((bold . ("<b>" . "</b>")) ; Bold.
+      (italic . ("<i>" . "</i>")) ; Italic.
+      (code . ("<code>" . "</code>")) ; Inline code.
+      (strike . ("<s>" . "</s>")))))) ; Strike-through.
 
 (provide 'meep-preset-html-mode)
 ;; Local Variables:

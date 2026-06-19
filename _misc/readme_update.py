@@ -27,8 +27,10 @@ def patch_help_test(emacs_output: str) -> str:
 
     # Allow for quoted properties `symbol'.
     # For some reason some of these are converted to unicode quotes but others not.
+    # A space is allowed for quoted key sequences (`s t'); the class excludes the
+    # closing quote, so a greedy match cannot run past it into an apostrophe.
     emacs_output = re.sub(
-        "(`)([\\w\\-*]+)(')",
+        "(`)([\\w\\-* ]+)(')",
         key_replace_quote_to_rst, emacs_output,
     )
 
@@ -141,7 +143,10 @@ def readme_patch_docstrings_sections(data: str) -> str:
                     *text_lines[1:],
                 ]
 
-                text = "".join(text_lines)
+                # Convert the Elisp `symbol' quoting the same way the docstrings
+                # are converted (the sections are inserted after that pass has
+                # already run), or RST treats it as an unterminated reference.
+                text = patch_help_test("".join(text_lines))
                 sections.append((first_symbol_after_comment(line_index), text))
                 section_current = []
                 continue
