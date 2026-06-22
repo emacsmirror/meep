@@ -506,20 +506,10 @@ POS-ORIG and MRK-ORIG define the original region."
            ;; reserve for the function call to prevent code-bloat.
            (meep--maintain-line-based-region ,pos-orig ,mrk-orig))))))
 
-(defun meep--mark-on-motion-maybe-activate ()
-  "Activate the region in preparation for a command to use the active region."
-  (when (and meep-mark-set-on-motion (null (region-active-p)))
-    (let ((local-last-command (meep--last-command)))
-      (when (and (symbolp local-last-command)
-                 (meep-command-is-mark-set-on-motion-any local-last-command))
-        (setq deactivate-mark nil)
-        (activate-mark t))))
-  nil)
-
 (defun meep--mark-on-motion-maybe-activate-as-bounds ()
-  "Like `meep--mark-on-motion-maybe-activate' but returns bounds or nil.
-The bounds represent the region that would have been activated.
-This should be used in situations where commands do not result in a visible region."
+  "Return the active or implied region as `(BEG . END)', or nil when neither.
+The implied region is the span a mark-on-motion command would have activated.
+Use this where a command must read those bounds without making the region visible."
   (let ((result nil))
     (cond
      ((region-active-p)
@@ -5413,8 +5403,12 @@ When LINE-WISE is non-nil, surround each line, otherwise use region bounds."
           (funcall ,surround-in-range-from-columns-fn col-beg col-end ,arg))
        (region-beginning) (region-end)))
      (t
-      ;; Support surrounding by "implied" region.
-      (meep--mark-on-motion-maybe-activate)
+      ;; Surround the implied region too: activate any set mark (active or not)
+      ;; so the active-region branch below handles it.  The mark *is* the
+      ;; selection in Emacs (`mark-even-if-inactive'), so use it unconditionally.
+      (when (and (mark t) (null (region-active-p)))
+        (setq deactivate-mark nil)
+        (activate-mark t))
       (cond
        ((region-active-p)
         (let ((beg (region-beginning))
@@ -6557,7 +6551,8 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
       (call-interactively #'string-rectangle))))
 
    (t
-    ;; Avoid `meep--mark-on-motion-maybe-activate' because it actually activates.
+    ;; Read the implied region as bounds without activating it; insert mode
+    ;; deactivates the region (below), so activating here would be undone.
     (let ((region-bounds (meep--mark-on-motion-maybe-activate-as-bounds)))
 
       ;; Always de-activate region, so hooks to leave "visual" mode run,
