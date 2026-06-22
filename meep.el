@@ -331,21 +331,30 @@ Return t when point was moved to the comment start."
      (t
       nil))))
 
+(defun meep--rectangle-row-span (col-beg col-end)
+  "Return the `(BEG . END)' buffer span between COL-BEG and COL-END on this line.
+A pure query: point is preserved.  BEG equals END (an empty span) when the line
+is too short to reach the columns, or when they fall within a single TAB - in
+both cases `move-to-column' lands at the same position, as there is no character
+boundary between them."
+  (declare (important-return-value t))
+  (save-excursion
+    (let ((beg
+           (progn
+             (move-to-column col-beg)
+             (point)))
+          (end
+           (progn
+             (move-to-column col-end)
+             (point))))
+      (cons beg end))))
+
 (defun meep--rectangle-range-list-from-rectangle (beg end)
   "Return a list of ranges from a rectangle from BEG and END."
   (declare (important-return-value t))
   (let ((result (list)))
     (apply-on-rectangle
-     (lambda (col-beg col-end)
-       (let ((pos-beg nil)
-             (pos-end nil))
-         (save-excursion
-           (move-to-column col-beg)
-           (setq pos-beg (point))
-           (move-to-column col-end)
-           (setq pos-end (point))
-           (push (cons pos-beg pos-end) result))))
-     beg end)
+     (lambda (col-beg col-end) (push (meep--rectangle-row-span col-beg col-end) result)) beg end)
     (nreverse result)))
 
 (defun meep--columns-from-point-range (beg end)
