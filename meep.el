@@ -3541,7 +3541,10 @@ Each element is (key function description)."
                        (concat
                         (format "Jump to the %s of" (or (and (< n 0) "beginning") "end"))
                         ": %k or any other to exit\n"
-                        (mapconcat #'identity info-text ", ")))))
+                        ;; Escape `%' in user-bound keys / descriptions; the
+                        ;; `format-spec' in `set-transient-map' would read a bare
+                        ;; `%' as an invalid spec and error.  `%k' above stays live.
+                        (string-replace "%" "%%" (mapconcat #'identity info-text ", "))))))
 
 ;;;###autoload
 (defun meep-move-to-bounds-of-thing-beginning (arg)
