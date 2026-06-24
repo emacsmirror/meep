@@ -4536,7 +4536,7 @@ searching with a zero count, see `meep--region-mark-bounds-of-char-impl'."
 (ert-deftest selection-mark-bounds-of-char-contextual-case-sensitive ()
   "A letter-bearing distinct delimiter pairs case-sensitively.
 Under an ambient `case-fold-search', a lowercase `<b>' pair must not match an
-uppercase `<B>' token, see `meep--region-mark-bounds-find-matching-brackets'."
+uppercase `<B>' token, see `meep--syntax-enclosing-pair-from-text'."
   (let ((text-initial "a <B>content</B> b")
         (meep-match-bounds-of-char-contextual '(("<b>" . "</b>"))))
     (with-meep-test text-initial
@@ -4555,6 +4555,43 @@ uppercase `<B>' token, see `meep--region-mark-bounds-find-matching-brackets'."
         [return])
       (should-not (region-active-p))
       (should (equal 'normal (bray-state))))))
+
+(ert-deftest selection-mark-bounds-of-char-syntax-ignores-string ()
+  "In a `prog-mode' buffer the syntax backend ignores a bracket inside a string.
+A `(' inside the string must not be taken as the enclosing open; the real outer
+list is selected instead, see `meep-syntax-backend'."
+  (let ((text-initial "(a \"(\" b)")
+        (meep-syntax-backend nil))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Move onto `b', inside the real list but past the string's stray `('.
+      (simulate-input-for-meep
+        [?\C-u ?6]
+        '(:state normal :command meep-move-char-next))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-bounds-of-char-outer)
+        "(")
+      (should (equal 'visual (bray-state)))
+      (should (equal "(a \"(\" b)" (meep-test-region-as-string))))))
+
+(ert-deftest selection-mark-bounds-of-char-count-peels-outward ()
+  "A count selects the Nth enclosing pair for distinct brackets.
+The count is honoured by peeling outward, see `meep--peel-outward'; `C-u 2'
+selects the second enclosing pair rather than the innermost."
+  (let ((text-initial "((x))"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move onto `x', inside both pairs.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next))
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-region-mark-bounds-of-char-outer)
+        "(")
+      (should (equal "((x))" (meep-test-region-as-string))))))
 
 (ert-deftest selection-mark-bounds-of-char-empty-content ()
   "Mark bounds with empty content inside delimiters.

@@ -402,6 +402,39 @@ over the bundled preset."
                      var
                      meep-preset-variables))))))))
 
+(ert-deftest meep-syntax-backend-resolve-auto-and-override ()
+  "Auto resolves by mode; an explicit `meep-syntax-backend' overrides."
+  (with-temp-buffer
+    (text-mode)
+    (let ((meep-syntax-backend nil))
+      (should (eq 'text (meep--syntax-backend-resolve))))
+    (let ((meep-syntax-backend 'syntax))
+      (should (eq 'syntax (meep--syntax-backend-resolve)))))
+  (with-temp-buffer
+    (emacs-lisp-mode)
+    (let ((meep-syntax-backend nil))
+      (should (eq 'syntax (meep--syntax-backend-resolve))))
+    (let ((meep-syntax-backend 'text))
+      (should (eq 'text (meep--syntax-backend-resolve))))))
+
+(ert-deftest meep-syntax-enclosing-pair-ignores-string-brackets ()
+  "The syntax backend skips a bracket inside a string; the text scan does not."
+  (with-temp-buffer
+    (emacs-lisp-mode)
+    (insert "(a \"(\" b)")
+    (goto-char (point-min))
+    (search-forward "b")
+    (let* ((pos (match-beginning 0))
+           (bounds-init (cons pos pos))
+           (bounds-limit (cons (point-min) (point-max)))
+           (pair '("(" . ")")))
+      ;; Syntax tree: only the real outer pair encloses point.
+      (let ((meep-syntax-backend 'syntax))
+        (should (equal '(1 . 10) (meep--syntax-enclosing-pair bounds-init bounds-limit pair))))
+      ;; Text scan: the stray `(' inside the string is mistaken for the open.
+      (let ((meep-syntax-backend 'text))
+        (should (equal '(5 . 10) (meep--syntax-enclosing-pair bounds-init bounds-limit pair)))))))
+
 (provide 'meep_tests_internal)
 ;; Local Variables:
 ;; fill-column: 99

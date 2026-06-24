@@ -91,6 +91,22 @@ Custom Variables
    When nil, falls back to the preset for the current ``major-mode``, then to a spec
    generated from ``meep-symmetrical-chars`` (see ``meep--list-item-bounds-default``).
 
+``meep-syntax-backend``: ``nil``
+   Backend for locating the bracket pair enclosing point.
+
+   - nil: choose automatically per buffer - ``syntax`` in ``prog-mode`` derivatives
+     (whose syntax tables are reliable), ``text`` elsewhere (so prose and markup
+     delimiters keep working).
+   - ``text``: scan the buffer text.  Matches any configured delimiter, including
+     multi-character markup, but counts brackets inside strings and comments.
+   - ``syntax``: read the syntax tree (``syntax-ppss``).  Ignores brackets inside
+     strings and comments and nests correctly, but applies only to single-character
+     paren-syntax brackets - every other delimiter always scans text regardless of
+     this setting (same-delimiter quotes and markup never consult it; multi-character
+     and non-paren pairs fall back to ``text``).
+
+   Affects the mark-bounds-of-char motions.
+
 ``meep-bounds-commands``: ``((112 meep-move-to-bounds-of-paragraph-inner "paragraph inner") (80 meep-move-to-bounds-of-paragraph "paragraphs") (99 meep-move-to-bounds-of-comment-inner "comment inner") (67 meep-move-to-bounds-of-comment "comment") (115 meep-move-to-bounds-of-string-inner "string inner") (83 meep-move-to-bounds-of-string "string") (108 meep-move-to-bounds-of-line-inner "line inner") (76 meep-move-to-bounds-of-line "line") (86 meep-move-to-bounds-of-visual-line-inner "visual line inner") (118 meep-move-to-bounds-of-visual-line "visual line") (100 meep-move-to-bounds-of-defun-inner "defun inner") (68 meep-move-to-bounds-of-defun "defun") (105 meep-move-to-bounds-of-list-item-inner "list item inner") (73 meep-move-to-bounds-of-list-item "list item") (46 meep-move-to-bounds-of-sentence-inner "sentence inner") (62 meep-move-to-bounds-of-sentence "sentence"))``
    List of commands for bounds movement.
    Each element is (key function description).

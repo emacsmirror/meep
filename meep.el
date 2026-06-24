@@ -2224,7 +2224,58 @@ generated from `meep-symmetrical-chars' (see `meep--list-item-bounds-default')."
           (setq chars nil)))))
     result))
 
-(defun meep--region-mark-bounds-find-matching-brackets (bounds-init bounds-limit ch-str-pair)
+(defcustom meep-syntax-backend nil
+  "Backend for locating the bracket pair enclosing point.
+
+- nil: choose automatically per buffer - `syntax' in `prog-mode' derivatives
+  (whose syntax tables are reliable), `text' elsewhere (so prose and markup
+  delimiters keep working).
+- `text': scan the buffer text.  Matches any configured delimiter, including
+  multi-character markup, but counts brackets inside strings and comments.
+- `syntax': read the syntax tree (`syntax-ppss').  Ignores brackets inside
+  strings and comments and nests correctly, but applies only to single-character
+  paren-syntax brackets - every other delimiter always scans text regardless of
+  this setting (same-delimiter quotes and markup never consult it; multi-character
+  and non-paren pairs fall back to `text').
+
+Affects the mark-bounds-of-char motions."
+  :type
+  '(choice
+    (const :tag "Automatic (syntax in prog-mode, text elsewhere)" nil)
+    (const :tag "Scan the buffer text" text)
+    (const :tag "Read the syntax tree" syntax)))
+
+(defun meep--syntax-backend-resolve ()
+  "Return the effective `meep-syntax-backend' for the current buffer.
+A nil (auto) value resolves to `syntax' in `prog-mode' derivatives - whose
+syntax tables are reliable - and `text' elsewhere."
+  (declare (important-return-value t))
+  (or meep-syntax-backend
+      ;; NOTE: `derived-mode-p' is a proxy for "is the syntax table reliable for
+      ;; brackets".  It is imperfect both ways - it forces `text' on `markdown',
+      ;; `org' & `latex' buffers that do have real bracket syntax, and `syntax' on
+      ;; a thin or generated `prog-mode' table.  A finer axis (inspecting the
+      ;; syntax table) could be used, however `meep-syntax-backend' is overridable
+      ;; per buffer, so it isn't worth the added complexity.  Leave as-is.
+      (cond
+       ((derived-mode-p 'prog-mode)
+        'syntax)
+       (t
+        'text))))
+
+;; ---------------------------------------------------------------------------
+;; Syntax Query Layer: Enclosing Bracket Pair
+;;
+;; "What bracket encloses point?" answered by two interchangeable backends
+;; (`meep-syntax-backend' selects), so a caller can pick correctness-by-syntax or
+;; reach beyond the syntax table:
+;; - `-from-text' scans the buffer text.  Matches any configured pair, including
+;;   multi-character markup, but counts brackets inside strings and comments.
+;; - `-from-syntax' reads the syntax tree.  Ignores brackets inside strings and
+;;   comments and nests correctly, but only sees single-character parens.
+;; `meep--syntax-enclosing-pair' dispatches between them.
+
+(defun meep--syntax-enclosing-pair-from-text (bounds-init bounds-limit ch-str-pair)
   "Find the pair of matching brackets around BOUNDS-INIT.
 BOUNDS-LIMIT constrains the search bounds.
 CH-STR-PAIR provides the bracket strings (supports multi-character brackets).
@@ -2308,6 +2359,84 @@ Return the bounds or nil if no matching brackets are found."
                 (setq result (cons open-pos close-pos)))))
           result)))))
 
+(defun meep--syntax-enclosing-pair-from-syntax (bounds-init bounds-limit ch-str-pair)
+  "Syntax-tree backend of `meep--syntax-enclosing-pair'.
+The enclosing pair is read from the `syntax-ppss' open-paren stack, so a bracket
+inside a string or comment is never matched.  OPEN of CH-STR-PAIR must be a
+single character with paren syntax; the arguments and return value otherwise
+match `meep--syntax-enclosing-pair-from-text'.  Return nil when no such pair
+encloses BOUNDS-INIT within BOUNDS-LIMIT."
+  (declare (important-return-value t))
+  (let ((open-char (string-to-char (car ch-str-pair)))
+        (beg (car bounds-init))
+        (end (cdr bounds-init))
+        (clamp-min (car bounds-limit))
+        (clamp-max (cdr bounds-limit)))
+    (let ((has-region (not (eq beg end)))
+          (ppss (syntax-ppss beg))
+          (result nil))
+      ;; `nth 9' lists the open-paren positions enclosing BEG outermost-first;
+      ;; reversing runs them innermost-first, so the first to qualify is the nearest
+      ;; enclosing pair.  An outer pair is never nearer on the clamp - its open is
+      ;; smaller and its close larger - so rejecting and continuing cannot skip a
+      ;; closer in-clamp match.
+      (let ((opens (reverse (nth 9 ppss))))
+        (while (and opens (null result))
+          (let* ((open-beg (pop opens))
+                 (close-end
+                  (and (eq (char-after open-beg) open-char)
+                       (ignore-errors
+                         (scan-sexps open-beg 1)))))
+            (when (and close-end
+                       (>= open-beg clamp-min) (<= close-end clamp-max)
+                       (cond
+                        (has-region
+                         (and (<= open-beg beg) (>= close-end end)))
+                        (t
+                         (>= close-end beg))))
+              (setq result (cons open-beg close-end))))))
+      result)))
+
+(defun meep--syntax-pair-is-paren-p (ch-str-pair)
+  "Return non-nil when CH-STR-PAIR's open is a single paren-syntax character.
+Only such a pair can be matched from the syntax tree; a multi-character or
+non-paren delimiter (markdown markup, `<' `>' lacking paren syntax) cannot, so
+the syntax backend is skipped for it."
+  (declare (important-return-value t))
+  (let ((open (car ch-str-pair)))
+    (and (length= open 1) (eq (char-syntax (string-to-char open)) ?\())))
+
+(defun meep--syntax-enclosing-pair (bounds-init bounds-limit ch-str-pair)
+  "Return the bracket pair around BOUNDS-INIT as `(OPEN-POS . CLOSE-POS)', or nil.
+Routes to a backend per `meep-syntax-backend': the syntax tree when it is
+`syntax' and CH-STR-PAIR is a paren-syntax bracket, otherwise the text scan.  The
+arguments and return value match `meep--syntax-enclosing-pair-from-text'."
+  (declare (important-return-value t))
+  (cond
+   ((and (eq (meep--syntax-backend-resolve) 'syntax) (meep--syntax-pair-is-paren-p ch-str-pair))
+    (meep--syntax-enclosing-pair-from-syntax bounds-init bounds-limit ch-str-pair))
+   (t
+    (meep--syntax-enclosing-pair-from-text bounds-init bounds-limit ch-str-pair))))
+
+(defun meep--peel-outward (seed count step-fn)
+  "Return the COUNT-th layer outward from SEED, clamping to the outermost.
+SEED is layer 1; STEP-FN is called on the current layer to get the next one
+enclosing it, COUNT-1 times.  STEP-FN returns the enclosing layer or nil; a nil
+result (fewer than COUNT layers exist) stops the peel and keeps the outermost
+layer found so far.  Return nil when SEED is nil."
+  (declare (important-return-value t))
+  (let ((found seed)
+        (i 1))
+    (while (and found (< i count))
+      (let ((next (funcall step-fn found)))
+        (cond
+         (next
+          (setq found next)
+          (meep--incf i))
+         (t
+          (setq i count)))))
+    found))
+
 (defun meep--region-mark-same-delim-opener-p (delim pos)
   "Return non-nil when same-delimiter DELIM sitting at POS opens a pair, by parity.
 Toggle for each DELIM from POS's line start up to POS; an even count (t) means POS
@@ -2352,7 +2481,15 @@ BOUNDS-LIMIT constrains the search bounds."
               (setq bounds (cons beg end))))))
       bounds))
    (t
-    (meep--region-mark-bounds-find-matching-brackets bounds-init bounds-limit ch-str-pair))))
+    ;; Distinct brackets: peel outward to the Nth enclosing pair (a depth count),
+    ;; matching the same-delimiter branch which honours N.  Each layer searches
+    ;; strictly outside the pair found so far, so a count past the available depth
+    ;; clamps to the outermost.
+    (meep--peel-outward
+     (meep--syntax-enclosing-pair bounds-init bounds-limit ch-str-pair)
+     n
+     (lambda (layer)
+       (meep--syntax-enclosing-pair layer bounds-limit ch-str-pair))))))
 
 (defun meep--region-mark-bounds-init ()
   "Return the initial bounds."
