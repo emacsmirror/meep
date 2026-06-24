@@ -2296,6 +2296,12 @@ syntax tables are reliable - and `text' elsewhere."
 ;;   comments and nests correctly, but only sees single-character parens.
 ;; `meep--syntax-enclosing-pair' dispatches between them.
 
+(defun meep--bracket-pair-regex (open close)
+  "Return a regex matching OPEN as group 1 or CLOSE as group 2.
+Both delimiters are quoted; shared by the depth-counting bracket scans."
+  (declare (important-return-value t))
+  (concat "\\(" (regexp-quote open) "\\)\\|\\(" (regexp-quote close) "\\)"))
+
 (defun meep--syntax-enclosing-pair-from-text (bounds-init bounds-limit ch-str-pair)
   "Find the pair of matching brackets around BOUNDS-INIT.
 BOUNDS-LIMIT constrains the search bounds.
@@ -2311,10 +2317,9 @@ Return the bounds or nil if no matching brackets are found."
          (open-str (car ch-str-pair))
          (close-str (cdr ch-str-pair))
          (open-str-quote (regexp-quote open-str))
-         (close-str-quote (regexp-quote close-str))
          (limit-min (car bounds-limit))
          (limit-max (cdr bounds-limit))
-         (bracket-regex (concat "\\(" open-str-quote "\\)\\|\\(" close-str-quote "\\)")))
+         (bracket-regex (meep--bracket-pair-regex open-str close-str)))
     (let ((find-open-bracket-backward-fn
            (lambda ()
              (save-match-data
