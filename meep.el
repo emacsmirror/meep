@@ -2303,6 +2303,26 @@ Return the bounds or nil if no matching brackets are found."
                 (setq result (cons open-pos close-pos)))))
           result)))))
 
+(defun meep--region-mark-same-delim-opener-p (delim pos)
+  "Return non-nil when same-delimiter DELIM sitting at POS opens a pair, by parity.
+Toggle for each DELIM from POS's line start up to POS; an even count (t) means POS
+opens a pair, odd (nil) means it closes one.
+
+Only POS's own line is counted, so a multi-line span whose open is on an earlier
+line cannot be validated, and a stray DELIM earlier on the line (a literal `*'
+from `2 * 3' before `*bold*') flips the count - inherent to telling an opener from
+a lone same-delimiter token, and rare in practice, so accept it."
+  (declare (important-return-value t))
+  (save-excursion
+    (save-match-data
+      (let ((case-fold-search nil)
+            (is-open t))
+        (goto-char pos)
+        (goto-char (pos-bol))
+        (while (search-forward delim pos t)
+          (setq is-open (not is-open)))
+        is-open))))
+
 (defun meep--region-mark-bounds-of-char-calc (bounds-init bounds-limit n ch-str-pair)
   "Calculate the bounds around CH-STR-PAIR from BOUNDS-INIT N times.
 BOUNDS-LIMIT constrains the search bounds."
@@ -2319,20 +2339,12 @@ BOUNDS-LIMIT constrains the search bounds."
           (when (search-forward (cdr ch-str-pair) (cdr bounds-limit) t n)
             (setq end (point))
             (goto-char (car bounds-init))
-            (when (search-backward (car ch-str-pair) (car bounds-limit) t n)
+            (when (and (search-backward (car ch-str-pair) (car bounds-limit) t n)
+                       ;; Verify the match opens a pair (is not a stray closing
+                       ;; delimiter) before accepting it.
+                       (meep--region-mark-same-delim-opener-p (car ch-str-pair) (point)))
               (setq beg (point))
-              ;; Verify `beg' is an opening delimiter using parity:
-              ;; toggle for each delimiter from the line start to `beg',
-              ;; even (t) means `beg' opens a pair (valid),
-              ;; odd (nil) means `beg' closes a pair (false match).
-              ;; NOTE: only delimiters on the same line are counted,
-              ;; so this check doesn't support multi-line strings.
-              (let ((is-open t))
-                (goto-char (pos-bol))
-                (while (search-forward (car ch-str-pair) beg t)
-                  (setq is-open (not is-open)))
-                (when is-open
-                  (setq bounds (cons beg end))))))))
+              (setq bounds (cons beg end))))))
       bounds))
    (t
     (meep--region-mark-bounds-find-matching-brackets bounds-init bounds-limit ch-str-pair))))
