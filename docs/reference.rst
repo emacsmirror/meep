@@ -66,49 +66,30 @@ Custom Variables
 ``meep-list-item-bounds``: ``nil``
    Spec for the ``list-item`` text object: bracket lists and their separators.
 
-   When non-nil, the value is a list of entries, each of the form
+   The value is a list of entries, each of the form
 
      ((OPEN . CLOSE) SEPARATORS)
 
-   OPEN and CLOSE are the bracket characters delimiting a list (paired as a cons),
-   and SEPARATORS is the list of that list’s separator strings, or t to split on
-   runs of whitespace (for languages like Lisp where items are space-separated):
+   OPEN and CLOSE are the bracket characters delimiting a list, and SEPARATORS is
+   the list of that list’s separator strings, or t to split on runs of whitespace
+   (e.g. Lisp, where items are space-separated):
 
      (((?\( . ?\)) (",")) ((?\{ . ?\}) (";")))
      (((?\( . ?\)) t))   ; whitespace-separated, e.g. Lisp
 
    Each bracket type defines its own separators, so different brackets may separate
-   differently - e.g. in C/C++, ‘()’ separates on ‘,’ while ‘{}’ separates on ‘;’.
-   A list with more than one separator string splits on any of them.  A bracket
-   may also appear in more than one entry to give a fallback chain: the entries
-   are tried in order and the first whose separators actually occur in the list
-   wins.  For example, C/C++ braces hold either statements (‘;’) or an
-   initializer (‘,’), so both can be listed:
+   differently - in C/C++ ‘()’ splits on ‘,’ while ‘{}’ splits on ‘;’.  A bracket
+   may appear in more than one entry to give a fallback chain: entries are tried in
+   order and the first whose separators occur in the list wins, e.g. C/C++ braces
+   holding either statements (‘;’) or an initializer (‘,’).
 
-     (((?\{ . ?\}) (";")) ((?\{ . ?\}) (",")))
+   Nesting is read from the buffer’s syntax tree, so a separator inside any deeper
+   bracket, string or comment never splits a list item.  Each OPEN and CLOSE must
+   therefore be a single character with paren syntax in the current mode (possibly
+   via a syntax-table text property, as CC Mode does for C++ template ‘<’ / ‘>’).
 
-   ‘{ a; b; }’ then splits on ‘;’, while ‘{ 1, 2, 3 }’ (no ‘;’) falls back to ‘,’.
-
-   Nesting is read from the buffer’s syntax tree, so a separator inside any
-   deeper bracket (of any type), string or comment never splits a list item.
-
-   For this to work each OPEN and CLOSE must be a single character that is a real
-   bracket in the current mode’s syntax table - one with paren syntax (class ‘(’ /
-   ‘)’), possibly applied as a syntax-table text property, as CC Mode does for C++
-   template ‘<’ / ‘>’.  (Separators, matched textually, may be multi-character.)
-   A configured bracket the mode does not treat as a paren will still delimit the
-   enclosing list, but separators nested inside it are read as top-level (their
-   syntactic parent is the same as the list’s), so such a list is split on the
-   wrong separators.  Generic brackets like ‘<’ ‘>’ are therefore only reliable
-   in modes that give them paren syntax.
-
-   Defaults to nil; the spec is then read from the preset for the current
-   ``major-mode`` (see the bundled ‘meep-preset-MODE.el’ files), and finally
-   falls back to a spec generated from ``meep-symmetrical-chars`` - its
-   single-character pairs that have paren syntax in the current buffer, with braces
-   ‘{}’ splitting on ‘;’ (else ‘,’) and other brackets on ‘,’ (else ‘;’); see
-   ``meep--list-item-bounds-default``.  An explicit user setting - buffer-local or
-   global - takes precedence over the preset.
+   When nil, falls back to the preset for the current ``major-mode``, then to a spec
+   generated from ``meep-symmetrical-chars`` (see ``meep--list-item-bounds-default``).
 
 ``meep-bounds-commands``: ``((112 meep-move-to-bounds-of-paragraph-inner "paragraph inner") (80 meep-move-to-bounds-of-paragraph "paragraphs") (99 meep-move-to-bounds-of-comment-inner "comment inner") (67 meep-move-to-bounds-of-comment "comment") (115 meep-move-to-bounds-of-string-inner "string inner") (83 meep-move-to-bounds-of-string "string") (108 meep-move-to-bounds-of-line-inner "line inner") (76 meep-move-to-bounds-of-line "line") (86 meep-move-to-bounds-of-visual-line-inner "visual line inner") (118 meep-move-to-bounds-of-visual-line "visual line") (100 meep-move-to-bounds-of-defun-inner "defun inner") (68 meep-move-to-bounds-of-defun "defun") (105 meep-move-to-bounds-of-list-item-inner "list item inner") (73 meep-move-to-bounds-of-list-item "list item") (46 meep-move-to-bounds-of-sentence-inner "sentence inner") (62 meep-move-to-bounds-of-sentence "sentence"))``
    List of commands for bounds movement.
@@ -393,7 +374,7 @@ Motion: Line
    A negative ARG moves to the end.
 
 ``(meep-move-line-non-space-end ARG)``
-   Move to the end of the line, ignoring trailing blank-space
+   Move to the end of the line, ignoring trailing blank-space.
    A negative ARG moves to the beginning.
 
 ``(meep-move-line-prev ARG)``
