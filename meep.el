@@ -2391,8 +2391,16 @@ When INNER is non-nil, mark the inner bounds."
            t)
           (t
            nil))))
-    (let ((bounds (meep--region-mark-bounds-of-char-calc bounds-init bounds-limit n ch-str-pair)))
+    ;; A count of 0 leaves BOUNDS nil for the no-op clause below; running the
+    ;; search with a zero count matches at point in both directions and returns the
+    ;; degenerate span there rather than a pair.
+    (let ((bounds
+           (and (not (zerop n))
+                (meep--region-mark-bounds-of-char-calc bounds-init bounds-limit n ch-str-pair))))
       (cond
+       ;; A count of 0 is a no-op: mark nothing, leaving point and any region as-is.
+       ((zerop n)
+        nil)
        ((null bounds)
         (message "Unable to find bounds!")
         nil)
@@ -2421,16 +2429,21 @@ When INNER is non-nil, mark the inner bounds."
           (t
            nil))))
     (let ((bounds nil))
-      (dolist (ch-str-pair-test meep-match-bounds-of-char-contextual)
-        (let ((bounds-test
-               (meep--region-mark-bounds-of-char-calc
-                bounds-init bounds-limit n ch-str-pair-test)))
-          ;; Only update the clamp beginning, since the end may increase and that's OK.
-          (when bounds-test
-            (setq bounds bounds-test)
-            (setcar bounds-limit (car bounds-test))
-            (setq ch-str-pair ch-str-pair-test))))
+      ;; A count of 0 is a no-op (see `meep--region-mark-bounds-of-char-impl'); skip
+      ;; the search so BOUNDS stays nil for the clause below.
+      (unless (zerop n)
+        (dolist (ch-str-pair-test meep-match-bounds-of-char-contextual)
+          (let ((bounds-test
+                 (meep--region-mark-bounds-of-char-calc
+                  bounds-init bounds-limit n ch-str-pair-test)))
+            ;; Only update the clamp beginning, since the end may increase and that's OK.
+            (when bounds-test
+              (setq bounds bounds-test)
+              (setcar bounds-limit (car bounds-test))
+              (setq ch-str-pair ch-str-pair-test)))))
       (cond
+       ((zerop n)
+        nil)
        ((null bounds)
         (message "Unable to find bounds!")
         nil)

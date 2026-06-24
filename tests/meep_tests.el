@@ -4510,6 +4510,29 @@ Verifies: cursor on delimiter itself does not select content."
         (should (equal 'normal (bray-state)))
         (should (equal point-before (meep-test-point-line-column)))))))
 
+(ert-deftest selection-mark-bounds-of-char-zero-count-no-op ()
+  "A count of 0 marks nothing and does not error.
+`C-u 0' is a no-op - the motion leaves point and the buffer untouched rather than
+searching with a zero count, see `meep--region-mark-bounds-of-char-impl'."
+  (let ((text-initial "a (b c) d"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move inside the parens.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-move-char-next))
+      (let ((point-before (meep-test-point-line-column)))
+        ;; `C-u 0' then mark is a no-op: no region, no error, point unchanged.
+        (simulate-input-for-meep
+          [?\C-u ?0]
+          '(:state normal :command meep-region-mark-bounds-of-char-inner)
+          "(")
+        (should-not (region-active-p))
+        (should (equal 'normal (bray-state)))
+        (should (equal point-before (meep-test-point-line-column)))))))
+
 (ert-deftest selection-mark-bounds-of-char-empty-content ()
   "Mark bounds with empty content inside delimiters.
 
