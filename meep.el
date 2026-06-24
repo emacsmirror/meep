@@ -563,6 +563,27 @@ were to be made into the active region."
    (t
     (meep--mark-on-motion-bounds))))
 
+(defun meep--region-or-mark-bounds ()
+  "Return the active or implied region as `(BEG . END)', or nil when no mark.
+The implied region is whatever span the mark bounds while inactive (it stays
+readable via `mark-even-if-inactive').  The cut and copy verbs use this so they
+act on a selection even when it is not active.  Return nil when no mark is set,
+so the caller falls back to point."
+  (declare (important-return-value t))
+  ;; NOTE: `(mark t)' accepts any set mark - active or not, and regardless of the
+  ;; command that set it - not only a mark a motion left behind.  The mark *is* the
+  ;; selection in Emacs (`mark-even-if-inactive'), so gating on how it was set would
+  ;; surprise the user.  A stale mark left far from point therefore widens the
+  ;; region, which is consistent with treating it as a noun, so accept it.
+  ;;
+  ;; Read the span from the mark directly, not via `region-beginning' /
+  ;; `region-end': those call `(mark)' which signals `(mark-inactive)' for a set
+  ;; but inactive mark when `mark-even-if-inactive' is nil (a common user setting).
+  (let ((m (mark t)))
+    (and m
+         (let ((p (point)))
+           (cons (min m p) (max m p))))))
+
 ;;;###autoload
 (defun meep-move-symbol-prev (arg)
   "Move point to the beginning of the previous symbol, ARG times."
@@ -7263,16 +7284,24 @@ This may be used when yanking."
   "Kill the current region.
 The region need not be active."
   (interactive "*")
-  (let ((region-type (meep--state-region-type)))
-    (meep--clipboard-killring-cut-or-copy (region-beginning) (region-end) region-type t)))
+  (let* ((scope (or (meep--region-or-mark-bounds)
+                    ;; No mark set: `region-beginning' signals the standard "mark
+                    ;; is not set" error, matching the prior behavior.
+                    (cons (region-beginning) (region-end))))
+         (region-type (meep--state-region-type)))
+    (meep--clipboard-killring-cut-or-copy (car scope) (cdr scope) region-type t)))
 
 ;;;###autoload
 (defun meep-clipboard-killring-copy ()
   "Add the current region to the `kill-ring'.
 The region need not be active."
   (interactive)
-  (let ((region-type (meep--state-region-type)))
-    (meep--clipboard-killring-cut-or-copy (region-beginning) (region-end) region-type nil)))
+  (let* ((scope (or (meep--region-or-mark-bounds)
+                    ;; No mark set: `region-beginning' signals the standard "mark
+                    ;; is not set" error, matching the prior behavior.
+                    (cons (region-beginning) (region-end))))
+         (region-type (meep--state-region-type)))
+    (meep--clipboard-killring-cut-or-copy (car scope) (cdr scope) region-type nil)))
 
 ;;;###autoload
 (defun meep-clipboard-killring-cut-line ()

@@ -1491,6 +1491,28 @@ Verifies: error is signaled, kill-ring remains empty."
       ;; Kill-ring should remain empty.
       (should (null kill-ring)))))
 
+(ert-deftest clipboard-cut-inactive-mark ()
+  "Cut acts on a set but inactive mark, even with `mark-even-if-inactive' nil.
+The region need not be active; reading the mark directly avoids the
+`(mark-inactive)' error `region-beginning' would signal, see
+`meep--region-or-mark-bounds'."
+  (let ((text-initial "foo bar baz")
+        (mark-even-if-inactive nil))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Set a mark at the start, move point along, and leave it inactive.
+      (goto-char (point-min))
+      (set-mark (point))
+      (goto-char (+ (point-min) 3))
+      (deactivate-mark)
+      (should-not (region-active-p))
+      ;; Cut operates on the implied region rather than signalling an error.
+      (simulate-input-for-meep
+        '(:state normal :command meep-clipboard-killring-cut))
+      (should (equal "foo" (car kill-ring)))
+      (should (equal " bar baz" (buffer-string))))))
+
 (ert-deftest clipboard-only-copy-no-tty-clipboard ()
   "Copy to system clipboard raises error when no clipboard integration.
 
