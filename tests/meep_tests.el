@@ -4533,6 +4533,29 @@ searching with a zero count, see `meep--region-mark-bounds-of-char-impl'."
         (should (equal 'normal (bray-state)))
         (should (equal point-before (meep-test-point-line-column)))))))
 
+(ert-deftest selection-mark-bounds-of-char-contextual-case-sensitive ()
+  "A letter-bearing distinct delimiter pairs case-sensitively.
+Under an ambient `case-fold-search', a lowercase `<b>' pair must not match an
+uppercase `<B>' token, see `meep--region-mark-bounds-find-matching-brackets'."
+  (let ((text-initial "a <B>content</B> b")
+        (meep-match-bounds-of-char-contextual '(("<b>" . "</b>"))))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (setq case-fold-search t)
+      ;; Move inside the uppercase `<B>content</B>'.
+      (simulate-input-for-meep
+        [?\C-u ?6]
+        '(:state normal :command meep-move-char-next))
+      ;; Return triggers contextual detection; the only candidate is the uppercase
+      ;; token, and case-sensitive matching rejects the lowercase `<b>' pair, so
+      ;; nothing is marked.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-mark-bounds-of-char-inner)
+        [return])
+      (should-not (region-active-p))
+      (should (equal 'normal (bray-state))))))
+
 (ert-deftest selection-mark-bounds-of-char-empty-content ()
   "Mark bounds with empty content inside delimiters.
 

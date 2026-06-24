@@ -2230,7 +2230,12 @@ BOUNDS-LIMIT constrains the search bounds.
 CH-STR-PAIR provides the bracket strings (supports multi-character brackets).
 Return the bounds or nil if no matching brackets are found."
   (declare (important-return-value t))
-  (let* ((has-region (/= (car bounds-init) (cdr bounds-init)))
+  ;; Match case-sensitively, as the same-delimiter branch of
+  ;; `meep--region-mark-bounds-of-char-calc' does, so a letter-bearing multi-char
+  ;; delimiter (e.g. `<b>') does not pair with a different-case token (`<B>') under
+  ;; an ambient `case-fold-search' (the default, and `t' in `html-mode').
+  (let* ((case-fold-search nil)
+         (has-region (/= (car bounds-init) (cdr bounds-init)))
          (open-str (car ch-str-pair))
          (close-str (cdr ch-str-pair))
          (open-str-quote (regexp-quote open-str))
