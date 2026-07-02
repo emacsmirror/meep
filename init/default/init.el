@@ -209,8 +209,7 @@
       '("y" . meep-region-syntax-expand)
       '("Y" . meep-region-syntax-contract)
 
-      '("u" . meep-region-activate-or-reverse)
-      '("U" . my-key-free)
+      '("u" . meep-region-activate-and-reverse)
       (cons (concat my-find "u") 'avy-goto-symbol-1-below)
 
       '("i" . meep-region-activate-and-reverse-motion)

@@ -511,7 +511,7 @@ PLIST must contain exactly :state and :command keys."
     (meep-region-mark-list-item-inner . (normal))
     (meep-region-mark-list-item-outer . (normal))
     ;; Region commands.
-    (meep-region-activate-and-reverse . (normal visual))
+    (meep-region-activate-or-reverse . (normal visual))
     (meep-region-disable . (visual))
     ;; Clipboard register commands.
     (meep-clipboard-register-yank-lines . (normal visual)))
@@ -10927,7 +10927,7 @@ point before the inserted open.  See `meep--surround-add-impl'."
         "hh" ; Move left to column 1 (before "b"); point becomes left corner.
         "t(" ; Surround: "bc" -> "(bc)"; point steps inside "(".
         "G|" ; Insert "|" at point (just inside "(").
-        "uud" ; Activate region, swap point/mark, deactivate: now at right edge.
+        "ud" ; Activate region, swap point/mark, deactivate: now at right edge.
         "G|") ; Insert "|" at right edge (just before ")").
       (should (equal text-expected (buffer-string))))))
 
@@ -10959,7 +10959,7 @@ See `meep--surround-add-impl'."
         "hh" ; Move left to col 1 (before "b"); point becomes top-left corner.
         "t(" ; Surround: wraps bc/fg/jk; top-left steps inside "(" on row 1.
         "G|" ; Insert "|" at point (just inside "(" on row 1).
-        "uud" ; Activate region, swap point/mark, deactivate: now on row 3.
+        "ud" ; Activate region, swap point/mark, deactivate: now on row 3.
         "G|") ; Insert "|" at right edge (just before ")" on row 3).
       (should (equal text-expected (buffer-string))))))
 
