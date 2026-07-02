@@ -2528,10 +2528,10 @@ the syntax backend is skipped for it."
     (and (length= open 1) (eq (char-syntax (string-to-char open)) ?\())))
 
 (defun meep--syntax-enclosing-pair (bounds-init bounds-limit ch-str-pair &optional match-at-start)
-  "Return the bracket pair around BOUNDS-INIT as `(OPEN-POS . CLOSE-POS)', or nil.
+  "Return the bracket pair around BOUNDS-INIT within BOUNDS-LIMIT as `(OPEN-POS . CLOSE-POS)', or nil.
 Routes to a backend per `meep-syntax-backend': the syntax tree when it is
-`syntax' and CH-STR-PAIR is a paren-syntax bracket, otherwise the text scan.  The
-arguments and return value match `meep--syntax-enclosing-pair-from-text'."
+`syntax' and CH-STR-PAIR is a paren-syntax bracket, otherwise the text scan.
+MATCH-AT-START and the return value match `meep--syntax-enclosing-pair-from-text'."
   (declare (important-return-value t))
   (cond
    ((and (eq (meep--syntax-backend-resolve) 'syntax) (meep--syntax-pair-is-paren-p ch-str-pair))
@@ -6252,7 +6252,7 @@ otherwise CONTENT spans the whole line.  Point and the mark are restored on exit
 on point.  The mark is held to protect against an FN that moves it - the
 line-wise `meep--surround-apply-targets' deliberately does not (it leaves the
 mark to the region path, see `meep-surround-mark-result'), so callers handle
-`deactivate-mark' themselves."
+the variable `deactivate-mark' themselves."
   (save-mark-and-excursion
     (meep--with-temp-marker (end-mark end)
       (goto-char beg)
@@ -6594,19 +6594,19 @@ sets it, the rectangle path (multiple disjoint spans) leaves it nil."
     (meep--surround-operate-finish nil))))
 
 (defun meep--surround-targets-region (count pairs)
-  "Return the COUNT-th enclosing-pair target around the region or point, or nil.
-Anchor on the active region or point - not the implied region.  The operate and
-region-activate verbs look for an enclosing pair, and that search is almost
-always run from inside the pair; a prior motion's span would only pull the
-target outward.  The shared lookup of `meep--surround-operate-region' and
-`meep--surround-region-activate-impl', so the two find the same pair from the
-same cursor position."
+  "Return the target for the enclosing pair COUNT layers out from the region or point, or nil.
+PAIRS is the recognized delimiters.  Anchor on the active region or point - not
+the implied region.  The operate and region-activate verbs look for an
+enclosing pair, and that search is almost always run from inside the pair; a
+prior motion's span would only pull the target outward.  The shared lookup of
+`meep--surround-operate-region' and `meep--surround-region-activate-impl', so
+the two find the same pair from the same cursor position."
   (declare (important-return-value t))
   (meep--surround-targets-enclosing
    (meep--region-mark-bounds-init) (cons (point-min) (point-max)) pairs count))
 
 (defun meep--surround-operate-region (count pairs new-pair)
-  "Delete or replace the COUNT-th enclosing pair around the region or point.
+  "Delete or replace the enclosing pair COUNT layers out from the region or point.
 PAIRS is the recognized delimiters; NEW-PAIR nil deletes, otherwise it is the
 `(OPEN . CLOSE)' replacement.  Message when no pair is found."
   (let ((targets (meep--surround-targets-region count pairs)))
@@ -6995,7 +6995,8 @@ bindable directly to a delimiter key."
 ;;;###autoload
 (defun meep-surround-replace-lines-event (arg)
   "Replace each line's surrounding pair with the delimiter named by the invoking key.
-The line-wise variant of `meep-surround-replace-event'."
+Replace ARG times (the nesting depth).  The line-wise variant of
+`meep-surround-replace-event'."
   (interactive "*p")
   (meep--surround-from-event arg t 'replace))
 
@@ -7012,7 +7013,7 @@ nearest pair of any type with no read, use `meep-surround-delete-at-point'."
 ;;;###autoload
 (defun meep-surround-delete-lines-event (arg)
   "Delete each line's surrounding pair of the type named by the invoking key.
-The line-wise variant of `meep-surround-delete-event'."
+Delete ARG times.  The line-wise variant of `meep-surround-delete-event'."
   (interactive "*p")
   (meep--surround-from-event arg t 'delete))
 
@@ -7181,7 +7182,8 @@ Bound only in that command's transient map; reads the stashed source from
 
 (defun meep-surround-replace-by-type-picked-lines-event (arg)
   "Replace each line's picked by-type source pair with the destination key.
-The line-wise variant of `meep-surround-replace-by-type-picked-event'."
+Replace ARG times.  The line-wise variant of
+`meep-surround-replace-by-type-picked-event'."
   (interactive "*p")
   (meep--surround-replace-by-type-from-picked arg t))
 
@@ -7229,7 +7231,8 @@ keymap-traversed gesture stays a single named command."
 ;;;###autoload
 (defun meep-surround-replace-by-type-lines-event (arg)
   "Replace each line's surrounding pair of one type with another, named by the key sequence.
-The line-wise variant of `meep-surround-replace-by-type-event'."
+Replace ARG times (the nesting depth).  The line-wise variant of
+`meep-surround-replace-by-type-event'."
   (interactive "*p")
   (meep--surround-replace-by-type-from-events arg t))
 
