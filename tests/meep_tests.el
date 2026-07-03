@@ -6864,6 +6864,101 @@ Verifies: only the comment prefix is stripped, not content before an inline comm
       (should (equal '(1 . 6) (meep-test-point-line-column)))
       (should (equal ?C (char-after))))))
 
+(ert-deftest join-line-next-c-mode-block-comment ()
+  "Join a C-style block comment in plain `c-mode'.
+
+Verifies: the leading `* ' continuation marker is stripped by reading
+it directly from the buffer's own text - this doesn't depend on
+`cc-mode's `c-block-comment-prefix' style variable (only used for
+inserting, not recognizing, a prefix), nor on any tree-sitter specific
+variable, so the same code path also covers `c-ts-mode' and friends."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "/* Example block.\n"
+          " * next line. */")))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Cursor line 1: /* Example block.
+      ;;               ^
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      (should (equal 'normal (bray-state)))
+      ;; Join with next line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-join-line-next))
+      ;; Result: "/* Example block. next line. */" (the `* ' marker stripped).
+      (should (equal 'normal (bray-state)))
+      (should (equal "/* Example block. next line. */" (buffer-string)))
+      ;; Point at join position.
+      (should (equal '(1 . 18) (meep-test-point-line-column)))
+      (should (equal ?n (char-after))))))
+
+(ert-deftest join-line-next-c-mode-block-comment-preserves-content-after-marker ()
+  "Join a C-style block comment whose second line starts with a `* '
+marker immediately followed by content that itself looks marker-like
+(a `-' bullet).
+
+Verifies: only the `* ' leader is stripped - content after it (even
+punctuation such as `-') is preserved, not swallowed along with it."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "/* Note:\n"
+          " * - second point */")))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Join with next line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-join-line-next))
+      ;; Result: only the `* ' leader is stripped, the `-' bullet remains.
+      (should (equal "/* Note: - second point */" (buffer-string))))))
+
+(ert-deftest join-line-next-c-mode-block-comment-no-marker ()
+  "Join a C-style block comment whose second line has no marker at all -
+just plain continuation prose (a style some authors use instead of a
+per-line `* ').
+
+Verifies: the first letter of the continuation line is not mistaken
+for a one-character marker and swallowed."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "/* Example block.\n"
+          "continued text with no marker at all. */")))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Join with next line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-join-line-next))
+      ;; Result: the leading `c' of "continued" is preserved.
+      (should
+       (equal "/* Example block. continued text with no marker at all. */" (buffer-string))))))
+
+(ert-deftest join-line-next-c-mode-block-comment-punctuation-start ()
+  "Join a C-style block comment whose second line has no marker, but
+happens to start with punctuation (a parenthesis) rather than a
+letter.
+
+Verifies: the opening `(' is not mistaken for a one-character marker
+and swallowed - only characters from the curated marker set (`*',
+`/', `#', `;', `-', etc.) are ever treated as a marker."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "/* Example:\n"
+          "(x + y) computes something. */")))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Join with next line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-join-line-next))
+      ;; Result: the leading `(' is preserved.
+      (should (equal "/* Example: (x + y) computes something. */" (buffer-string))))))
+
 ;; ---------------------------------------------------------------------------
 ;; Delete
 

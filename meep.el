@@ -7370,70 +7370,87 @@ The line-wise variant of `meep-surround-replace-by-type'."
 ;;
 ;;    /* Example block. next line. */
 
+(defun meep--join-skip-comment-marker (limit)
+  "Skip a comment continuation marker at point, up to LIMIT.
+LIMIT is the end of the current line.  Also skips any blank-space
+following the marker.  Point must already be past any leading
+blank-space - the caller has skipped it.
+
+A marker is a run of one repeated character from a curated set of
+conventional comment/list-marker punctuation (mirroring the default
+`adaptive-fill-regexp', plus `/' for `//') - covers `//', `* ', `#',
+`;;' and similar conventions generically, read directly from the
+buffer's own text rather than any mode-specific variable
+\(`adaptive-fill-function'/`adaptive-fill-regexp' are secondary
+heuristics even Emacs's own comment filling doesn't trust outright;
+see `fill-comment-paragraph').  Restricting to this set - rather than
+\"any non-blank character\" - means ordinary prose starting with a
+letter, a parenthesis, or a quote is correctly left untouched instead
+of having its first character mistaken for a one-character marker.
+Never matches more than one distinct character, so it also can't
+swallow real content that merely follows the leader (a `-' list
+bullet, a second unrelated `*', etc.)."
+  (when (looking-at "\\([-–!|#%;>*/·•‣⁃◦]\\)\\1*")
+    (let ((pos-next (match-end 0)))
+      (when (<= pos-next limit)
+        (goto-char pos-next)
+        (when (< (point) limit)
+          (skip-chars-forward "[:blank:]" limit))))))
+
 (defun meep--join-maybe-skip-comment-prefix (limit)
   "Skip forward over comment chars and any following blank-space.
 Don't skip past LIMIT (the end of the current line)."
-  (let ((state (syntax-ppss))
-        (comment-start-quote (regexp-quote comment-start))
-        (ok t)
-        (point-init (point)))
+  (let ((comment-start-consumed nil))
+    (let ((state (syntax-ppss))
+          (comment-start-quote (regexp-quote comment-start))
+          (ok t)
+          (point-init (point)))
 
-    ;; We may be at the comment start, which isn't considered a comment.
-    (unless (nth 4 state)
-      (save-excursion
-        (skip-syntax-forward "^-")
-        (let ((state-test (syntax-ppss)))
-          (when (nth 4 state-test)
-            (when-let* ((beg-test (nth 8 state-test)))
-              (when (<= point-init beg-test)
-                (setq state state-test)))))))
+      ;; We may be at the comment start, which isn't considered a comment.
+      (unless (nth 4 state)
+        (save-excursion
+          (skip-syntax-forward "^-")
+          (let ((state-test (syntax-ppss)))
+            (when (nth 4 state-test)
+              (when-let* ((beg-test (nth 8 state-test)))
+                (when (<= point-init beg-test)
+                  (setq state state-test)))))))
 
-    (when (nth 4 state) ; Comment.
-      (when (and ok (<= (point) limit) (looking-at-p comment-start-quote))
-        (let ((pos-next (+ (point) (length comment-start))))
-          (cond
-           ((<= pos-next limit)
-            (goto-char pos-next))
-           (t
-            (setq ok nil)))))))
-  (when (< (point) limit)
-    (skip-chars-forward "[:blank:]" limit)
-
-    ;; Collapse block comments for C style languages.
-    (when (and (bound-and-true-p c-buffer-is-cc-mode)
-               ;; Less trouble than checking all the derived modes.
-               (bound-and-true-p c-block-comment-prefix))
-      ;; Blank space has already been skipped, so trim it here.
-      ;; The alternative could be to step backwards,
-      ;; either way it's not an important difference.
-      (let* ((block-prefix (symbol-value 'c-block-comment-prefix))
-             (block-trim (string-trim-right block-prefix)))
-        (cond
-         ((looking-at-p (regexp-quote block-prefix))
-          (let ((pos-next (+ (point) (length block-trim))))
-            (when (<= pos-next limit)
+      (when (nth 4 state) ; Comment.
+        (when (and ok (<= (point) limit) (looking-at-p comment-start-quote))
+          (let ((pos-next (+ (point) (length comment-start))))
+            (cond
+             ((<= pos-next limit)
               (goto-char pos-next)
-              (when (< (point) limit)
-                (skip-chars-forward "[:blank:]" limit)))))
-         ((looking-at-p (concat (regexp-quote block-trim) "\n"))
-          (let ((pos-next (+ (point) (length block-trim))))
-            (when (<= pos-next limit)
-              (goto-char pos-next)
-              (when (< (point) limit)
-                (skip-chars-forward "[:blank:]" limit))))))))
+              (setq comment-start-consumed t))
+             (t
+              (setq ok nil)))))))
+    (when (< (point) limit)
+      (skip-chars-forward "[:blank:]" limit)
 
-    (when comment-start-skip
-      (let ((pos-prev (point)))
-        (save-match-data
-          (when (save-excursion (re-search-forward comment-start-skip limit t))
-            ;; Only skip when the match is at point
-            ;; (blank-space was already skipped above).
-            ;; Without this, an inline comment such as "C D # E"
-            ;; would match the "# " before "E",
-            ;; causing the content before it to be lost.
-            (when (eq pos-prev (match-beginning 0))
-              (goto-char (match-end 0))
-              (skip-chars-forward "[:blank:]" limit))))))))
+      ;; Collapse continued block/line comments (e.g. the leading `* ' of a
+      ;; C-style block comment) generically - covers `cc-mode', `c-ts-common'
+      ;; based tree-sitter modes, and any other mode with a comment
+      ;; continuation marker, without hard-coding a check for any of them.
+      ;; Skip this when the literal `comment-start' was already consumed
+      ;; above - some modes (e.g. Python's "# ") re-declare `comment-start'
+      ;; on every line, and having matched it there is already authoritative;
+      ;; running the marker scan again would land on real content instead.
+      (unless comment-start-consumed
+        (meep--join-skip-comment-marker limit))
+
+      (when comment-start-skip
+        (let ((pos-prev (point)))
+          (save-match-data
+            (when (save-excursion (re-search-forward comment-start-skip limit t))
+              ;; Only skip when the match is at point
+              ;; (blank-space was already skipped above).
+              ;; Without this, an inline comment such as "C D # E"
+              ;; would match the "# " before "E",
+              ;; causing the content before it to be lost.
+              (when (eq pos-prev (match-beginning 0))
+                (goto-char (match-end 0))
+                (skip-chars-forward "[:blank:]" limit)))))))))
 
 (defun meep--join-range-is-eol-comment (eol-ws bol-ws-next)
   "Detect if EOL-WS and BOL-WS-NEXT are comments that can be joined."
