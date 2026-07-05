@@ -5542,30 +5542,44 @@ and `meep-delete-char-ring-yank'.")
 ;;;###autoload
 (defun meep-delete-char-ring-next (arg)
   "Delete the next character ARG times.
-This deletion is sent to the `meep-delete-char-ring'."
+This deletion is sent to the `meep-delete-char-ring'.
+
+With a negative ARG, yank -ARG times from the ring instead of deleting,
+matching `meep-delete-char-ring-yank'."
   (interactive "*p")
-  (when meep-delete-char-ring
-    (meep--delete-char-ring-maybe-clear))
-  (let ((pos-init (point)))
-    (forward-char arg)
-    (unless (eq pos-init (point))
-      (let ((text (buffer-substring-no-properties pos-init (point))))
-        (push (cons text t) meep-delete-char-ring)
-        (delete-region pos-init (point))))))
+  (cond
+   ((< arg 0)
+    (meep--delete-char-ring-yank-impl (- arg) nil))
+   (t
+    (when meep-delete-char-ring
+      (meep--delete-char-ring-maybe-clear))
+    (let ((pos-init (point)))
+      (forward-char arg)
+      (unless (eq pos-init (point))
+        (let ((text (buffer-substring-no-properties pos-init (point))))
+          (push (cons text t) meep-delete-char-ring)
+          (delete-region pos-init (point))))))))
 
 ;;;###autoload
 (defun meep-delete-char-ring-prev (arg)
   "Delete the previous character ARG times.
-This deletion is sent to the `meep-delete-char-ring'."
+This deletion is sent to the `meep-delete-char-ring'.
+
+With a negative ARG, yank -ARG times from the ring instead of deleting,
+matching `meep-delete-char-ring-yank'."
   (interactive "*p")
-  (when meep-delete-char-ring
-    (meep--delete-char-ring-maybe-clear))
-  (let ((pos-init (point)))
-    (forward-char (- arg))
-    (unless (eq pos-init (point))
-      (let ((text (buffer-substring-no-properties (point) pos-init)))
-        (push (cons text nil) meep-delete-char-ring)
-        (delete-region pos-init (point))))))
+  (cond
+   ((< arg 0)
+    (meep--delete-char-ring-yank-impl (- arg) nil))
+   (t
+    (when meep-delete-char-ring
+      (meep--delete-char-ring-maybe-clear))
+    (let ((pos-init (point)))
+      (forward-char (- arg))
+      (unless (eq pos-init (point))
+        (let ((text (buffer-substring-no-properties (point) pos-init)))
+          (push (cons text nil) meep-delete-char-ring)
+          (delete-region pos-init (point))))))))
 
 (defun meep--delete-char-ring-yank-impl (n keep)
   "Yank from the delete character ring N times.

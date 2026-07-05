@@ -1817,6 +1817,64 @@ Verifies: buffer unchanged, no error signaled, message displayed."
       ;; Verify informative message was displayed.
       (should (equal '("Delete char-ring empty") (meep-test-messages))))))
 
+(ert-deftest delete-char-ring-next-negative-yanks ()
+  "Negative ARG to `meep-delete-char-ring-next' yanks instead of deletes.
+
+Workflow: delete 'abc' forward, move to (), paste all three via next -3.
+Verifies: negative prefix pastes from the ring like `meep-delete-char-ring-yank'."
+  ;;   [abc] ()  ->  [] (abc)
+  (let ((text-initial "[abc] ()")
+        (text-expected "[] (abc)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor: [abc] ()
+      ;;          ^
+      ;; Delete 'a', 'b', 'c' in sequence.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-delete-char-ring-next)
+        '(:state normal :command meep-delete-char-ring-next)
+        '(:state normal :command meep-delete-char-ring-next))
+      ;; Cursor: [] ()
+      ;;          ^
+      ;; Move past ']', ' ', '(' to inside parens, paste via negative arg.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-char-next)
+        [?\C-u ?- ?3]
+        '(:state normal :command meep-delete-char-ring-next))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest delete-char-ring-prev-negative-yanks ()
+  "Negative ARG to `meep-delete-char-ring-prev' yanks instead of deletes.
+
+Workflow: delete 'abc' backward, move to (), paste all three via prev -3.
+Verifies: negative prefix pastes from the ring like `meep-delete-char-ring-yank'."
+  ;;   [abc] ()  ->  [] (abc)
+  (let ((text-initial "[abc] ()")
+        (text-expected "[] (abc)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor: [abc] ()
+      ;;             ^  (on ']')
+      ;; Delete 'c', 'b', 'a' backward.
+      (simulate-input-for-meep
+        [?\C-u ?4]
+        '(:state normal :command meep-move-char-next)
+        [?\C-u ?3]
+        '(:state normal :command meep-delete-char-ring-prev))
+      ;; Cursor: [] ()
+      ;;          ^
+      ;; Move past ']', ' ', '(' to inside parens, paste via negative arg.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-char-next)
+        [?\C-u ?- ?3]
+        '(:state normal :command meep-delete-char-ring-prev))
+      (should (equal text-expected (buffer-string))))))
+
 ;; ---------------------------------------------------------------------------
 ;; Region Swap
 ;;
