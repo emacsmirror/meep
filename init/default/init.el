@@ -445,6 +445,8 @@
     (require 'bray)
     (add-to-list 'load-path (file-name-concat meep-tests-basedir ".." "repeat-fu"))
     (require 'repeat-fu)
+    (add-to-list 'load-path (file-name-concat meep-tests-basedir ".." "with-command-redo"))
+    (require 'with-command-redo)
 
     (add-hook 'bray-mode-hook (lambda () (repeat-fu-mode (or bray-mode 0))))))
 
@@ -492,6 +494,12 @@
     :ensure t
     :config (setq repeat-fu-preset 'meep)
     :hook ((bray-mode . (lambda () (repeat-fu-mode (or bray-mode 0))))))
+
+  ;; Used by the kill-ring yank commands to collapse a paste and its
+  ;; numeric-repeat cycling into a single undo step.
+  (use-package with-command-redo
+    :commands (with-command-redo-fn)
+    :ensure t)
 
   ;; Not exactly core functionality, but nice to have.
   (use-package avy
