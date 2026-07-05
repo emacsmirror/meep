@@ -9791,13 +9791,83 @@ and propagate to the caller."
           (lwarn 'meep :error "preset %S returned %S; expected an alist" preset-sym result)
           'missing)))))))
 
+(defun meep--major-mode-test-with-derived-fallback (mode mode-fn)
+  "Call MODE-FN on MODE and its parents, nearest first, return the first non-nil.
+
+Visit breadth-first: MODE, then each level of parents, the direct
+`derived-mode-parent' ahead of the `derived-mode-extra-parents'.
+MODE-FN is called with one mode symbol, at most once per mode; the
+scan stops at its first non-nil return, which becomes the result.
+Return nil when MODE-FN never returns non-nil."
+  (declare (important-return-value t))
+  ;; NOTE(@ideasman42): walk the hierarchy directly rather than through
+  ;; `derived-mode-all-parents'.  That built-in returns a C3-style
+  ;; linearization (`merge-ordered-lists') which places a far generic
+  ;; ancestor ahead of a near specific extra parent - for `c++-ts-mode'
+  ;; it yields `(c++-ts-mode c-ts-base-mode prog-mode c++-mode)', putting
+  ;; `prog-mode' *before* `c++-mode'.  For preset lookup that is backwards:
+  ;; the specific classic equivalent (a tree-sitter mode registers it via
+  ;; `derived-mode-add-parents') must win over the generic ancestor.  A
+  ;; breadth-first walk, direct parent ahead of the extra parents, visits
+  ;; `c++-mode' before `prog-mode'.  `visited' also bounds any diamond or
+  ;; cyclic chain to a single test per mode.
+  (let ((queue (list mode))
+        (visited nil)
+        (result nil))
+    (while (and queue (null result))
+      (let ((node (pop queue)))
+        (unless (memq node visited)
+          (push node visited)
+          (setq result (funcall mode-fn node))
+          (unless result
+            ;; Enqueue NODE's parents at the tail (breadth-first), the
+            ;; direct parent ahead of the extra parents.  The queue is
+            ;; consumed read-only (`pop' only, never `setcar'/`setcdr'),
+            ;; so sharing the `derived-mode-extra-parents' list is safe.
+            (let ((parents (get node 'derived-mode-extra-parents))
+                  (direct (get node 'derived-mode-parent)))
+              (when direct
+                (setq parents (cons direct parents)))
+              (setq queue (append queue parents)))))))
+    result))
+
+(defun meep--preset-walk (mode)
+  "Search MODE and its parents for a preset, nearest ancestor first.
+
+Scans MODE's mode hierarchy breadth-first (see
+`meep--major-mode-test-with-derived-fallback'), so a tree-sitter mode reaches
+its classic equivalent one level up (`c++-ts-mode' -> `c++-mode')
+before any farther ancestor such as `prog-mode'.
+
+Stop at the nearest mode with a usable preset and return its alist.
+An explicit but unusable preset (see `meep--preset-try-mode's
+`missing') stops the scan as well - a broken or empty preset is the
+user's intent for that mode and shadows its ancestors rather than
+silently falling through to them.  Return nil when nothing usable
+is found."
+  (declare (important-return-value t))
+  (let ((result
+         (meep--major-mode-test-with-derived-fallback
+          mode
+          (lambda (node)
+            (pcase (meep--preset-try-mode node)
+              ;; Keep scanning into NODE's parents.
+              ('continue nil)
+              ;; Stop: a broken/empty preset shadows the ancestors.
+              ('missing 'missing)
+              ;; Stop: found a usable preset.
+              (found found))))))
+    ;; The scan yields an alist, the `missing' sentinel, or nil - only
+    ;; an alist is a real preset.
+    (and (consp result) result)))
+
 (defun meep--preset-lookup ()
   "Return the preset alist for the current `major-mode', or nil.
 
-Memoized: performs the `derived-mode-parent' chain walk on the
-first call for each `major-mode' and caches the result.  Does
-*not* apply the alist to the current buffer; callers that want
-to apply must do so themselves.
+Memoized: performs the parent-chain walk (see `meep--preset-walk')
+on the first call for each `major-mode' and caches the result.
+Does *not* apply the alist to the current buffer; callers that
+want to apply must do so themselves.
 
 Shared cache/walk core for `meep-preset-ensure' and
 `meep-preset-ensure-variable'."
@@ -9810,49 +9880,41 @@ Shared cache/walk core for `meep-preset-ensure' and
      ;; Cached alist.
      (cached
       cached)
-     ;; First attempt - walk the `derived-mode-parent' chain.
-     ;; `visited' guards against any pathological cycle in the
-     ;; chain - Emacs prevents this in practice, but bounding the
-     ;; loop is cheap insurance.
+     ;; First attempt - walk the parent chain.
      (t
-      (let ((mode major-mode)
-            (visited nil)
-            (result nil)
-            (done nil))
-        (while (and mode (not done) (not (memq mode visited)))
-          (push mode visited)
-          (pcase (meep--preset-try-mode mode)
-            ('continue (setq mode (get mode 'derived-mode-parent)))
-            ('missing (setq done t))
-            (found
-             (setq
-              result found
-              done t))))
-        (puthash major-mode (or result t) meep--preset-cache)
-        result)))))
+      (let ((result (meep--preset-walk major-mode)))
+        (cond
+         (result
+          (puthash major-mode result meep--preset-cache)
+          result)
+         (t
+          (puthash major-mode t meep--preset-cache)
+          nil)))))))
 
 ;;;###autoload
 (defun meep-preset-ensure ()
   "Load and apply the preset for the current `major-mode'.
 
-Walks the `derived-mode-parent' chain starting at `major-mode';
-the first ancestor with a `meep-preset-MODE' file on `load-path'
+Walks the parent chain starting at `major-mode', nearest ancestor
+first (breadth-first, direct `derived-mode-parent' before
+`derived-mode-extra-parents' at each level - see `meep--preset-walk');
+the nearest ancestor with a `meep-preset-MODE' file on `load-path'
 wins.  That file's preset function returns an alist of
-`(VARIABLE . VALUE)' pairs.  Each VARIABLE is then set
-buffer-locally to VALUE unless it is already buffer-local - a
-prior buffer-local user override is preserved.
+`(VARIABLE . VALUE)' pairs.  Each VARIABLE is then set buffer-locally
+to VALUE unless it is already buffer-local - a prior buffer-local
+user override is preserved.
 
 The alist is memoized globally under the current `major-mode',
 so the chain walk happens at most once per Emacs session per
 mode (including the negative case: a mode whose chain has no
 preset is cached and not retried).
 
-The walk continues to the parent only when *no preset file
-exists* for an ancestor (the silent, common path).  Any explicit
-attempt - load error, file present but missing the entry
+The walk descends to an ancestor's own parents only when *no
+preset file exists* for it (the silent, common path).  Any
+explicit attempt - load error, file present but missing the entry
 function, preset returning nil/empty, preset returning a
-non-list - is treated as the user's intent for that ancestor:
-the walk stops, the result is cached as missing, and an explicit
+non-list - is treated as the user's intent for that ancestor: the
+walk stops there, the result is cached as missing, and an explicit
 empty or broken preset shadows any further parent.
 
 Errors signaled by the preset function itself propagate; the

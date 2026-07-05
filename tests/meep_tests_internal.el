@@ -191,6 +191,19 @@ cleared on exit, even if BODY signals."
            ,@body)
        (put ',child 'derived-mode-parent nil))))
 
+(defmacro with-meep-derived-mode-extra-parents (child parents &rest body)
+  "Run BODY with CHILD's `derived-mode-extra-parents' set to PARENTS.
+CHILD is an unquoted mode symbol, PARENTS an unquoted list of mode
+symbols (as registered by `derived-mode-add-parents').  The property
+is cleared on exit, even if BODY signals."
+  (declare (indent 2))
+  `(progn
+     (put ',child 'derived-mode-extra-parents ',parents)
+     (unwind-protect
+         (progn
+           ,@body)
+       (put ',child 'derived-mode-extra-parents nil))))
+
 (ert-deftest meep-preset-ensure-missing-returns-nil ()
   "A mode with no preset returns nil; cache stores `t' (cached-missing-state)."
   (with-meep-preset-test meep-test-no-such-mode
@@ -270,6 +283,41 @@ ancestor's preset is used; the result is cached under the original
          (equal
           '((meep-test--inherited-var . :from-parent))
           (gethash 'meep-test-child-mode meep--preset-cache)))))))
+
+(ert-deftest meep-preset-ensure-falls-back-to-extra-parents ()
+  "When neither the mode nor its direct-parent chain has a preset, an
+`derived-mode-extra-parents' preset is used as a fallback - this is
+how a tree-sitter mode reaches its classic mode's preset (e.g.
+`c++-ts-mode' registers `c++-mode')."
+  (with-meep-derived-mode-extra-parents meep-test-ts-child-mode (meep-test-classic-mode)
+    (with-meep-preset-test meep-test-ts-child-mode
+      (with-meep-mock-preset meep-test-classic-mode '((meep-test--inherited-var . :from-extra))
+        (should (equal '((meep-test--inherited-var . :from-extra)) (meep-preset-ensure)))))))
+
+(ert-deftest meep-preset-ensure-direct-parent-beats-extra-parent ()
+  "The direct `derived-mode-parent' preset is preferred over an
+`derived-mode-extra-parents' preset present at the same level."
+  (with-meep-derived-mode-parent meep-test-prio-child-mode meep-test-prio-direct-mode
+    (with-meep-derived-mode-extra-parents meep-test-prio-child-mode (meep-test-prio-extra-mode)
+      (with-meep-preset-test meep-test-prio-child-mode
+        (with-meep-mock-preset meep-test-prio-direct-mode '((meep-test--prio-var . :direct))
+          (with-meep-mock-preset meep-test-prio-extra-mode '((meep-test--prio-var . :extra))
+            (should (equal '((meep-test--prio-var . :direct)) (meep-preset-ensure)))))))))
+
+(ert-deftest meep-preset-ensure-breadth-first-nearest-ancestor-wins ()
+  "The walk is breadth-first: a level-1 `derived-mode-extra-parents'
+preset wins over a level-2 ancestor reached through the direct parent
+chain.  A depth-first walk would instead find the deeper ancestor
+first."
+  ;; child --(direct)--> direct --(direct)--> grand (level 2, has preset)
+  ;;   \--(extra)--> extra (level 1, has preset)
+  (with-meep-derived-mode-parent meep-test-bf-child-mode meep-test-bf-direct-mode
+    (with-meep-derived-mode-extra-parents meep-test-bf-child-mode (meep-test-bf-extra-mode)
+      (with-meep-derived-mode-parent meep-test-bf-direct-mode meep-test-bf-grand-mode
+        (with-meep-preset-test meep-test-bf-child-mode
+          (with-meep-mock-preset meep-test-bf-extra-mode '((meep-test--bf-var . :level-1-extra))
+            (with-meep-mock-preset meep-test-bf-grand-mode '((meep-test--bf-var . :level-2-grand))
+              (should (equal '((meep-test--bf-var . :level-1-extra)) (meep-preset-ensure))))))))))
 
 (ert-deftest meep-preset-ensure-loaded-without-function-returns-nil ()
   "Feature loads but defines no function => nil, cached-missing-state."
