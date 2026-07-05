@@ -769,7 +769,10 @@ Command: Repeat N
 ``(meep-digit-argument-repeat)``
    Repeat the last command multiple times.
 
-   This must be bound to keys 0..9 or the minus key.
+   This must be bound to keys 0..9, the minus, equals or plus key.
+
+   Some commands give a numeric repeat its own meaning:
+   see ``meep-clipboard-killring-yank-pop-stack``, which cycles the paste.
 
 Keyboard Macro Access
 ^^^^^^^^^^^^^^^^^^^^^
@@ -855,9 +858,15 @@ Note that this is only accumulated on successive calls.
    Delete the next character ARG times.
    This deletion is sent to the ``meep-delete-char-ring``.
 
+   With a negative ARG, yank -ARG times from the ring instead of deleting,
+   matching ``meep-delete-char-ring-yank``.
+
 ``(meep-delete-char-ring-prev ARG)``
    Delete the previous character ARG times.
    This deletion is sent to the ``meep-delete-char-ring``.
+
+   With a negative ARG, yank -ARG times from the ring instead of deleting,
+   matching ``meep-delete-char-ring-yank``.
 
 ``(meep-delete-char-ring-yank ARG)``
    Yank from the delete character ring ARG times.
@@ -937,7 +946,8 @@ under a plain ``s t`` / ``s T`` prefix.
 
 ``(meep-surround-replace-lines-event ARG)``
    Replace each line's surrounding pair with the delimiter named by the invoking key.
-   The line-wise variant of ``meep-surround-replace-event``.
+   Replace ARG times (the nesting depth).  The line-wise variant of
+   ``meep-surround-replace-event``.
 
 ``(meep-surround-delete-event ARG)``
    Delete the surrounding pair of the type named by the invoking key, ARG times.
@@ -948,7 +958,7 @@ under a plain ``s t`` / ``s T`` prefix.
 
 ``(meep-surround-delete-lines-event ARG)``
    Delete each line's surrounding pair of the type named by the invoking key.
-   The line-wise variant of ``meep-surround-delete-event``.
+   Delete ARG times.  The line-wise variant of ``meep-surround-delete-event``.
 
 ``(meep-surround-replace)``
    Read a delimiter, then replace the surrounding pair to it.
@@ -1015,7 +1025,8 @@ under a plain ``s t`` / ``s T`` prefix.
 
 ``(meep-surround-replace-by-type-picked-lines-event ARG)``
    Replace each line's picked by-type source pair with the destination key.
-   The line-wise variant of ``meep-surround-replace-by-type-picked-event``.
+   Replace ARG times.  The line-wise variant of
+   ``meep-surround-replace-by-type-picked-event``.
 
 ``(meep-surround-replace-by-type-event ARG)``
    Replace a surrounding pair of one type with another, both named by the key sequence.
@@ -1026,7 +1037,8 @@ under a plain ``s t`` / ``s T`` prefix.
 
 ``(meep-surround-replace-by-type-lines-event ARG)``
    Replace each line's surrounding pair of one type with another, named by the key sequence.
-   The line-wise variant of ``meep-surround-replace-by-type-event``.
+   Replace ARG times (the nesting depth).  The line-wise variant of
+   ``meep-surround-replace-by-type-event``.
 
 ``(meep-surround-replace-by-type-pick)``
    Pick a typed source delimiter, then read a destination and replace that pair.
@@ -1212,14 +1224,46 @@ Note that rect-wise regions are also stored in the kill-ring and paste from the 
    Copy the whole line to the kill ring.
 
 ``(meep-clipboard-killring-yank-pop-stack ARG)``
-   Yank the ARG'th item from the ``kill-ring``, rotating it.
+   Yank the ARG'th ``kill-ring`` item and pop it off the stack.
 
-   Rotating the kill ring means you may kill multiple items,
-   then conveniently yank those items afterwards.
+   The ring itself is not modified, the pasted item is marked popped, so each
+   invocation pastes the newest unpopped item whatever commands run in
+   between: kill several items, then paste them back one by one.  Only the
+   finally pasted item is consumed; items skipped by an explicit ARG or
+   cycled past stay poppable.  ARG counts through the unpopped items (unlike
+   ``meep-clipboard-killring-yank``, whose ARG counts from the newest kill).
+   Popping does not wrap; once every item has been popped a further pop
+   fails.  An explicit ARG is the exception: it selects from the full ring
+   even when the stack is exhausted (a re-pop).  A plain
+   ``meep-clipboard-killring-yank`` re-pastes the item this command last
+   popped, without touching the stack.
+
+   Killing or copying new content first drops all popped items, so they do
+   not return on a later sweep (like linear undo, where a new edit truncates
+   the redo history).
+
+   A numeric repeat (see ``meep-digit-argument-repeat``) immediately after this
+   command cycles the paste instead of yanking again: the pasted text is
+   replaced by the unpopped ``kill-ring`` item that many steps away, forward when
+   positive, back when negative.  Cycling steps only through the unpopped items
+   (never one an earlier pop already took) and wraps around them; only the
+   finally-shown item ends up consumed.  The paste and its cycling collapse
+   into a single undo step via ``with-command-redo`` (when undo is disabled or
+   that package is not installed, the paste still works, just without the
+   cycling session).
 
 ``(meep-clipboard-killring-yank ARG)``
    Yank the ARG'th item from the ``kill-ring``.
-   The region is replaced (when active).
+   The region is replaced (when active).  This is read-only: without ARG it
+   re-pastes the item ``meep-clipboard-killring-yank-pop-stack`` last popped
+   (the newest kill when nothing has been popped), with ARG it selects the
+   ARG'th newest item; in neither case does the stack position move, so
+   repeated calls yank the same item and the pop sequence is unaffected.
+
+   A numeric repeat cycles the paste as it does for
+   ``meep-clipboard-killring-yank-pop-stack`` (including the single undo step),
+   except nothing is consumed: the cycling is a look-around, ending the
+   session leaves the stack exactly as it was.
 
 Clipboard: Register
 ^^^^^^^^^^^^^^^^^^^

@@ -42,6 +42,11 @@
 (declare-function repeat-fu-listener-register "repeat-fu")
 (declare-function repeat-fu-listener-unregister-and-collect "repeat-fu")
 
+;; For `meep--clipboard-killring-yank-cycle-chain' & friends.
+(declare-function with-command-redo-fn "with-command-redo")
+(declare-function with-command-redo-active-p "with-command-redo")
+(declare-function with-command-redo-break "with-command-redo")
+
 ;; Must be forward declared for byte-compilation.
 (defvar which-key-this-command-keys-function)
 
@@ -5117,7 +5122,10 @@ including blank-space."
 (defun meep-digit-argument-repeat ()
   "Repeat the last command multiple times.
 
-This must be bound to keys 0..9, the minus, equals or plus key."
+This must be bound to keys 0..9, the minus, equals or plus key.
+
+Some commands give a numeric repeat its own meaning:
+see `meep-clipboard-killring-yank-pop-stack', which cycles the paste."
   (interactive)
   ;; Copied from `digit-command'.
   (let* ((char
@@ -8842,24 +8850,13 @@ N and DO-NOT-MOVE are passed to `current-kill'."
   (let ((interprogram-paste-function nil))
     (current-kill n do-not-move)))
 
-(defun meep--clipboard-killring-yank-impl (n do-not-move rotate-as-stack)
+(defun meep--clipboard-killring-yank-impl (n)
   "Yank-replace the N'th element from kill ring.
-When DO-NOT-MOVE is non-nil, don't modify the kill ring.
-When ROTATE-AS-STACK is non-nil, step to the next item in the kill ring."
-  (let* ((text (meep--wrap-current-kill n do-not-move))
+The `kill-ring' and its pointer are left untouched."
+  (let* ((text (meep--wrap-current-kill n t))
          (yank-handler (get-text-property 0 'yank-handler text))
          ;; A NOP if yank-handler is nil (harmless).
          (region-type (meep--yank-handler-to-region-type (car yank-handler))))
-
-    (unless do-not-move
-      ;; Step onto the next item (behave like a stack).
-      (when rotate-as-stack
-        ;; (meep--wrap-current-kill (1+ n))
-        (cond
-         (kill-ring-yank-pointer
-          (setq kill-ring-yank-pointer (cdr kill-ring-yank-pointer)))
-         (t
-          (setq kill-ring-yank-pointer kill-ring)))))
 
     (cond
      ;; Rectangle paste.
@@ -8919,23 +8916,23 @@ When ROTATE-AS-STACK is non-nil, step to the next item in the kill ring."
       ;; Internal error.
       (error "Unexpected region type %S (this is a bug)" region-type)))))
 
-(defun meep--clipboard-killring-yank-impl-interactive (arg do-not-move rotate-as-stack)
-  "Handle interactive part of yanking, interpreting raw ARG.
-DO-NOT-MOVE and ROTATE-AS-STACK are passed to the implementation."
+(defun meep--clipboard-killring-yank-arg-to-index (arg)
+  "Decode a raw prefix ARG into a `kill-ring' index."
+  (declare (important-return-value t))
   (cond
-   ;; Simplifies logic below if this is caught early.
-   ((null kill-ring)
-    (message "Kill ring is empty"))
+   ((listp arg)
+    0)
+   ;; A bare `-' reads as arg -1, decoding to index -2 (matches `yank').
+   ((eq arg '-)
+    -2)
    (t
-    (setq arg
-          (cond
-           ((listp arg)
-            0)
-           ((eq arg '-)
-            -2)
-           (t
-            (1- arg))))
-    (meep--clipboard-killring-yank-impl arg do-not-move rotate-as-stack))))
+    (1- arg))))
+
+(defvar meep--clipboard-killring-yank-popped nil
+  "The `kill-ring' conses popped by `meep-clipboard-killring-yank-pop-stack'.
+Most recently popped first.  Entries are the ring's own conses, compared by
+identity (`memq') so equal strings stay distinct; a cons that leaves the
+ring (`kill-ring-max' truncation) is stale and simply never matches.")
 
 (defun meep--clipboard-killring-cut-or-copy (beg end region-type do-cut)
   "Like `kill-region' but respects MEEP clipboard settings.
@@ -8967,6 +8964,19 @@ This may be used when yanking."
         (let ((yank-handler (list (meep--yank-handler-from-region-type region-type) nil)))
           (meep--assert yank-handler) ; Otherwise the region-type is invalid.
           (add-text-properties 0 (length text) (list 'yank-handler yank-handler) text)))
+
+      ;; Drop the already popped items so they don't return on the next
+      ;; sweep, see `meep-clipboard-killring-yank-pop-stack'.  A no-op in
+      ;; the common case (nothing popped).
+      (when meep--clipboard-killring-yank-popped
+        (let ((tail kill-ring)
+              (items nil))
+          (while tail
+            (unless (memq tail meep--clipboard-killring-yank-popped)
+              (push (car tail) items))
+            (setq tail (cdr tail)))
+          (setq kill-ring (nreverse items)))
+        (setq meep--clipboard-killring-yank-popped nil))
 
       (kill-new text)
       (when do-cut
@@ -9031,23 +9041,366 @@ The region need not be active."
     (meep--with-respect-goal-column
      (meep--clipboard-killring-cut-or-copy beg end region-type do-cut))))
 
-;; TODO: a pop like emacs which cycles.
 ;;;###autoload
 (defun meep-clipboard-killring-yank-pop-stack (arg)
-  "Yank the ARG'th item from the `kill-ring', rotating it.
+  "Yank the ARG'th `kill-ring' item and pop it off the stack.
 
-Rotating the kill ring means you may kill multiple items,
-then conveniently yank those items afterwards."
+The ring itself is not modified, the pasted item is marked popped, so each
+invocation pastes the newest unpopped item whatever commands run in
+between: kill several items, then paste them back one by one.  Only the
+finally pasted item is consumed; items skipped by an explicit ARG or
+cycled past stay poppable.  ARG counts through the unpopped items (unlike
+`meep-clipboard-killring-yank', whose ARG counts from the newest kill).
+Popping does not wrap; once every item has been popped a further pop
+fails.  An explicit ARG is the exception: it selects from the full ring
+even when the stack is exhausted (a re-pop).  A plain
+`meep-clipboard-killring-yank' re-pastes the item this command last
+popped, without touching the stack.
+
+Killing or copying new content first drops all popped items, so they do
+not return on a later sweep (like linear undo, where a new edit truncates
+the redo history).
+
+A numeric repeat (see `meep-digit-argument-repeat') immediately after this
+command cycles the paste instead of yanking again: the pasted text is
+replaced by the unpopped `kill-ring' item that many steps away, forward when
+positive, back when negative.  Cycling steps only through the unpopped items
+(never one an earlier pop already took) and wraps around them; only the
+finally-shown item ends up consumed.  The paste and its cycling collapse
+into a single undo step via `with-command-redo' (when undo is disabled or
+that package is not installed, the paste still works, just without the
+cycling session)."
   (interactive "*P")
-  (meep--clipboard-killring-yank-impl-interactive arg nil t))
+  (unless (meep--clipboard-killring-yank-cycle-continue
+           'meep-clipboard-killring-yank-pop-stack arg)
+    (meep--clipboard-killring-yank-start-impl arg t)))
 
 ;;;###autoload
 (defun meep-clipboard-killring-yank (arg)
   "Yank the ARG'th item from the `kill-ring'.
-The region is replaced (when active)."
-  (interactive "*P")
-  (meep--clipboard-killring-yank-impl-interactive arg t nil))
+The region is replaced (when active).  This is read-only: without ARG it
+re-pastes the item `meep-clipboard-killring-yank-pop-stack' last popped
+(the newest kill when nothing has been popped), with ARG it selects the
+ARG'th newest item; in neither case does the stack position move, so
+repeated calls yank the same item and the pop sequence is unaffected.
 
+A numeric repeat cycles the paste as it does for
+`meep-clipboard-killring-yank-pop-stack' (including the single undo step),
+except nothing is consumed: the cycling is a look-around, ending the
+session leaves the stack exactly as it was."
+  (interactive "*P")
+  (unless (meep--clipboard-killring-yank-cycle-continue 'meep-clipboard-killring-yank arg)
+    (meep--clipboard-killring-yank-start-impl arg nil)))
+
+;; Both yank commands run their paste as the first step of a
+;; `with-command-redo' session that a numeric repeat continues (the
+;; user-facing behavior is in the commands' docstrings): the roll-back
+;; undoes the previous yank and the newly selected item is yanked in its
+;; place.  Items are addressed by absolute front-position in the `kill-ring'
+;; (the prefix argument is folded up front, see
+;; `meep--clipboard-killring-yank-start-impl'); the ring itself is never
+;; modified and only a consuming yank marks items popped (their conses
+;; collected in `meep--clipboard-killring-yank-popped', see
+;; `meep--clipboard-killring-yank-at'), so the read-only plain yank can
+;; never make the pop show an item twice.  The session state (the running
+;; front-position, whether the session pops, whether the shown item was
+;; already popped and the region the paste replaced) lives in the
+;; `with-command-redo' cache, threaded between chain steps.
+
+(defun meep--clipboard-killring-yank-cycle-region-capture ()
+  "Return the selection state as a plist for later restore.
+The `:region-type' extends `meep--state-region-type' so a single value captures
+the whole selection: `rect-wise' or `line-wise' as that function reports, t for
+an active char-wise region (which it reports as nil), or nil when no region is
+active.  Point and mark are the raw values (not the normalized beginning/end) so
+each restore keeps the cursor on whichever end point was on."
+  (declare (important-return-value t))
+  (list
+   :region-type (and (region-active-p) (or (meep--state-region-type) t))
+   :point (point)
+   :mark (mark t)))
+
+(defun meep--clipboard-killring-yank-cycle-region-restore (region)
+  "Restore REGION captured by `meep--clipboard-killring-yank-cycle-region-capture'.
+Re-establishes the selection state so the region-replace path behaves
+identically on every cycle step."
+  (declare (important-return-value nil))
+  (let ((region-type (plist-get region :region-type)))
+    ;; Restore the line-wise hint, it is the only non-nil `meep-state-region-elem'.
+    (setq meep-state-region-elem
+          (cond
+           ((eq region-type 'line-wise)
+            'line-wise)
+           (t
+            nil)))
+    (goto-char (plist-get region :point))
+    (cond
+     ((null region-type)
+      ;; No region: leave it inactive with point where it started.
+      (deactivate-mark t))
+     (t
+      (set-mark (plist-get region :mark))
+      (cond
+       ((eq region-type 'rect-wise)
+        (rectangle-mark-mode 1))
+       (t
+        (activate-mark)))
+      ;; Keep the region active past the command loop, which deactivates the
+      ;; mark when `deactivate-mark' is left non-nil (see
+      ;; `meep--set-marker-and-activate').
+      (setq deactivate-mark nil)))))
+
+(defun meep--clipboard-killring-yank-unpopped-positions ()
+  "Return the front-positions of `kill-ring' items not yet popped.
+Newest first; nil when every item has been popped (the stack is exhausted)."
+  (declare (important-return-value t))
+  (let ((positions nil)
+        (tail kill-ring)
+        (i 0))
+    (while tail
+      (unless (memq tail meep--clipboard-killring-yank-popped)
+        (push i positions))
+      (setq tail (cdr tail))
+      (setq i (1+ i)))
+    (nreverse positions)))
+
+(defun meep--clipboard-killring-yank-last-popped-pos ()
+  "Return the front-position of the most recently popped `kill-ring' item.
+Zero (the newest kill) when nothing has been popped or the popped cons has
+left the ring (unlikely, `kill-ring-max' truncation)."
+  (declare (important-return-value t))
+  ;; The popped entry is one of the ring's own tail conses, not an element,
+  ;; so walk the spine by identity to find its front-position (`memq' would
+  ;; compare it against the string elements and never match).
+  (let ((cell (car meep--clipboard-killring-yank-popped))
+        (tail kill-ring)
+        (pos 0))
+    (while (and tail (not (eq tail cell)))
+      (setq tail (cdr tail))
+      (setq pos (1+ pos)))
+    ;; CELL is nil (nothing popped) or has left the ring (`kill-ring-max'
+    ;; truncation): the walk falls off the end, fall back to the newest kill.
+    (cond
+     (tail
+      pos)
+     (t
+      0))))
+
+(defun meep--clipboard-killring-yank-at (pos do-pop)
+  "Yank the `kill-ring' item at front-position POS, popping it when DO-POP.
+Popping marks the ring's cons at POS as the most recently popped item (see
+`meep--clipboard-killring-yank-popped'), the ring itself is untouched.
+Return non-nil when the item was already popped (a re-pop); the cycling
+session reads this to know whether the shown item is one it may retract
+when a later step moves away.  POS must be in range (callers fold
+arguments with `mod')."
+  ;; Pin the head for the read, POS is an absolute front-position.
+  (let ((kill-ring-yank-pointer kill-ring))
+    (meep--clipboard-killring-yank-impl pos))
+  (when do-pop
+    (let ((cell (nthcdr pos kill-ring)))
+      (prog1 (and (memq cell meep--clipboard-killring-yank-popped) t)
+        (setq meep--clipboard-killring-yank-popped
+              (cons cell (delq cell meep--clipboard-killring-yank-popped)))))))
+
+(defun meep--clipboard-killring-yank-cycle-chain (n do-pop &optional redo)
+  "Run one `with-command-redo' step of the yank cycling session.
+N is the absolute `kill-ring' front-position to paste on the first step
+\(the paste itself), a signed delta on each later step.  A step wraps
+around its candidates: the unpopped items for a pop (so it never re-shows
+one an earlier pop took), the whole ring for a read-only yank.  DO-POP
+\(read on the first step only, cached for later ones) selects a consuming
+or read-only yank, see `meep--clipboard-killring-yank-at'.  REDO is
+non-nil when a step continues the current session, nil for a fresh
+invocation, which first ends any lingering session (see below)."
+  (declare (important-return-value nil))
+  ;; A fresh invocation (REDO nil) ends any chain still armed from a previous one
+  ;; so `with-command-redo-fn' starts anew instead of continuing (and rolling
+  ;; back) the prior paste, making back-to-back invocations independent.
+  (unless redo
+    (with-command-redo-break 'meep--clipboard-killring-yank-cycle))
+  (with-command-redo-fn
+   (list :id 'meep--clipboard-killring-yank-cycle)
+   (lambda (props)
+     (let ((cache (plist-get props :cache)))
+       (cond
+        ((null kill-ring)
+         ;; Something outside the session emptied the ring (paranoid, a
+         ;; timer would have to reset it); end the session rather than
+         ;; yank from a zero-length ring.
+         (message "Kill ring is empty")
+         (plist-put props :result nil))
+        (t
+         ;; The cached front-position stays valid across roll-backs (they
+         ;; restore the buffer, not the ring or the popped set): no step
+         ;; mutates the ring.
+         (let ((do-pop
+                (cond
+                 (cache
+                  (plist-get cache :do-pop))
+                 (t
+                  do-pop)))
+               (region
+                (cond
+                 (cache
+                  (plist-get cache :region))
+                 (t
+                  (meep--clipboard-killring-yank-cycle-region-capture))))
+               ;; Captured before the first paste, restored after every later
+               ;; one (as `yank' & `yank-pop' do via `yank-window-start').
+               (win-start
+                (cond
+                 (cache
+                  (plist-get cache :win-start))
+                 (t
+                  (window-start)))))
+           ;; Re-establish the selection for the yank to replace: the
+           ;; roll-back restores the buffer text and point but not the mark.
+           ;; The first step needs no restore, it captured the live state.
+           (when cache
+             (meep--clipboard-killring-yank-cycle-region-restore region))
+           ;; Retract the pop of the item this step moves away from (unless it
+           ;; was popped before being shown).  Done before choosing the next
+           ;; item so the retracted item rejoins the unpopped candidates,
+           ;; leaving exactly the finally-shown item popped without discarding
+           ;; the items the cycling stepped past.
+           (when (and cache do-pop (null (plist-get cache :was-popped)))
+             (setq meep--clipboard-killring-yank-popped
+                   (delq
+                    (nthcdr (plist-get cache :pos) kill-ring)
+                    meep--clipboard-killring-yank-popped)))
+           ;; A pop cycles only through the unpopped items so a step never
+           ;; re-shows one an earlier pop already consumed; the read-only yank
+           ;; ranges over the whole ring (it consumes nothing).  Both wrap
+           ;; around: cycling is a search where a hard stop at either end is
+           ;; more annoying than useful.
+           (let* ((candidates
+                   (and cache do-pop (meep--clipboard-killring-yank-unpopped-positions)))
+                  ;; The number of items this step cycles among (its wrap
+                  ;; modulus and echoed total): the poppable stack for a pop,
+                  ;; the whole ring for a plain yank.
+                  (count
+                   (cond
+                    ((null cache)
+                     nil)
+                    (do-pop
+                     (length candidates))
+                    (t
+                     (length kill-ring))))
+                  ;; The 0-based step shown in the echo area (1-based); nil on
+                  ;; the first (silent) step and when nothing is left to cycle.
+                  (step
+                   (cond
+                    ((null cache)
+                     nil)
+                    (do-pop
+                     (and candidates
+                          (mod
+                           (+ (or (seq-position candidates (plist-get cache :pos) #'eq) 0) n)
+                           count)))
+                    (t
+                     (mod (+ (plist-get cache :pos) n) count))))
+                  (pos
+                   (cond
+                    ((null cache)
+                     n)
+                    ((null step)
+                     ;; Nothing unpopped left to cycle among, stay put.
+                     (plist-get cache :pos))
+                    (do-pop
+                     (nth step candidates))
+                    (t
+                     step))))
+             (let ((was-popped (meep--clipboard-killring-yank-at pos do-pop)))
+               ;; Restore the window start from before the first paste: the
+               ;; roll-back restores the buffer text, not the display, so a
+               ;; large item that scrolled the window would otherwise leave
+               ;; it scrolled after stepping onto a small one.  NOFORCE, so
+               ;; redisplay still adjusts when point ends up off-screen.
+               (when cache
+                 (set-window-start (selected-window) win-start t))
+               ;; Orient cycling steps in the echo area only (not logged);
+               ;; 1-based, matching a `C-u N' selection.
+               (when (and cache step)
+                 (let ((message-log-max nil))
+                   (message "yank %d of %d" (1+ step) count)))
+               (plist-put
+                props
+                :cache
+                (list
+                 :pos pos
+                 :region region
+                 :do-pop do-pop
+                 :was-popped was-popped
+                 :win-start win-start))))))))
+     props)))
+
+(defun meep--clipboard-killring-yank-start-impl (arg do-pop)
+  "Yank the `kill-ring' item selected by the raw prefix ARG.
+This is the body of `meep-clipboard-killring-yank-pop-stack' (DO-POP
+non-nil) and the read-only `meep-clipboard-killring-yank' (DO-POP nil),
+see those commands for the behavior.  Runs as the first step of the
+cycling session `meep--clipboard-killring-yank-cycle-continue' continues."
+  (declare (important-return-value nil))
+  (cond
+   ((null kill-ring)
+    (message "Kill ring is empty"))
+   (t
+    ;; Fold the decoded index into an absolute front-position, `mod'
+    ;; wrapping an over/under-shooting ARG the way `current-kill' does.
+    ;; Folding here (not at yank time) keeps the cached session position in
+    ;; range, which the pop tail-walk relies on.
+    (let* ((index (meep--clipboard-killring-yank-arg-to-index arg))
+           (pos
+            (cond
+             ((null do-pop)
+              (cond
+               ((null arg)
+                (meep--clipboard-killring-yank-last-popped-pos))
+               (t
+                (mod index (length kill-ring)))))
+             (t
+              ;; The pop's ARG counts through the unpopped items (index 0
+              ;; is the next unpopped).  When every item has been popped
+              ;; only the argument-less pop fails (a nil POS); an explicit
+              ;; ARG re-pops, selecting from the full ring.
+              (let ((positions (meep--clipboard-killring-yank-unpopped-positions)))
+                (cond
+                 (positions
+                  (nth (mod index (length positions)) positions))
+                 (arg
+                  (mod index (length kill-ring)))
+                 (t
+                  nil)))))))
+      (cond
+       ((null pos)
+        (message "Kill ring exhausted"))
+       ;; Cycling collapses to one undo step via `with-command-redo', which
+       ;; errors when undo is disabled.  The package is also only required
+       ;; here (soft), so users who never use these yanks needn't install it.
+       ;; In both cases the yank still works, just without the session (a
+       ;; numeric repeat of the pop yank then simply pops again).
+       ((or (eq buffer-undo-list t) (null (require 'with-command-redo nil t)))
+        (meep--clipboard-killring-yank-at pos do-pop))
+       (t
+        (meep--clipboard-killring-yank-cycle-chain pos do-pop)))))))
+
+(defun meep--clipboard-killring-yank-cycle-continue (cmd arg)
+  "Continue the yank cycling session by the numeric ARG.
+Only applies when this is a `digit-argument' repeat of CMD (the yank
+command that started the session) with the session still active.  Return
+non-nil when the cycle step ran, nil when it does not apply (the caller
+then pastes as usual)."
+  (declare (important-return-value t))
+  (and (symbolp this-command)
+       (meep-command-is-digit-argument this-command)
+       (eq cmd (meep--last-command))
+       (featurep 'with-command-redo)
+       (with-command-redo-active-p 'meep--clipboard-killring-yank-cycle)
+       (progn
+         ;; DO-POP is taken from the session cache on a redo step.
+         (meep--clipboard-killring-yank-cycle-chain (prefix-numeric-value arg) nil t)
+         t)))
 
 ;; ---------------------------------------------------------------------------
 ;; Clipboard: Register (Implementation)
