@@ -72,7 +72,8 @@
 ;; - s End:  BufferEnd.
 ;;
 ;; - 0-9: digit-argument-repeat.
-;; - -: digit-argument-repeat (negative).
+;; - - / <kp-subtract>: digit-argument-repeat (negative).
+;; - + / = / <kp-add>: digit-argument-repeat (positive).
 ;; - s 0-9: digit-argument.
 ;; - s -: negative-argument.
 
@@ -109,6 +110,10 @@
       '("9" . meep-digit-argument-repeat)
       '("0" . meep-digit-argument-repeat)
       '("-" . meep-digit-argument-repeat)
+      '("=" . meep-digit-argument-repeat)
+      '("+" . meep-digit-argument-repeat)
+      '("<kp-add>" . meep-digit-argument-repeat)
+      '("<kp-subtract>" . meep-digit-argument-repeat)
 
       ;; Commands must be run "after" numeric has been set.
       ;; Unlike the default to re-running N times.

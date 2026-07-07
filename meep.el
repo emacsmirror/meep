@@ -5117,7 +5117,7 @@ including blank-space."
 (defun meep-digit-argument-repeat ()
   "Repeat the last command multiple times.
 
-This must be bound to keys 0..9 or the minus key."
+This must be bound to keys 0..9, the minus, equals or plus key."
   (interactive)
   ;; Copied from `digit-command'.
   (let* ((char
@@ -5128,8 +5128,16 @@ This must be bound to keys 0..9 or the minus key."
             (get last-command-event 'ascii-character))))
          (digit
           (cond
+           ;; NOTE: `<kp-subtract>' arrives here as `?-' via its
+           ;; `ascii-character' property.
            ((eq char ?-)
             '-)
+           ;; NOTE: `=' and `+' are the positive counterpart of `-'.  A `nil'
+           ;; prefix is the positive "no digits" sentinel just as `-' is the
+           ;; negative one, so `prefix-numeric-value' reads it as 1.  `<kp-add>'
+           ;; arrives here as `?+' via its `ascii-character' property.
+           ((memq char '(?= ?+))
+            nil)
            ((and (<= char ?9) (<= ?0 char))
             (- (logand char ?\177) ?0))
            (t
@@ -7388,8 +7396,7 @@ The line-wise variant of `meep-surround-replace-by-type'."
   "Return non-nil when the buffer text at point matches STRING literally.
 Like `looking-at-p' but STRING is compared verbatim, not as a regexp."
   (let ((end (+ (point) (length string))))
-    (and (<= end (point-max))
-         (string= string (buffer-substring-no-properties (point) end)))))
+    (and (<= end (point-max)) (string= string (buffer-substring-no-properties (point) end)))))
 
 (defun meep--join-skip-comment-marker (limit)
   "Skip a block comment's continuation marker at point, up to LIMIT.
@@ -7409,9 +7416,10 @@ point untouched."
                (meep--looking-at-string-p marker)
                ;; Leave the comment's own terminator (`*/') intact - its leading
                ;; character is the same as the continuation marker.
-               (not (and terminator
-                         (not (string-empty-p terminator))
-                         (meep--looking-at-string-p terminator))))
+               (not
+                (and terminator
+                     (not (string-empty-p terminator))
+                     (meep--looking-at-string-p terminator))))
       (goto-char (+ (point) (length marker)))
       (when (< (point) limit)
         (skip-chars-forward "[:blank:]" limit)))))

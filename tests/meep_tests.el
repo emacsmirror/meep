@@ -12692,6 +12692,60 @@ Move right once, then press 3 three times to repeat the motion 3+3+3 more times.
         "3")
       (should (equal '(1 . 10) (meep-test-point-line-column))))))
 
+(ert-deftest digit-argument-repeat-equals ()
+  "Repeat once in the positive direction using the equals key.
+
+The `=' key is the positive counterpart of `-': it repeats the last
+command with a `nil' prefix, read as 1."
+  (let ((text-initial "abcdefghij"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move right once (cursor on 'b'), then press = to repeat once (cursor on 'c').
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        "=")
+      (should (equal '(1 . 2) (meep-test-point-line-column))))))
+
+(ert-deftest digit-argument-repeat-plus ()
+  "Repeat once in the positive direction using the plus or keypad-add key.
+
+Both `+' and `<kp-add>' are positive counterparts of `-', repeating
+the last command with a `nil' prefix, read as 1.  `<kp-add>' resolves
+to `?+' via its `ascii-character' property."
+  (let ((text-initial "abcdefghij"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move right once (cursor on 'b'), then `+' repeats once (cursor on 'c').
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        "+")
+      (should (equal '(1 . 2) (meep-test-point-line-column)))
+      ;; Move once more, then `<kp-add>' repeats once (cursor on 'e').
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        [kp-add])
+      (should (equal '(1 . 4) (meep-test-point-line-column))))))
+
+(ert-deftest digit-argument-repeat-kp-minus ()
+  "Repeat in the negative direction using the keypad-subtract key.
+
+`<kp-subtract>' is the keypad counterpart of `-', repeating the last
+command with a `-' prefix, read as -1.  It resolves to `?-' via its
+`ascii-character' property."
+  (let ((text-initial "abcdefghij"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move right once (column 1), repeat +3 (column 4), then `<kp-subtract>'
+      ;; repeats once negatively (back to column 3).
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        "3"
+        [kp-subtract])
+      (should (equal '(1 . 3) (meep-test-point-line-column))))))
+
 (ert-deftest repeat-fu-upcase-region ()
   "Repeat upcase-region on a visual selection using repeat-fu.
 
