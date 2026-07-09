@@ -63,6 +63,8 @@ def run_meep_tests() -> int:
         EMACS_BIN,
         "-batch",
         "--debug-init",
+        # Ensure a stale `*.elc` is never used.
+        "--eval", "(setq load-prefer-newer t)",
         "--init-directory", os.path.join(BASE_DIR, "init", "default"),
         "-l", os.path.join(BASE_DIR, "init", "default", "init.el"),
         "-l", os.path.join(THIS_DIR, "meep_tests.el"),
