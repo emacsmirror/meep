@@ -6995,12 +6995,12 @@ variable, so the same code path also covers `c-ts-mode' and friends."
       (should (equal ?n (char-after))))))
 
 (ert-deftest join-line-next-c-mode-block-comment-preserves-content-after-marker ()
-  "Join a C-style block comment whose second line starts with a `* '
-marker immediately followed by content that itself looks marker-like
-(a `-' bullet).
+  "Join a C-style block comment whose second line starts with the
+`* ' continuation marker, immediately followed by a `-' bullet.
 
-Verifies: only the `* ' leader is stripped - content after it (even
-punctuation such as `-') is preserved, not swallowed along with it."
+Verifies: only the mode's `comment-continue' marker is stripped -
+content after it (even punctuation such as `-') is preserved, not
+swallowed along with it."
   (let ((text-initial
          ;; format-next-line: off
          (concat
@@ -7022,7 +7022,7 @@ just plain continuation prose (a style some authors use instead of a
 per-line `* ').
 
 Verifies: the first letter of the continuation line is not mistaken
-for a one-character marker and swallowed."
+for the mode's `comment-continue' marker and swallowed."
   (let ((text-initial
          ;; format-next-line: off
          (concat
@@ -7043,9 +7043,9 @@ for a one-character marker and swallowed."
 happens to start with punctuation (a parenthesis) rather than a
 letter.
 
-Verifies: the opening `(' is not mistaken for a one-character marker
-and swallowed - only characters from the curated marker set (`*',
-`/', `#', `;', `-', etc.) are ever treated as a marker."
+Verifies: the opening `(' is not mistaken for a marker and swallowed -
+only the mode's `comment-continue' marker (`* ' here) is ever stripped,
+so a line that doesn't begin with it is left untouched."
   (let ((text-initial
          ;; format-next-line: off
          (concat
@@ -7059,6 +7059,120 @@ and swallowed - only characters from the curated marker set (`*',
       (simulate-input-for-meep
         '(:state normal :command meep-join-line-next))
       ;; Result: the leading `(' is preserved.
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest join-line-next-c-mode-block-comment-close-marker ()
+  "Join an empty continuation line onto the block comment's closing `*/'.
+
+Verifies: the `*' of the `*/' terminator is not mistaken for a
+continuation marker and stripped - the whole `*/' is preserved."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "/*\n"
+          " * \n"
+          " */"))
+        (text-expected "/*\n * */"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Cursor at the end of line 2 (after `* ').
+      (goto-char (point-min))
+      (forward-line 1)
+      (end-of-line)
+      (should (equal '(2 . 3) (meep-test-point-line-column)))
+      ;; Join with next line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-join-line-next))
+      ;; Result: the closing `*/' survives intact, not stripped to `/'.
+      (should (equal text-expected (buffer-string)))
+      (should (equal ?* (char-after))))))
+
+(ert-deftest join-line-next-c-mode-block-comment-across-comments ()
+  "Collapse across *two* separate block comments in a single ARG join.
+Each comment's terminator is found from within that comment, so the
+join spanning several comments needs no shared state.
+
+Verifies: both comments collapse independently - each `* ' is stripped
+and each `*/' terminator is preserved."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "/* a\n"
+          " * b */\n"
+          "/* c\n"
+          " * d */"))
+        (text-expected "/* a b */ /* c d */"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Join all four lines: C-u 3 meep-join-line-next.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-join-line-next))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest join-line-next-c-mode-block-comment-marker-abuts-content ()
+  "Join a continuation line whose `*' marker abuts its content, where the
+comment continues past the joined line.
+
+Verifies: the terminator clamp only applies when the comment ends on
+the joined line - here it does not, so the `*' leader is still stripped
+even though it is the last non-blank run reachable within the line."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "/* a\n"
+          " *xy\n"
+          " * z */"))
+        (text-expected "/* a xy\n * z */"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Join line 1 with line 2 only; line 3 keeps the comment open.
+      (simulate-input-for-meep
+        '(:state normal :command meep-join-line-next))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest join-line-next-c-mode-block-comment-code-before-open ()
+  "Join a block comment that opens mid-line, after code.
+
+Verifies: the closing `*/' is recognized as the terminator and left
+intact even though the comment does not start at column zero - the
+terminator check reads from the marker on the closing line, not from
+the end of the opening line."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "Some_code(); /*\n"
+          " */"))
+        (text-expected "Some_code(); /* */"))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      ;; Join with next line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-join-line-next))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest join-line-next-line-comment-no-terminator ()
+  "Join line comments in a language with no closing comment delimiter.
+
+Verifies: the terminator clamp never fires for a line comment - it ends
+at the newline, not a delimiter - so trailing words are not mistaken
+for a closing token and the continuation marker is still stripped."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          ";; a\n"
+          ";; bee cee"))
+        (text-expected ";; a bee cee"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Join with next line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-join-line-next))
       (should (equal text-expected (buffer-string))))))
 
 ;; ---------------------------------------------------------------------------

@@ -7384,32 +7384,37 @@ The line-wise variant of `meep-surround-replace-by-type'."
 ;;
 ;;    /* Example block. next line. */
 
+(defun meep--looking-at-string-p (string)
+  "Return non-nil when the buffer text at point matches STRING literally.
+Like `looking-at-p' but STRING is compared verbatim, not as a regexp."
+  (let ((end (+ (point) (length string))))
+    (and (<= end (point-max))
+         (string= string (buffer-substring-no-properties (point) end)))))
+
 (defun meep--join-skip-comment-marker (limit)
-  "Skip a comment continuation marker at point, up to LIMIT.
+  "Skip a block comment's continuation marker at point, up to LIMIT.
 LIMIT is the end of the current line.  Also skips any blank-space
 following the marker.  Point must already be past any leading
 blank-space - the caller has skipped it.
 
-A marker is a run of one repeated character from a curated set of
-conventional comment/list-marker punctuation (mirroring the default
-`adaptive-fill-regexp', plus `/' for `//') - covers `//', `* ', `#',
-`;;' and similar conventions generically, read directly from the
-buffer's own text rather than any mode-specific variable
-\(`adaptive-fill-function'/`adaptive-fill-regexp' are secondary
-heuristics even Emacs's own comment filling doesn't trust outright;
-see `fill-comment-paragraph').  Restricting to this set - rather than
-\"any non-blank character\" - means ordinary prose starting with a
-letter, a parenthesis, or a quote is correctly left untouched instead
-of having its first character mistaken for a one-character marker.
-Never matches more than one distinct character, so it also can't
-swallow real content that merely follows the leader (a `-' list
-bullet, a second unrelated `*', etc.)."
-  (when (looking-at "\\([-–!|#%;>*/·•‣⁃◦]\\)\\1*")
-    (let ((pos-next (match-end 0)))
-      (when (<= pos-next limit)
-        (goto-char pos-next)
-        (when (< (point) limit)
-          (skip-chars-forward "[:blank:]" limit))))))
+The marker is the mode's own `comment-continue' (e.g. the `*' of a
+C-style block comment).  A mode with no continuation marker leaves
+point untouched."
+  (comment-normalize-vars t)
+  (let ((marker (and comment-continue (string-trim comment-continue)))
+        (terminator (and comment-end (string-trim comment-end))))
+    (when (and marker
+               (not (string-empty-p marker))
+               (<= (+ (point) (length marker)) limit)
+               (meep--looking-at-string-p marker)
+               ;; Leave the comment's own terminator (`*/') intact - its leading
+               ;; character is the same as the continuation marker.
+               (not (and terminator
+                         (not (string-empty-p terminator))
+                         (meep--looking-at-string-p terminator))))
+      (goto-char (+ (point) (length marker)))
+      (when (< (point) limit)
+        (skip-chars-forward "[:blank:]" limit)))))
 
 (defun meep--join-maybe-skip-comment-prefix (limit)
   "Skip forward over comment chars and any following blank-space.
@@ -7442,14 +7447,9 @@ Don't skip past LIMIT (the end of the current line)."
     (when (< (point) limit)
       (skip-chars-forward "[:blank:]" limit)
 
-      ;; Collapse continued block/line comments (e.g. the leading `* ' of a
-      ;; C-style block comment) generically - covers `cc-mode', `c-ts-common'
-      ;; based tree-sitter modes, and any other mode with a comment
-      ;; continuation marker, without hard-coding a check for any of them.
-      ;; Skip this when the literal `comment-start' was already consumed
-      ;; above - some modes (e.g. Python's "# ") re-declare `comment-start'
-      ;; on every line, and having matched it there is already authoritative;
-      ;; running the marker scan again would land on real content instead.
+      ;; A block comment's interior line leads with `comment-continue' (`* '),
+      ;; not `comment-start' - strip that marker.  Skip when `comment-start'
+      ;; was consumed above: that line led with the delimiter, not a marker.
       (unless comment-start-consumed
         (meep--join-skip-comment-marker limit))
 
