@@ -63,4 +63,9 @@ gets a proper `symbol-file'."
       (autoload (intern (concat base "-outer")) "meep-region-mark" nil t))))
 
 (provide 'meep-region-mark)
+
+;; Local Variables:
+;; fill-column: 99
+;; indent-tabs-mode: nil
+;; End:
 ;;; meep-region-mark.el ends here

@@ -14,6 +14,9 @@ define HELP_TEXT
 - check, watch_check
   Runs all checks.
 
+- format
+  Format all Emacs Lisp files.
+
 Environment Variables:
 
 - EMACS_BIN
@@ -139,5 +142,13 @@ watch_check: FORCE
 		inotifywait -q -e close_write $(EXTRA_WATCH_FILES) $(EL_FILES); \
 		tput clear; \
 	done
+
+# -----------------------------------------------------------------------------
+# Formatting
+
+.PHONY: format
+format: FORCE
+	@cd "$(BASE_DIR)" && \
+	python ./_misc/auto_format.py --jobs $(NPROCS)
 
 FORCE:
