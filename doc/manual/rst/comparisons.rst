@@ -7,9 +7,9 @@ Since adopting a modal-editing system can be a significant undertaking:
 this page aims to differentiate MEEP from other modal editing systems available for Emacs.
 
 *While this document compares MEEP with other systems,
-I would like to acknowledge that those systems are much more mature.
+I would like to acknowledge that those systems are much more mature.*
 
-Furthermore, they have their strengths.
+*Furthermore, they have their strengths.
 The intent of this page is to help users know if MEEP is something they might wish use,
 not to diminish the work of others.*
 

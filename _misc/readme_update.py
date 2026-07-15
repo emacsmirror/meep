@@ -12,6 +12,21 @@ ELISP_NAME = "meep.el"
 ELISP_EXTRA_NAMES = ("meep-region-mark.el",)
 EMACS_NAME = "emacs"
 
+# The reference is generated in full and not kept in source control, so its
+# scaffold - the page title and the markers the doc-string dump is injected
+# between - lives here rather than in a tracked file.
+REFERENCE_SCAFFOLD = """\
+
+##############
+MEEP Reference
+##############
+
+
+.. BEGIN VARIABLES
+
+.. END VARIABLES
+"""
+
 
 def patch_help_test(emacs_output: str) -> str:
 
@@ -257,10 +272,20 @@ def readme_patch_docstrings(data: str) -> str | int:
 
     ]
 
+    # `describe-function` (used to grab command signatures) prints help chrome
+    # to stderr in batch, so capture it and surface it only when Emacs fails,
+    # keeping a successful `make doc` quiet.
     p = subprocess.run(
         cmd,
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
+    if p.returncode != 0:
+        sys.stderr.buffer.write(p.stderr)
+        sys.stderr.write("error: emacs doc-string extraction failed\n")
+        # Abort rather than fall through: the partial output would build into an
+        # empty reference and silently publish, defeating the check above.
+        return 1
 
     emacs_output = (
         p.stdout.decode('utf-8').rstrip() +
@@ -282,17 +307,24 @@ def readme_patch_docstrings(data: str) -> str | int:
     return data_result
 
 
-def main() -> int:
-    # Try write reStructuredText directly!
-    filepath = "docs/reference.rst"
-    data: str | int = ""
-    with open(filepath, "r", encoding="utf-8") as f:
-        data = f.read()
-
-    data = readme_patch_docstrings(data)
+def generate_reference_rst() -> str:
+    """Return the fully generated ``reference.rst`` text."""
+    data = readme_patch_docstrings(REFERENCE_SCAFFOLD)
     if isinstance(data, int):
-        return data
+        raise RuntimeError("reference generation failed")
+    return data
 
+
+def main() -> int:
+    # Write straight into the doc build directory; the reference is a build
+    # artifact, not a tracked source file.
+    filepath = os.path.join(BASE_DIR, "doc", "manual", "build", "reference.rst")
+    try:
+        data = generate_reference_rst()
+    except RuntimeError:
+        return 1
+
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(data)
 

@@ -4,7 +4,11 @@ MEEP for Emacs
 
 MEEP is a modal editing system for Emacs.
 
+See the documentation_ for a full overview, including the command reference.
+
 Available via `MELPA <https://melpa.org/#/meep>`__.
+
+.. _documentation: https://ideasman42.codeberg.page/emacs-meep/
 
 
 Motivation
@@ -28,15 +32,15 @@ For the most part, MEEP is just a collection of commands that can be called inde
 Other Pages
 ===========
 
-- `Overview <https://codeberg.org/ideasman42/emacs-meep/src/branch/main/docs/overview.rst>`__:
+- `Overview <https://ideasman42.codeberg.page/emacs-meep/overview.html>`__:
   for extended information on the design and implementation.
-- `Comparisons <https://codeberg.org/ideasman42/emacs-meep/src/branch/main/docs/comparisons.rst>`__:
+- `Comparisons <https://ideasman42.codeberg.page/emacs-meep/comparisons.html>`__:
   for the rationale and comparisons with other modal-editing systems.
-- `Command Reference <https://codeberg.org/ideasman42/emacs-meep/src/branch/main/docs/reference.rst>`__:
+- `Command Reference <https://ideasman42.codeberg.page/emacs-meep/reference.html>`__:
   for a list of commands and options.
 - `Default Key-map <https://codeberg.org/ideasman42/emacs-meep/raw/branch/main/init/default/init.el>`__:
   for reference and an example key-map.
-- `Hacking <https://codeberg.org/ideasman42/emacs-meep/src/branch/main/docs/hacking.rst>`__:
+- `Hacking <https://ideasman42.codeberg.page/emacs-meep/hacking.html>`__:
   notes for working on the code.
 - `Further Work <https://codeberg.org/ideasman42/emacs-meep/issues/1>`__:
   potential changes and improvements.
@@ -124,7 +128,7 @@ Customization
 It's recommended to start out with one of the provided key-maps.
 
 See the
-`Command Reference <https://codeberg.org/ideasman42/emacs-meep/src/branch/main/docs/reference.rst>`__
+`Command Reference <https://ideasman42.codeberg.page/emacs-meep/reference.html>`__
 for a list of custom options.
 
 

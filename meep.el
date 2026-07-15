@@ -212,6 +212,7 @@ Stop at the first detected overlap."
 
 (defun meep--indent-calc-in-region-from-first-non-blank-or-non-empty (beg end)
   "Return a string representing the text indenting this region.
+
 - The first non-blank line is used.
 - If all lines are blank, use the first non-empty line.
 - If all lines are empty - return the longest empty string.
@@ -2209,13 +2210,13 @@ other brackets on `,' (else `;').  See `meep-list-item-bounds' for the format."
 (defcustom meep-list-item-bounds nil
   "Spec for the `list-item' text object: bracket lists and their separators.
 
-The value is a list of entries, each of the form
+The value is a list of entries, each of the form::
 
   ((OPEN . CLOSE) SEPARATORS)
 
 OPEN and CLOSE are the bracket characters delimiting a list, and SEPARATORS is
 the list of that list's separator strings, or t to split on runs of whitespace
-\(e.g. Lisp, where items are space-separated):
+\(e.g. Lisp, where items are space-separated)::
 
   (((?\\( . ?\\)) (\",\")) ((?\\=\\{ . ?\\}) (\";\")))
   (((?\\( . ?\\)) t))   ; whitespace-separated, e.g. Lisp
@@ -3701,6 +3702,7 @@ past the last/first item is a no-op, left in the returned remainder."
     'list-item
     (list :bounds-fn #'meep--bounds-of-list-item :bounds-step-fn #'meep--bounds-step-list-item)))
   "Alist mapping a text-object KIND to a plist of operations.
+
 Plist keys:
   :bounds-fn (INNER) -> BOUNDS
     Pure query: return `(BEG . END)' of the object at point, or nil.
@@ -3717,6 +3719,7 @@ Plist keys:
     When non-nil, the kind has no meaningful inner variant (its `:bounds-fn'
     ignores INNER, e.g. word, symbol).  Consumers (e.g. the mark commands)
     may generate only an `-outer' variant and skip the `-inner' one.
+
 Extension packages may extend this alist to register new kinds.")
 
 ;;;###autoload
@@ -5844,8 +5847,8 @@ Each entry is `(SYMBOL . SPEC)' where SYMBOL matches a value in
 `meep-surround-alist' and SPEC is either:
 
   (OPEN . CLOSE)   two delimiter strings (single or multi-character), or
-  FUNCTION         a function of no arguments returning such a cons
-                   (used for prompted delimiters such as tags).
+  FUNCTION         a function of no arguments returning such a cons \
+(used for prompted delimiters such as tags).
 
 When nil, falls back to the preset for the current `major-mode'.  A mode that
 does not define a symbol simply has no surround for that key, rather than

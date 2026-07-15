@@ -2,8 +2,11 @@
 
 define HELP_TEXT
 
-- docs
-  Update documentation.
+- doc
+  Build the Sphinx manual.
+
+- doc-publish
+  Build and publish the manual to Codeberg Pages.
 
 - test, watch_test
   Runs all tests.
@@ -21,6 +24,27 @@ endef
 
 # Needed for when tests are run from another directory: `make -C ./path/to/tests`.
 BASE_DIR := $(CURDIR)
+
+# -----------------------------------------------------------------------------
+# Number of cores, for Sphinx's parallel HTML build.
+#
+# $(OS) is only pre-set on Windows; derive it from uname elsewhere so the
+# per-platform core counts below resolve.
+
+OS ?= $(shell uname -s)
+
+ifndef NPROCS
+    NPROCS := 1
+    ifeq ($(OS), Linux)
+        NPROCS := $(shell nproc)
+    endif
+    ifeq ($(OS), NetBSD)
+        NPROCS := $(shell getconf NPROCESSORS_ONLN)
+    endif
+    ifneq (,$(filter $(OS),Darwin FreeBSD))
+        NPROCS := $(shell sysctl -n hw.ncpu)
+    endif
+endif
 
 # Default Emacs binary
 EMACS_BIN ?= emacs
@@ -48,12 +72,41 @@ help: FORCE
 
 
 # -----------------------------------------------------------------------------
-# Maintenance
+# Manual
 
-.PHONY: docs
-docs: FORCE
+# Sphinx manual directories.
+DOC_DIR := $(BASE_DIR)/doc/manual
+DOC_BUILD_DIR := $(DOC_DIR)/build
+DOC_HTML_DIR := $(DOC_BUILD_DIR)/_build/html
+
+# Codeberg Pages publishing. git-pages serves the tip of the `pages` branch at
+# PAGES_URL. A Forgejo webhook (repository Settings -> Webhooks, type Forgejo,
+# Target URL = PAGES_URL, Branch filter = pages) must be configured once so a
+# push to the branch is served instead of ignored.
+PAGES_REMOTE ?= origin
+PAGES_BRANCH ?= pages
+PAGES_URL ?= https://ideasman42.codeberg.page/emacs-meep/
+
+# Generate the RST sources then build the HTML manual with Sphinx.
+# `-W` treats Sphinx warnings as errors so a broken manual fails the build.
+.PHONY: doc
+doc: FORCE
 	@cd "$(BASE_DIR)" && \
-	python ./_misc/readme_update.py
+	python ./doc/manual/sphinx_doc_gen.py --quiet && \
+	sphinx-build -W --keep-going --quiet --jobs $(NPROCS) -b html "$(DOC_BUILD_DIR)" "$(DOC_HTML_DIR)"
+	@echo "Manual built at: $(DOC_HTML_DIR)/index.html"
+
+# Build the HTML manual and publish it to Codeberg Pages. A freshly built orphan
+# commit is force-pushed to $(PAGES_REMOTE)/$(PAGES_BRANCH), so the branch holds
+# only the current snapshot. The publish helper strips the Sphinx build cache.
+.PHONY: doc-publish
+doc-publish: doc
+	@cd "$(BASE_DIR)" && \
+	python ./_misc/doc_publish.py \
+		--html-dir "$(DOC_HTML_DIR)" \
+		--remote $(PAGES_REMOTE) \
+		--branch $(PAGES_BRANCH)
+	@echo "Live at $(PAGES_URL) once the Forgejo webhook fires."
 
 # -----------------------------------------------------------------------------
 # Tests
