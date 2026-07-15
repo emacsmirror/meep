@@ -13,7 +13,7 @@ Simple Implementation
 Emacs Compatible
    MEEP defines a modal editing system that uses emacs with minimal additional "state".
 
-   That is to say, MEEP works withing the constraints of what emacs supports
+   That is to say, MEEP works within the constraints of what emacs supports
    without defining concepts the user/developer needs to take into account.
 
    This has the advantage that most emacs packages work without the need for additional

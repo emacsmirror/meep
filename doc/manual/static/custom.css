@@ -1,0 +1,18 @@
+/* Furo exposes no theme option for the right-hand "On this page" column, and
+   its content column is a hardcoded 46em, so wide code blocks are clipped.
+   Hide the table of contents (and its toggle) and widen the desktop content to
+   reclaim the space. */
+.toc-drawer,
+.toc-header-icon,
+.toc-content-icon {
+    display: none;
+}
+
+/* Widen only the desktop layout; furo's three-column view (where the table of
+   contents is an in-flow column) begins above 82em. Narrower and mobile
+   layouts keep furo's own responsive widths. */
+@media (min-width: 82em) {
+    .content {
+        width: 62em;
+    }
+}
