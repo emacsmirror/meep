@@ -8197,6 +8197,39 @@ continuation marker and stripped - the whole `*/' is preserved."
       (should (equal text-expected (buffer-string)))
       (should (equal ?* (char-after))))))
 
+(ert-deftest join-line-next-c-mode-block-comment-close-marker-line-comment-style ()
+  "Join onto the closing `*/' in a buffer that prefers line comments.
+
+A common C-family setup uses `//' for new comments (`comment-end' is
+empty) while block comments remain in use and `comment-continue' is
+still `* '.  The terminator can't be detected from `comment-end' here,
+it must be found from character syntax.
+
+Verifies: the `*' of the `*/' terminator is preserved."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "/*\n"
+          " * A\n"
+          " */"))
+        (text-expected "/*\n * A */"))
+    (with-meep-test text-initial
+      (c-mode)
+      (setq-local comment-start "//")
+      (setq-local comment-end "")
+      (setq-local comment-continue " * ")
+      (bray-mode 1)
+      ;; Cursor at the end of line 2 (after `A').
+      (goto-char (point-min))
+      (forward-line 1)
+      (end-of-line)
+      ;; Join with next line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-join-line-next))
+      ;; Result: the closing `*/' survives intact, not stripped to `/'.
+      (should (equal text-expected (buffer-string)))
+      (should (equal ?* (char-after))))))
+
 (ert-deftest join-line-next-c-mode-block-comment-across-comments ()
   "Collapse across *two* separate block comments in a single ARG join.
 Each comment's terminator is found from within that comment, so the
