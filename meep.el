@@ -337,6 +337,67 @@ Return t when point was moved to the comment start."
      (t
       nil))))
 
+(defun meep--syntax-comment-delim-pair-p (pos flag-first flag-second)
+  "Return non-nil when the chars at POS & POS+1 form a two-char comment delimiter.
+FLAG-FIRST & FLAG-SECOND are the syntax flag bits each character must
+have (the `/*' & `*/' of a C block comment)."
+  (declare (important-return-value t))
+  (let ((syn-curr (syntax-after pos))
+        (syn-next (syntax-after (1+ pos))))
+    (and syn-curr
+         syn-next
+         (not (zerop (logand (car syn-curr) flag-first)))
+         (not (zerop (logand (car syn-next) flag-second))))))
+
+(defun meep--syntax-comment-bounds-inner (pos)
+  "Return the inner bounds of the comment surrounding POS as a (BEG . END) cons.
+The bounds exclude the comment's delimiters, detected from character
+syntax flags & classes (the `/*' & `*/' of a C block comment) rather
+than `comment-start'/`comment-end' which may not describe the
+delimiters actually in the buffer.  Return nil when POS is not inside
+a comment or the comment is unterminated.  A POS within the opener
+itself counts as outside - the comment only begins once the opener has
+been fully scanned, see `meep--syntax-skip-to-comment-start'."
+  (declare (important-return-value t))
+  (let ((result nil))
+    ;; `syntax-ppss' & `parse-partial-sexp' move point.
+    (save-excursion
+      (let ((state (syntax-ppss pos)))
+        (when-let* ((beg (and (nth 4 state) (nth 8 state))))
+          ;; Scan to the comment's end with a `syntax-table' stop which halts
+          ;; exactly after the ender.  While it would seem correct to use
+          ;; `forward-comment' from BEG, in practice it can overshoot -
+          ;; `c-ts-mode' (Emacs 32) includes the newline after `*/'.
+          (let ((state-end (parse-partial-sexp pos (point-max) nil nil state 'syntax-table)))
+            ;; Still in the comment at `point-max': unterminated.
+            (unless (nth 4 state-end)
+              (let* ((end (point))
+                     (beg-inner
+                      (cond
+                       ;; Flags `1' & `2': a two-char opener.
+                       ((meep--syntax-comment-delim-pair-p beg (ash 1 16) (ash 1 17))
+                        (+ beg 2))
+                       ;; Comment-start or generic-fence class: a single-char opener.
+                       ((memq (syntax-class (syntax-after beg)) (list 11 14))
+                        (1+ beg))
+                       (t
+                        beg)))
+                     (end-inner
+                      (cond
+                       ;; Flags `3' & `4': a two-char closer.
+                       ((meep--syntax-comment-delim-pair-p (- end 2) (ash 1 18) (ash 1 19))
+                        (- end 2))
+                       ;; Comment-end or generic-fence class: a single-char
+                       ;; closer (a line comment's newline).
+                       ((memq (syntax-class (syntax-after (1- end))) (list 12 14))
+                        (1- end))
+                       (t
+                        end))))
+                ;; Delimiters overlapping (paranoid), an empty comment at most.
+                (when (<= beg-inner end-inner)
+                  (setq result (cons beg-inner end-inner)))))))))
+    result))
+
 (defun meep--rectangle-row-span (col-beg col-end)
   "Return the `(BEG . END)' buffer span between COL-BEG and COL-END on this line.
 A pure query: point is preserved.  BEG equals END (an empty span) when the line
@@ -7419,18 +7480,19 @@ The marker is the mode's own `comment-continue' (e.g. the `*' of a
 C-style block comment).  A mode with no continuation marker leaves
 point untouched."
   (comment-normalize-vars t)
-  (let ((marker (and comment-continue (string-trim comment-continue)))
-        (terminator (and comment-end (string-trim comment-end))))
+  ;; Clamp the limit to the comment's inner bounds so the marker can never
+  ;; consume the comment's own terminator (`*/') - its leading character is
+  ;; the same as the continuation marker.  The bounds come from character
+  ;; syntax rather than `comment-end' which may not describe the delimiters
+  ;; actually in the buffer (a common C-family setup prefers `//' for new
+  ;; comments while block comments remain in use).
+  (when-let* ((bounds-inner (meep--syntax-comment-bounds-inner (point))))
+    (setq limit (min limit (cdr bounds-inner))))
+  (let ((marker (and comment-continue (string-trim comment-continue))))
     (when (and marker
                (not (string-empty-p marker))
                (<= (+ (point) (length marker)) limit)
-               (meep--looking-at-string-p marker)
-               ;; Leave the comment's own terminator (`*/') intact - its leading
-               ;; character is the same as the continuation marker.
-               (not
-                (and terminator
-                     (not (string-empty-p terminator))
-                     (meep--looking-at-string-p terminator))))
+               (meep--looking-at-string-p marker))
       (goto-char (+ (point) (length marker)))
       (when (< (point) limit)
         (skip-chars-forward "[:blank:]" limit)))))

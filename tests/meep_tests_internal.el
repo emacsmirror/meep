@@ -524,6 +524,60 @@ closing delimiter (counting raw tokens would land on an opening one for N > 1)."
       ;; A count past the available delimiters returns nil, not the outermost.
       (should (null (meep--region-mark-bounds-of-char-calc anchor clamp 9 '("'" . "'") t))))))
 
+;; ---------------------------------------------------------------------------
+;; Syntax Comment Inner Bounds
+
+(ert-deftest syntax-comment-bounds-inner-c-block ()
+  "A C block comment's bounds exclude the `/*' & `*/' delimiters."
+  (with-temp-buffer
+    (insert "/* a */ x /* b */\n")
+    (c-mode)
+    ;; Any interior position, including the ender's own characters.
+    (dolist (pos (list 3 4 5 6 7))
+      (should (equal '(3 . 6) (meep--syntax-comment-bounds-inner pos))))
+    ;; The opener's characters count as outside, as does the code between.
+    (dolist (pos (list 1 2 8 9 10))
+      (should (null (meep--syntax-comment-bounds-inner pos))))
+    ;; The second comment resolves independently.
+    (should (equal '(13 . 16) (meep--syntax-comment-bounds-inner 14)))))
+
+(ert-deftest syntax-comment-bounds-inner-c-line ()
+  "A C line comment's bounds exclude the `//' opener & the closing newline."
+  (with-temp-buffer
+    (insert "// foo\nx\n")
+    (c-mode)
+    (should (equal '(3 . 7) (meep--syntax-comment-bounds-inner 5)))))
+
+(ert-deftest syntax-comment-bounds-inner-single-char-delims ()
+  "A single-char opener (`#' or `;') & the closing newline are excluded.
+These delimiters have no syntax flags, exercising the class fall-backs."
+  (with-temp-buffer
+    (insert "# foo\nx\n")
+    (python-mode)
+    (should (equal '(2 . 6) (meep--syntax-comment-bounds-inner 4))))
+  (with-temp-buffer
+    ;; Only the first `;' is the delimiter, the second is content.
+    (insert ";; foo\nx\n")
+    (emacs-lisp-mode)
+    (should (equal '(2 . 7) (meep--syntax-comment-bounds-inner 5)))))
+
+(ert-deftest syntax-comment-bounds-inner-unterminated ()
+  "An unterminated comment has no ender to bound, return nil."
+  (with-temp-buffer
+    (insert "/* foo")
+    (c-mode)
+    (should (null (meep--syntax-comment-bounds-inner 5)))))
+
+(ert-deftest syntax-comment-bounds-inner-point-preserved ()
+  "A pure query: point is preserved even when POS is far from point."
+  (with-temp-buffer
+    (insert "int x;\n/* a\n * b\n */\nint y;\n")
+    (c-mode)
+    (goto-char (point-max))
+    (let ((pos-orig (point)))
+      (should (equal '(10 . 19) (meep--syntax-comment-bounds-inner 12)))
+      (should (eq pos-orig (point))))))
+
 (ert-deftest move-bounds-of-thing-echo-escapes-percent ()
   "A `%' in a bounds-motion key or description does not crash the transient help.
 The echo escapes user-interpolated `%' before `set-transient-map' reads it through
