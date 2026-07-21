@@ -210,6 +210,14 @@ is cleared on exit, even if BODY signals."
     (should (null (meep-preset-ensure)))
     (should (eq t (gethash 'meep-test-no-such-mode meep--preset-cache)))))
 
+(ert-deftest meep-preset-ensure-bundled-preset-name-matches-mode ()
+  "A bundled preset is named for the real mode, not one of its aliases.
+The lookup keys off `major-mode', so `meep-preset-xml-mode' would never be
+found - `xml-mode' is only an alias of `nxml-mode'."
+  (with-temp-buffer
+    (nxml-mode)
+    (should (meep-preset-ensure-variable 'meep-bounds-for-inner-comment))))
+
 (ert-deftest meep-preset-ensure-missing-short-circuits ()
   "A second `meep-preset-ensure' call does not re-attempt `require'."
   (with-meep-preset-test meep-test-no-such-mode-2
