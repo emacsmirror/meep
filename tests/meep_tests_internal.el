@@ -586,6 +586,29 @@ These delimiters have no syntax flags, exercising the class fall-backs."
       (should (equal '(10 . 19) (meep--syntax-comment-bounds-inner 12)))
       (should (eq pos-orig (point))))))
 
+(ert-deftest comment-bounds-outer-keeps-printing-ender ()
+  "A comment ending in a printing character keeps that character.
+The ender has comment-end syntax, so skipping that syntax would truncate
+`-->' to `--' & `}' from a Pascal brace comment."
+  (with-temp-buffer
+    (insert "<p>a</p>\n<!-- c -->\n")
+    (html-mode)
+    (goto-char 15)
+    (should (equal '(10 . 20) (meep--bounds-at-point-for-comment-outer))))
+  (with-temp-buffer
+    (insert "{ c }\nx\n")
+    (pascal-mode)
+    (goto-char 3)
+    (should (equal '(1 . 6) (meep--bounds-at-point-for-comment-outer)))))
+
+(ert-deftest comment-bounds-outer-drops-line-comment-newline ()
+  "A line comment's terminating newline is not part of the outer bounds."
+  (with-temp-buffer
+    (insert "// l\nx\n")
+    (c-mode)
+    (goto-char 3)
+    (should (equal '(1 . 5) (meep--bounds-at-point-for-comment-outer)))))
+
 (ert-deftest move-bounds-of-thing-echo-escapes-percent ()
   "A `%' in a bounds-motion key or description does not crash the transient help.
 The echo escapes user-interpolated `%' before `set-transient-map' reads it through

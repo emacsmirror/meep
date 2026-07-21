@@ -1711,7 +1711,13 @@ Return non-nil when point was moved."
           (save-excursion
             (goto-char beg)
             (forward-comment 1)
-            (skip-syntax-backward ">" pos-orig)
+            ;; Step back over the newline terminating a line comment.
+            ;;
+            ;; NOTE: skipping comment-end *syntax* would seem more general,
+            ;; however a mode whose comment ends with a printing character
+            ;; gives that character comment-end syntax too, truncating the
+            ;; delimiter - `<!-- x -->' would end up as `<!-- x --'.
+            (skip-chars-backward "\n" pos-orig)
             ;; It's possible a comment range is *before* the point.
             ;; Typically when the point is on the next line.
             ;; Ensure the original point is in the range.
