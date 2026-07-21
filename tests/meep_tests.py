@@ -78,6 +78,8 @@ def run_meep_tests_internal() -> int:
     cmd = [
         EMACS_BIN,
         "-batch",
+        # Ensure a stale `*.elc` is never used.
+        "--eval", "(setq load-prefer-newer t)",
         "-l", os.path.join("tests", "meep_tests_internal.el"),
         "-f", "ert-run-tests-batch-and-exit"
     ]
