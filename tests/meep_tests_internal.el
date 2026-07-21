@@ -609,6 +609,30 @@ The ender has comment-end syntax, so skipping that syntax would truncate
     (goto-char 3)
     (should (equal '(1 . 5) (meep--bounds-at-point-for-comment-outer)))))
 
+(ert-deftest comment-bounds-inner-multi-char-delimiters ()
+  "A preset's multi-char delimiters take precedence over comment syntax.
+Contracting by syntax alone steps over a single character, leaving
+`<!-- c -->' as `!-- c --'."
+  (with-temp-buffer
+    (insert "<p>a</p>\n<!-- c -->\n")
+    (html-mode)
+    (goto-char 15)
+    (should (equal '(15 . 16) (meep--bounds-at-point-for-comment-inner))))
+  ;; `nxml-mode' resolves its preset by that name, `xml-mode' is only an alias.
+  (with-temp-buffer
+    (insert "<!-- c -->\n")
+    (nxml-mode)
+    (goto-char 6)
+    (should (equal '(6 . 7) (meep--bounds-at-point-for-comment-inner)))))
+
+(ert-deftest comment-bounds-inner-without-preset ()
+  "A mode with no preset contracts by comment syntax."
+  (with-temp-buffer
+    (insert "# a\nx=1\n")
+    (python-mode)
+    (goto-char 3)
+    (should (equal '(3 . 4) (meep--bounds-at-point-for-comment-inner)))))
+
 (ert-deftest move-bounds-of-thing-echo-escapes-percent ()
   "A `%' in a bounds-motion key or description does not crash the transient help.
 The echo escapes user-interpolated `%' before `set-transient-map' reads it through

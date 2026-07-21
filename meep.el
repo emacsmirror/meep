@@ -1827,29 +1827,35 @@ buffer-local or global - still takes precedence over the preset."
   (declare (important-return-value t))
   (let ((bounds-outer (meep--bounds-at-point-for-comment-outer))
         (result nil))
-    ;; Contract, NOTE: this doesn't work with C/C++
-    ;; as they don't consider the /* ... */ to be start/end. sigh!
     (when bounds-outer
       (let ((beg (car bounds-outer))
             (end (cdr bounds-outer)))
 
-        (save-excursion
-          (goto-char beg)
-          (skip-syntax-forward "<")
-          (setq beg (point))
-
-          (goto-char end)
-          (skip-syntax-backward ">")
-          (setq end (point)))
-
-        ;; When unchanged "guess" the inner bounds.
-        (when (and (eq beg (car bounds-outer)) (eq end (cdr bounds-outer)))
-          ;; If this fails, just don't return the inner bounds
-          ;; not great - but better than returning nil.
-          (when-let* ((bounds-inner
-                       (meep--bounds-at-point-for-comment-inner-guess (cons beg end))))
+        ;; Contract by the mode's preset, falling back to comment syntax.
+        ;;
+        ;; NOTE: the preset is preferred because the syntax fallback only steps
+        ;; over comment-start/end *characters*, so a multi character delimiter
+        ;; contracts part way - HTML's `<!-- x -->' yields `!-- x --'.
+        ;; The fallback is kept for modes without a preset, it also has to
+        ;; handle C/C++ where `/* ... */' isn't comment start/end syntax at
+        ;; all. sigh!
+        ;;
+        ;; When both fail, just don't return the inner bounds,
+        ;; not great - but better than returning nil.
+        (let ((bounds-inner (meep--bounds-at-point-for-comment-inner-guess bounds-outer)))
+          (cond
+           (bounds-inner
             (setq beg (car bounds-inner))
-            (setq end (cdr bounds-inner))))
+            (setq end (cdr bounds-inner)))
+           (t
+            (save-excursion
+              (goto-char beg)
+              (skip-syntax-forward "<")
+              (setq beg (point))
+
+              (goto-char end)
+              (skip-syntax-backward ">")
+              (setq end (point))))))
 
         ;; Skip repeated chars: "/***** "
         ;; TODO: check if the characters are space (seems very unlikely).
