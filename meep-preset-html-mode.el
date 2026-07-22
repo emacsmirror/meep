@@ -4,11 +4,9 @@
 (defun meep-preset-html-mode ()
   "Return the meep preset alist for `html-mode'."
   (declare (important-return-value t))
+  ;; `meep-bounds-for-inner-comment' is intentionally not set: `<!--' & `-->'
+  ;; are deduced from the mode's comment variables.
   (list
-   (cons
-    'meep-bounds-for-inner-comment
-    '(meep-bounds-inner-from-delimiters
-      (("<!--" . "-->")))) ; Comment.
    (cons
     'meep-surround-pairs
     '((bold . ("<b>" . "</b>")) ; Bold.

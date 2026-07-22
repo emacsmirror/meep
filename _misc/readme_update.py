@@ -35,8 +35,10 @@ def patch_help_test(emacs_output: str) -> str:
         return "``{:s}``".format(m.group(2))
 
     # Allow for quoted properties with optional leading `:`.
+    # `#', `;' & `!' admit delimiter examples such as `#;' & `*!' - left
+    # unconverted, their `*' opens an RST emphasis that never closes.
     emacs_output = re.sub(
-        "(\u2018)(:?[\\w\\-*]+)(\u2019)",
+        "(\u2018)(:?[\\w\\-*#;!]+)(\u2019)",
         key_replace_quote_to_rst, emacs_output,
     )
 
@@ -45,7 +47,7 @@ def patch_help_test(emacs_output: str) -> str:
     # A space is allowed for quoted key sequences (`s t'); the class excludes the
     # closing quote, so a greedy match cannot run past it into an apostrophe.
     emacs_output = re.sub(
-        "(`)([\\w\\-* ]+)(')",
+        "(`)([\\w\\-*#;! ]+)(')",
         key_replace_quote_to_rst, emacs_output,
     )
 

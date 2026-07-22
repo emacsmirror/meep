@@ -337,6 +337,19 @@ Return t when point was moved to the comment start."
      (t
       nil))))
 
+(defun meep--syntax-ppss-skip-comment-start ()
+  "Return the syntax state at point, reading past a comment opener at point.
+Point at an opening delimiter is not yet inside its comment, so when one
+starts here the state is taken from just past it, see
+`meep--syntax-skip-to-comment-start'."
+  (declare (important-return-value t))
+  (let ((state (syntax-ppss)))
+    (unless (nth 4 state)
+      (save-excursion
+        (when (meep--syntax-skip-to-comment-start)
+          (setq state (syntax-ppss)))))
+    state))
+
 (defun meep--syntax-comment-delim-pair-p (pos flag-first flag-second)
   "Return non-nil when the chars at POS & POS+1 form a two-char comment delimiter.
 FLAG-FIRST & FLAG-SECOND are the syntax flag bits each character must
@@ -348,6 +361,113 @@ have (the `/*' & `*/' of a C block comment)."
          syn-next
          (not (zerop (logand (car syn-curr) flag-first)))
          (not (zerop (logand (car syn-next) flag-second))))))
+
+(defun meep--syntax-comment-opener-pair-p (pos)
+  "Return non-nil when the chars at POS & POS+1 open a two-char comment."
+  (declare (important-return-value t))
+  ;; Syntax flags `1' & `2'.
+  (meep--syntax-comment-delim-pair-p pos (ash 1 16) (ash 1 17)))
+
+(defun meep--syntax-comment-closer-pair-p (pos)
+  "Return non-nil when the chars at POS & POS+1 close a two-char comment."
+  (declare (important-return-value t))
+  ;; Syntax flags `3' & `4'.
+  (meep--syntax-comment-delim-pair-p pos (ash 1 18) (ash 1 19)))
+
+(defun meep--syntax-comment-closed-by-newline-p (state)
+  "Return non-nil when the comment STATE parsed is ended by a newline.
+
+A line comment is closed by the newline, a block comment by a closer of
+its own.  Needed where the buffer ends before the newline does - the
+comment is left open either way, yet only the block comment is missing
+anything."
+  (declare (important-return-value t))
+  ;; The comment style tells a line comment from a block comment: the
+  ;; newline's syntax entry names every style it ends with the `b' or `c'
+  ;; flag, so `cc-mode' writing `>b' ends `//' there & leaves `/*' to find
+  ;; its `*/'.
+  (let* ((syn (aref (syntax-table) ?\n))
+         ;; A char-table entry is the raw code, or a cons of it & the
+         ;; character it matches.  The class is its low 16 bits, the flags
+         ;; above them - `syntax-class' takes the cons form only.
+         (code
+          (cond
+           ((consp syn)
+            (car syn))
+           (t
+            syn))))
+    (and (integerp code)
+         (eq (logand code 65535) 12)
+         (let ((flag-b (not (zerop (logand code (ash 1 21)))))
+               (flag-c (not (zerop (logand code (ash 1 23)))))
+               (style (nth 7 state)))
+           (cond
+            ;; Styles `b' & `c' each need the newline to name them.
+            ((eq style 1)
+             flag-b)
+            ((eq style 2)
+             flag-c)
+            ;; A generic comment is closed by its own fence.
+            ((eq style 'syntax-table)
+             nil)
+            ;; Style `a', which an unflagged newline ends.
+            (t
+             (not (or flag-b flag-c))))))))
+
+(defun meep--comment-inner-beg-from-syntax (beg)
+  "Return the position after the comment opener at BEG or nil when not found."
+  (declare (important-return-value t))
+  (cond
+   ;; A two-char opener.
+   ((meep--syntax-comment-opener-pair-p beg)
+    (+ beg 2))
+   ;; Comment-start or generic-fence class: a single-char opener.
+   ((memq (syntax-class (syntax-after beg)) '(11 14))
+    (1+ beg))))
+
+(defun meep--comment-inner-end-from-syntax (beg end)
+  "Return the position before the comment closer at END or nil when not found.
+BEG bounds the search so the closer can never precede the comment."
+  (declare (important-return-value t))
+  (cond
+   ;; A two-char closer.
+   ((and (<= beg (- end 2)) (meep--syntax-comment-closer-pair-p (- end 2)))
+    (- end 2))
+   ;; A single-char closer: comment-end class (a line comment's newline) or a
+   ;; generic-comment-fence (`=end', a propertized `!'), mirroring the opener
+   ;; in `meep--comment-inner-beg-from-syntax' which accepts both.
+   ((and (< beg end)
+         (let ((class (syntax-class (syntax-after (1- end)))))
+           (cond
+            ((eq class 14)
+             t)
+            ((eq class 12)
+             ;; A printing character whose comment-end class comes from a
+             ;; `syntax-table' text property while the mode's own table
+             ;; classes it otherwise is the comment's *content*, not its
+             ;; closer: a propertizer ends a reader-delimited comment on its
+             ;; final character (the `)' of Scheme's `#;(a b)') because the
+             ;; delimiter model cannot express ending where an expression
+             ;; does.  A closer the mode's grammar names is either
+             ;; blank-space (a line comment's newline) or carries the class
+             ;; in the table itself (the `}' closing a `pascal-mode'
+             ;; comment).
+             (let ((ch (char-after (1- end))))
+               (or (memq ch '(?\n ?\r ?\f ?\s ?\t))
+                   (eq (syntax-class (aref (syntax-table) ch)) 12)))))))
+    (1- end))))
+
+(defun meep--comment-inner-bounds-from-syntax (beg end)
+  "Contract the comment bounds BEG & END by their delimiters' syntax.
+Return a cons `(BEG . END)' or nil when the delimiters overlap.
+The delimiters are detected from character syntax flags & classes (the
+`/*' & `*/' of a C block comment), so this handles a one or two
+character delimiter without knowing the mode's comment variables."
+  (declare (important-return-value t))
+  (let ((beg-inner (or (meep--comment-inner-beg-from-syntax beg) beg))
+        (end-inner (or (meep--comment-inner-end-from-syntax beg end) end)))
+    ;; Delimiters overlapping (paranoid), an empty comment at most.
+    (and (<= beg-inner end-inner) (cons beg-inner end-inner))))
 
 (defun meep--syntax-comment-bounds-inner (pos)
   "Return the inner bounds of the comment surrounding POS as a (BEG . END) cons.
@@ -371,31 +491,7 @@ been fully scanned, see `meep--syntax-skip-to-comment-start'."
           (let ((state-end (parse-partial-sexp pos (point-max) nil nil state 'syntax-table)))
             ;; Still in the comment at `point-max': unterminated.
             (unless (nth 4 state-end)
-              (let* ((end (point))
-                     (beg-inner
-                      (cond
-                       ;; Flags `1' & `2': a two-char opener.
-                       ((meep--syntax-comment-delim-pair-p beg (ash 1 16) (ash 1 17))
-                        (+ beg 2))
-                       ;; Comment-start or generic-fence class: a single-char opener.
-                       ((memq (syntax-class (syntax-after beg)) (list 11 14))
-                        (1+ beg))
-                       (t
-                        beg)))
-                     (end-inner
-                      (cond
-                       ;; Flags `3' & `4': a two-char closer.
-                       ((meep--syntax-comment-delim-pair-p (- end 2) (ash 1 18) (ash 1 19))
-                        (- end 2))
-                       ;; Comment-end or generic-fence class: a single-char
-                       ;; closer (a line comment's newline).
-                       ((memq (syntax-class (syntax-after (1- end))) (list 12 14))
-                        (1- end))
-                       (t
-                        end))))
-                ;; Delimiters overlapping (paranoid), an empty comment at most.
-                (when (<= beg-inner end-inner)
-                  (setq result (cons beg-inner end-inner)))))))))
+              (setq result (meep--comment-inner-bounds-from-syntax beg (point))))))))
     result))
 
 (defun meep--rectangle-row-span (col-beg col-end)
@@ -1119,7 +1215,14 @@ NOERROR is forwarded to `line-move'."
 
 ;; Useful for `/** comment */` or `/// comment.`
 (defcustom meep-move-comment-skip-repeated t
-  "When navigating comment bounds, skip repeated characters."
+  "Exclude a repeated opener run (`;;;', `///') from comment inner bounds.
+When non-nil such a run is treated as decoration & left outside the inner
+bounds, so editing the comment body leaves the run intact; when nil the
+repeats become body content.
+
+Only a repeat of the *same* character is affected - a run of differing
+opener characters (`#;', `*!') is the delimiter itself & is always
+excluded."
   :type 'boolean)
 
 (defun meep--goto-comment-or-string-bounds (dir)
@@ -1683,26 +1786,17 @@ Return non-nil when point was moved."
 (defun meep--bounds-at-point-for-comment-outer ()
   "Return the outer bounds for the comment at point or nil when not found."
   (declare (important-return-value t))
-  (let ((state (syntax-ppss)))
+  (let ((state (meep--syntax-ppss-skip-comment-start)))
     (unless (nth 4 state)
       ;; Don't step back onto the previous line as it causes
       ;; syntax with single line comments to consider the blank
       ;; line after a comment to be a comment.
       (unless (or (bobp) (bolp))
         (save-excursion
-          ;; We could use a nicer method of checking this.
-          ;; Be smarter.
           (forward-char -1)
           (let ((state-test (syntax-ppss)))
             (when (nth 4 state-test)
               (setq state state-test))))))
-
-    ;; We may be at the comment start, which isn't considered a comment.
-    (unless (nth 4 state)
-      ;; Skip into the comment and get the state.
-      (save-excursion
-        (when (meep--syntax-skip-to-comment-start)
-          (setq state (syntax-ppss)))))
 
     (when (nth 4 state)
       (let ((pos-orig (point))
@@ -1710,14 +1804,38 @@ Return non-nil when point was moved."
         (when (and beg (<= beg pos-orig))
           (save-excursion
             (goto-char beg)
-            (forward-comment 1)
-            ;; Step back over the newline terminating a line comment.
+            ;; An open comment at the end of a file still owns the text to
+            ;; `point-max', even though `forward-comment' reports no closer.
+            (unless (forward-comment 1)
+              (goto-char (point-max)))
+            ;; Step back over the blank-space terminating a line comment.
             ;;
             ;; NOTE: skipping comment-end *syntax* would seem more general,
             ;; however a mode whose comment ends with a printing character
             ;; gives that character comment-end syntax too, truncating the
             ;; delimiter - `<!-- x -->' would end up as `<!-- x --'.
-            (skip-chars-backward "\n" pos-orig)
+            ;;
+            ;; Matching the newline alone is not enough either: a mode names
+            ;; every character that ends a line comment & `cc-mode' gives CR
+            ;; the same comment-end syntax as the newline, so a file with
+            ;; mixed line endings took the CR into the bounds & deleting the
+            ;; comment rewrote that line to LF.  A formfeed ends one in
+            ;; `tex-mode' & `bibtex-mode'.
+            ;;
+            ;; `forward-comment' also crosses the blank-space *following* the
+            ;; comment, given back here for the same reason.  Where to stop is
+            ;; the comment's own state to answer: blank-space it is still open
+            ;; over is its text, so an unterminated comment being typed at a
+            ;; file's end keeps the blank lines below it.
+            ;;
+            ;; NOTE: CR skips the open-comment check the newline gets: a
+            ;; comment open over a CR needs an unsupported mixed-ending file
+            ;; (see `meep--join-range') - damage prevention, not a case to
+            ;; serve.
+            (while (and (< pos-orig (point))
+                        (memq (char-before) '(?\n ?\r ?\f))
+                        (or (eq (char-before) ?\r) (null (nth 4 (syntax-ppss (point))))))
+              (forward-char -1))
             ;; It's possible a comment range is *before* the point.
             ;; Typically when the point is on the next line.
             ;; Ensure the original point is in the range.
@@ -1795,9 +1913,10 @@ delimiters.  Return nil if no pair matches.
 
 Intended for use as the FUNC in `meep-bounds-for-inner-comment',
 where ARGS is the PAIRS list.  Useful when writing a preset for
-a mode whose comment delimiters are fixed strings - most of the
-bundled `meep-preset-MODE.el' files (`c-mode', `lua-mode',
-`html-mode', ...) configure their comment spec this way."
+a mode whose comment delimiters are fixed strings & are described
+by neither the comment variables nor character syntax - the
+bundled `meep-preset-lua-mode.el', `meep-preset-ruby-mode.el', ...
+configure their comment spec this way."
   (declare (important-return-value t))
   (let ((result nil))
     (while (and pairs (null result))
@@ -1822,6 +1941,290 @@ buffer-local or global - still takes precedence over the preset."
     (when spec
       (funcall (car spec) (cadr spec) bounds))))
 
+(defun meep--comment-delimiter-string (str)
+  "Return STR trimmed of blank-space padding, or nil when it holds no delimiter.
+STR is a `comment-start', `comment-end' or `comment-continue', any of them
+may be empty or blank - a mode whose comments end at the line's end leaves
+`comment-end' empty, one with no continuation marker leaves
+`comment-continue' nil."
+  (declare (important-return-value t))
+  (when str
+    (let ((str-trim (string-trim str)))
+      (unless (string-empty-p str-trim)
+        str-trim))))
+
+(defun meep--buffer-repeated-char-p (beg end)
+  "Return non-nil when BEG to END is a run of one repeated character.
+An empty range counts, nothing in it contradicts the run."
+  (declare (important-return-value t))
+  (save-excursion
+    (goto-char beg)
+    (let ((ch (char-after)))
+      (while (and (< (point) end)
+                  (or (eq (char-after) ch)
+                      (and case-fold-search (eq (downcase (char-after)) (downcase ch)))))
+        (forward-char 1))
+      (eq (point) end))))
+
+(defun meep--comment-start-literal-end (beg bound)
+  "Return the end of the literal `comment-start' starting exactly at BEG.
+Return nil when `comment-start' is empty, does not sit at BEG, or would
+end after BOUND.
+The counterpart of `meep--comment-end-literal-beg'."
+  (declare (important-return-value t))
+  (when-let* ((str (meep--comment-delimiter-string comment-start)))
+    (let ((pos (+ beg (length str))))
+      (and (<= pos bound) (string-equal str (buffer-substring-no-properties beg pos)) pos))))
+
+(defun meep--comment-inner-beg-limit (beg pos)
+  "Return POS capped to the end of the comment delimiter at BEG.
+POS is the delimiter end `comment-start-skip' matched, returned unchanged
+when neither the literal `comment-start' nor character syntax describes
+the opener at BEG."
+  (declare (important-return-value t))
+  ;; `comment-start-skip' can match more than the delimiter: `fortran-mode'
+  ;; reads a run of repeated characters after it as decoration (`C----'),
+  ;; which in a comment reading `Cooling loop here' is the comment's own
+  ;; text.  Where the delimiter ends comes from its other two descriptions,
+  ;; whichever reaches further - the literal `comment-start' when that is
+  ;; what is written here, character syntax otherwise.
+  (let ((pos-max
+         (max (or (meep--comment-inner-beg-from-syntax beg) beg)
+              (or (meep--comment-start-literal-end beg pos) beg))))
+    ;; Cap only when a source resolved the delimiter, it ends before POS &
+    ;; the overreach is a *repeat* run; POS is otherwise unchanged.  A
+    ;; repeat run only, because neither description can be taken for the
+    ;; delimiter's full length: `comment-start' may be a prefix of a longer
+    ;; opener the mode also names - `texinfo-mode' writes both `@c ' &
+    ;; `@comment ', & capping `@comment' to the `@c' it starts with left
+    ;; `omment' as the comment's text - while syntax caps out at two
+    ;; characters.  Text that is not a repeat is the delimiter continuing.
+    (cond
+     ((and (< beg pos-max) (< pos-max pos) (meep--buffer-repeated-char-p pos-max pos))
+      pos-max)
+     (t
+      pos))))
+
+(defun meep--comment-inner-beg-from-vars (beg)
+  "Return the position after the comment opener at BEG or nil when not found.
+Only the delimiter is stepped over, not the blank-space padding it is
+conventionally written with (`<!-- ') - padding is content,
+`meep-move-comment-skip-space' decides whether to skip it."
+  (declare (important-return-value t))
+  (save-excursion
+    (save-match-data
+      (goto-char beg)
+      (let ((eol (pos-eol)))
+        (or
+         ;; `comment-start-skip' first: it is the mode's own description of
+         ;; its openers & typically covers every comment style the mode
+         ;; supports (`cc-mode' matches both `/*' & `//').
+         ;;
+         ;; NOTE: a generated `comment-start-skip' matches leading context
+         ;; before the delimiter, so the match can start before BEG -
+         ;; `comment-search-forward' resolves the delimiter's own start
+         ;; the same way.
+         (and comment-start-skip
+              (re-search-forward comment-start-skip eol t)
+              (eq beg (or (match-end 1) (match-beginning 0)))
+              (progn
+                (goto-char (match-end 0))
+                ;; Give back the padding the regexp matched - a closer
+                ;; claiming the same padding in a comment as small as
+                ;; `<!-- -->' would otherwise cross the two ends.
+                (skip-chars-backward "[:blank:]" beg)
+                (meep--comment-inner-beg-limit beg (point))))
+         ;; NOTE: the regexp can require context *before* the delimiter -
+         ;; `perl-mode' & `tcl-mode' match `\(^\|\s-\);?#+ *' & similar - which
+         ;; a search starting at the delimiter itself can never satisfy.  So a
+         ;; failed match is not proof the mode does not describe this opener,
+         ;; fall back to the literal `comment-start'.
+         ;;
+         ;; Character syntax gates that fall-back: it answers whether a comment
+         ;; opens here at all, leaving the variables to say how long the
+         ;; delimiter is.  Without it a `fortran-mode' comment, written `C' in
+         ;; column one, would also be stripped from the `C' of `C D' mid-line.
+         (and (meep--comment-inner-beg-from-syntax beg)
+              (meep--comment-start-literal-end beg eol)))))))
+
+(defun meep--comment-inner-beg-resolve (beg)
+  "Return the position after the comment opener at BEG or nil when not found.
+The comment variables answer first, character syntax for a style they do
+not describe - see `meep--comment-inner-bounds' for the ordering's
+rationale."
+  (declare (important-return-value t))
+  (or (meep--comment-inner-beg-from-vars beg) (meep--comment-inner-beg-from-syntax beg)))
+
+(defun meep--comment-end-literal-beg (end bound)
+  "Return the beginning of the literal `comment-end' ending exactly at END.
+Return nil when `comment-end' is empty, does not sit against END, or would
+begin before BOUND.
+The counterpart of `meep--comment-start-literal-end'."
+  (declare (important-return-value t))
+  (when-let* ((str (meep--comment-delimiter-string comment-end)))
+    (let ((pos (- end (length str))))
+      (and (<= bound pos) (string-equal str (buffer-substring-no-properties pos end)) pos))))
+
+(defun meep--comment-inner-end-limit (end pos)
+  "Return POS capped to the start of the comment delimiter at END.
+POS is the delimiter start `comment-end-skip' matched, returned unchanged
+when neither the literal `comment-end' nor character syntax describes the
+closer at END.
+The counterpart of `meep--comment-inner-beg-limit'."
+  (declare (important-return-value t))
+  ;; The cap exists for the same reason as `meep--comment-inner-beg-limit's:
+  ;; `comment-end-skip' is greedy where `css-mode' sets `[ \t]*\*+/', so a
+  ;; comment written `/*** a ***/' had its trailing `***' swallowed while
+  ;; the leading one stayed as content, contracting to `** a ' - & a mode
+  ;; leaving `comment-end-skip' nil (`c-mode') contracted the same markup
+  ;; to `** a **'.  Only a repeat run is given back, see the counterpart.
+  (let ((pos-min
+         (min (or (meep--comment-inner-end-from-syntax pos end) end)
+              (or (meep--comment-end-literal-beg end pos) end))))
+    ;; Cap only when a source resolved the delimiter, it begins after POS &
+    ;; the overreach is a repeat run; POS is otherwise unchanged.
+    (cond
+     ((and (< pos-min end) (< pos pos-min) (meep--buffer-repeated-char-p pos pos-min))
+      pos-min)
+     (t
+      pos))))
+
+(defun meep--comment-inner-end-from-vars (beg end)
+  "Return the position before the comment closer at END or nil when not found.
+BEG bounds the search so the closer can never precede the comment.
+As with `meep--comment-inner-beg-from-vars' only the delimiter is stepped
+over, its blank-space padding is left as content.
+
+Nil is returned when the closer is not described by the comment variables,
+which is not the same as a comment having no closer: a mode preferring
+`//' leaves `comment-end' empty while `/* ... */' is still written, so the
+caller must fall back rather than treat END as the content's end."
+  (declare (important-return-value t))
+  ;; NOTE: a set `comment-end-skip' that fails to match is trusted - unlike
+  ;; `comment-start-skip' it needs no context the search cannot supply (the
+  ;; opener's literal fall-back exists for exactly that), so the literal
+  ;; `comment-end' is not consulted to second-guess it.
+  (save-excursion
+    (save-match-data
+      (cond
+       (comment-end-skip
+        ;; Anchored at END so only a trailing match counts.
+        (save-restriction
+          (narrow-to-region beg end)
+          ;; The closer is at END, so the scan starts near it rather than at
+          ;; the comment's start - `comment-enter-backward' in `newcomment.el'
+          ;; bounds itself the same way.  Scanning from the start re-read the
+          ;; whole comment on every inner-comment query, which a licence header
+          ;; or an unterminated `/*' running to the buffer's end makes the
+          ;; length of the file.
+          ;;
+          ;; The line *above* the closer's is included because a closer can be
+          ;; the newline itself (`vera-mode' sets ` *\n'), whose match begins on
+          ;; the line before END.  Starting at END's own line found nothing at
+          ;; all for those modes.  Blank padding reaching further back than that
+          ;; needs no room here, `skip-chars-forward' below hands it back
+          ;; wherever the match happens to begin.
+          (goto-char (point-max))
+          (goto-char (max (point-min) (pos-bol 0)))
+          ;; The group keeps `\\'' applying to the whole regexp: an unwrapped
+          ;; top-level alternation (`vera-mode' sets ` *\\*+/\\| *\n') would
+          ;; anchor its last branch only, leaving the others free to match
+          ;; mid-comment.
+          (and (re-search-forward (concat "\\(?:" comment-end-skip "\\)\\'") nil t)
+               (progn
+                 (goto-char (match-beginning 0))
+                 ;; Give back every character the closer may claim as padding,
+                 ;; newlines included - `nxml-mode' pads with `[ \t\r\n]*'
+                 ;; where `html-mode' uses `[ \t]*', & the same markup must
+                 ;; contract the same way in both.
+                 (skip-chars-forward " \t\r\n" end)
+                 (meep--comment-inner-end-limit end (point))))))
+       (t
+        (meep--comment-end-literal-beg end beg))))))
+
+(defun meep--comment-inner-end-resolve (beg end)
+  "Return the position before the comment closer at END or nil when not found.
+BEG bounds the search so the closer can never precede the comment.
+The counterpart of `meep--comment-inner-beg-resolve'."
+  (declare (important-return-value t))
+  (or (meep--comment-inner-end-from-vars beg end) (meep--comment-inner-end-from-syntax beg end)))
+
+(defun meep--comment-inner-bounds (beg end)
+  "Return the inner bounds of the comment BEG & END.
+
+An end no source resolves is left where it is, so a comment whose
+delimiters are recognized by nothing comes back as BEG & END unchanged
+rather than nil - callers tell that apart by comparing with the bounds
+they passed in.  Nil means the delimiters cross irreconcilably."
+  (declare (important-return-value t))
+  ;; Each end takes the first source that resolves it, most to least
+  ;; informed:
+  ;;
+  ;; - The comment variables, the mode's own description of its
+  ;;   delimiters, covering delimiters of any length - HTML's `<!--'.
+  ;; - Character syntax, which caps out at two characters but knows about
+  ;;   styles the comment variables may not mention.
+  ;;
+  ;; The ends resolve separately because the sources disagree on which
+  ;; styles they describe: a mode preferring `//' leaves `comment-end'
+  ;; empty, yet `/* ... */' is still written & only syntax finds its `*/'.
+  (let* ((beg-delim
+          ;; NOTE: a repeated opener needs no special case here.  The greedy
+          ;; `comment-start-skip' match that would have taken `///' whole is
+          ;; already capped to the base delimiter by
+          ;; `meep--comment-inner-beg-limit', so the repeats arrive as text &
+          ;; `meep-move-comment-skip-repeated' still has them to decide on.
+          (or (meep--comment-inner-beg-resolve beg) beg))
+         (beg-inner
+          (save-excursion
+            (goto-char beg-delim)
+            ;; An opener can be a run of comment-start characters rather than one
+            ;; delimiter - Scheme's `#;', Fortran's `*!' - & neither source steps
+            ;; over more than the one it matched.  Unlike `;;' the characters
+            ;; differ, so the caller cannot finish the job from the bounds alone.
+            ;;
+            ;; This is not `meep-move-comment-skip-repeated's to decide: the run
+            ;; is the delimiter, not decoration written around it, so leaving
+            ;; the `;' of `#;' as content let deleting the selection corrupt the
+            ;; comment into `#)'.  Only a repeat of the same character is
+            ;; decoration, which the option still answers for below.
+            ;;
+            ;; Both run extensions apply to a single-char opener only.
+            (when (eq beg-delim (1+ beg))
+              (while (and (< (point) end)
+                          (eq (syntax-class (syntax-after (point))) 11)
+                          (not (eq (char-after) (char-before))))
+                (forward-char 1))
+              (when meep-move-comment-skip-repeated
+                (let ((beg-repeat (point)))
+                  (skip-syntax-forward "<" end)
+                  ;; Keep a non-empty inner range; the caller applies the same
+                  ;; invariant when it strips repeated delimiters a second time.
+                  (when (eq (point) end)
+                    (goto-char beg-repeat)))))
+            (point)))
+         (end-inner
+          (cond
+           ;; A comment still open at END has no closer to step over: a line
+           ;; comment is closed by its newline & the outer bounds stop before
+           ;; it, an unterminated block comment never closes at all.  Both
+           ;; sources describe the mode's *block* closer, so without this they
+           ;; take the `*/' ending the text of `// x = 1; /* legacy */' for
+           ;; the comment's own & amputate it from the content.
+           ((save-excursion (nth 4 (syntax-ppss end)))
+            end)
+           (t
+            (or (meep--comment-inner-end-resolve beg end) end)))))
+    (cond
+     ((<= beg-inner end-inner)
+      (cons beg-inner end-inner))
+     (t
+      ;; The two ends cross: syntax resolves both, it measures each
+      ;; delimiter directly instead of matching a regexp greedy enough to
+      ;; claim the other end's characters - `comment-start-skip' takes all
+      ;; three of `/**/'s asterisks.
+      (meep--comment-inner-bounds-from-syntax beg end)))))
+
 (defun meep--bounds-at-point-for-comment-inner ()
   "Return the inner bounds for the comment at point or nil when not found."
   (declare (important-return-value t))
@@ -1831,31 +2234,19 @@ buffer-local or global - still takes precedence over the preset."
       (let ((beg (car bounds-outer))
             (end (cdr bounds-outer)))
 
-        ;; Contract by the mode's preset, falling back to comment syntax.
-        ;;
-        ;; NOTE: the preset is preferred because the syntax fallback only steps
-        ;; over comment-start/end *characters*, so a multi character delimiter
-        ;; contracts part way - HTML's `<!-- x -->' yields `!-- x --'.
-        ;; The fallback is kept for modes without a preset, it also has to
-        ;; handle C/C++ where `/* ... */' isn't comment start/end syntax at
-        ;; all. sigh!
+        ;; The preset spec takes precedence, it is needed only where a
+        ;; delimiter is neither described by the comment variables nor
+        ;; expressible as syntax: Lua's `--[[', Ruby's `=begin'.  Being an
+        ;; explicit pairing it resolves both ends or neither, everything
+        ;; else is deduced (see `meep--comment-inner-bounds').
         ;;
         ;; When both fail, just don't return the inner bounds,
         ;; not great - but better than returning nil.
-        (let ((bounds-inner (meep--bounds-at-point-for-comment-inner-guess bounds-outer)))
-          (cond
-           (bounds-inner
-            (setq beg (car bounds-inner))
-            (setq end (cdr bounds-inner)))
-           (t
-            (save-excursion
-              (goto-char beg)
-              (skip-syntax-forward "<")
-              (setq beg (point))
-
-              (goto-char end)
-              (skip-syntax-backward ">")
-              (setq end (point))))))
+        (when-let* ((bounds-inner
+                     (or (meep--bounds-at-point-for-comment-inner-guess bounds-outer)
+                         (meep--comment-inner-bounds beg end))))
+          (setq beg (car bounds-inner))
+          (setq end (cdr bounds-inner)))
 
         ;; Skip repeated chars: "/***** "
         ;; TODO: check if the characters are space (seems very unlikely).
@@ -2252,7 +2643,13 @@ be contracted.
 Defaults to nil; the spec is then read from the preset for the
 current `major-mode' (see the bundled `meep-preset-MODE.el'
 files).  An explicit user setting - buffer-local or global -
-takes precedence over the preset."
+takes precedence over the preset.
+
+Most modes need no spec at all: the delimiters are deduced from
+`comment-start-skip' & `comment-end-skip' (or `comment-start' &
+`comment-end'), falling back to character syntax.  A spec is only
+needed where neither describes the delimiters, as with Lua's
+`--[[' or Ruby's `=begin'."
   :type '(choice (const nil) (list function sexp)))
 
 (defun meep--list-item-bounds-default ()
@@ -3056,15 +3453,34 @@ trailing newline (outer is line-wise by default)."
           (end (cdr first-outer)))
       ;; Extend end forward across adjacent comments separated only by blanks.
       ;; Remember the last comment's start so we can query its inner bounds.
+      ;;
+      ;; NOTE: the extension must be checked for progress, not merely for
+      ;; having found a comment.  `meep--bounds-at-point-for-comment-outer'
+      ;; steps back a character when point sits just past a comment, so it
+      ;; answers with the comment just measured & END never moves - a
+      ;; `<!-- a -->' with no blank-space after its closer hung Emacs, as did
+      ;; any block whose last comment ends the buffer.
       (save-excursion
         (let (next)
           (while (progn
                    (goto-char end)
                    (skip-chars-forward " \t\n\r")
-                   (setq next (meep--bounds-at-point-for-comment-outer)))
+                   (and (setq next
+                              (or (meep--bounds-at-point-for-comment-outer)
+                                  ;; An unterminated final comment cannot be
+                                  ;; found from its opener by `forward-comment'.
+                                  ;; Step inside only when syntax confirms that
+                                  ;; an opener starts here; otherwise a single
+                                  ;; printing character before a later comment
+                                  ;; would be silently crossed.
+                                  (when-let* ((inner
+                                               (meep--comment-inner-beg-from-syntax (point))))
+                                    (goto-char inner)
+                                    (meep--bounds-at-point-for-comment-outer))))
+                        (< end (cdr next))))
             (setq last-beg (car next))
             (setq end (cdr next)))))
-      ;; Extend beg backward across adjacent comments.
+      ;; Extend beg backward across adjacent comments, progress checked as above.
       ;; Terminate at BOBP: otherwise the helper would rediscover the
       ;; current comment and the loop would not progress.
       (save-excursion
@@ -3075,7 +3491,8 @@ trailing newline (outer is line-wise by default)."
                    (and (not (bobp))
                         (progn
                           (forward-char -1)
-                          (setq prev (meep--bounds-at-point-for-comment-outer)))))
+                          (setq prev (meep--bounds-at-point-for-comment-outer)))
+                        (< (car prev) beg)))
             (setq first-beg (car prev))
             (setq beg (car prev)))))
       (cond
@@ -3091,7 +3508,7 @@ trailing newline (outer is line-wise by default)."
             (setq end (cdr b)))))
        (t
         ;; Outer (default): include trailing newline (line-wise).
-        (when (>= (point-max) (1+ end))
+        (when (eq (char-after end) ?\n)
           (meep--incf end))))
       (cons beg end))))
 
@@ -7500,98 +7917,164 @@ point untouched."
   ;; comments while block comments remain in use).
   (when-let* ((bounds-inner (meep--syntax-comment-bounds-inner (point))))
     (setq limit (min limit (cdr bounds-inner))))
-  (let ((marker (and comment-continue (string-trim comment-continue))))
-    (when (and marker
-               (not (string-empty-p marker))
-               (<= (+ (point) (length marker)) limit)
-               (meep--looking-at-string-p marker))
+  ;; NOTE: modes preferring line comments (`java-mode', `js-mode' ...) never
+  ;; derive `comment-continue', so their block comment markers stay in place.
+  ;; Documented as a limitation, users who care can set it themselves.
+  (when-let* ((marker (meep--comment-delimiter-string comment-continue)))
+    (when (and (<= (+ (point) (length marker)) limit) (meep--looking-at-string-p marker))
       (goto-char (+ (point) (length marker)))
       (when (< (point) limit)
         (skip-chars-forward "[:blank:]" limit)))))
 
+(defun meep--join-comment-content-p (pos)
+  "Return non-nil when POS is inside a comment that opened before POS.
+
+Tells a delimiter that opens a comment from one that is merely written in
+an open comment's text.  The second is content: `pascal-mode' comments a
+line with `{' yet `//' is a comment delimiter there too, so a body line
+reading `// b' opens nothing - the `//' is what the comment says."
+  (declare (important-return-value t))
+  (let ((state (syntax-ppss pos)))
+    (and (nth 4 state)
+         (when-let* ((beg (nth 8 state)))
+           (< beg pos)))))
+
+(defun meep--join-skip-comment-opener (limit)
+  "Skip a comment opener at point & any blank-space after it, up to LIMIT.
+Return non-nil when an opener was resolved, the caller uses that to tell a
+line leading with the delimiter from one leading with a continuation marker.
+
+Only a delimiter starting exactly at point is matched, so an inline
+comment later on the line (the `#' of `C D # E') is left alone.  Nothing
+is skipped inside an already open comment, see
+`meep--join-comment-content-p'."
+  (unless (meep--join-comment-content-p (point))
+    ;; The same deduction the comment bounds use, so a joined line's opener
+    ;; & its bounds can never disagree - `pascal-mode' names only `{' &
+    ;; `(*' in its comment variables while `//' is a comment there too,
+    ;; which only the syntax fall-back resolves.
+    (when-let* ((pos (meep--comment-inner-beg-resolve (point))))
+      (when (<= pos limit)
+        ;; Clamp the run below to the comment's inner bounds so it can never
+        ;; reach the comment's own terminator - `/**/' shares the `*'.
+        (let ((limit-run (min limit (or (cdr (meep--syntax-comment-bounds-inner pos)) limit))))
+          (goto-char pos)
+          ;; An opener written as a run of its character (`;;;') is stripped
+          ;; whole, the same extension the bounds make in
+          ;; `meep--comment-inner-bounds'.  The deduction stops at the delimiter
+          ;; itself, so without this a `;;' line would keep its second `;'.
+          ;;
+          ;; Two steps because the run may be written either way & only the
+          ;; first is syntax: a repeat of a *single* character delimiter is
+          ;; comment-start class (`;;;'), where the repeat of a two character
+          ;; one is not (`///' is punctuation carrying comment-start flags,
+          ;; the same reason `meep--comment-inner-bounds' compares characters).
+          (when-let* ((ch (char-before (point))))
+            (let ((run-beg (point)))
+              (while (and (< (point) limit-run) (eq (char-after) ch))
+                (forward-char 1))
+              ;; A repeat only decorates the opener when it stands alone.
+              ;; In `///etc', the final slash begins the comment's text.
+              (unless (or (eq (point) limit-run) (memq (char-after) '(?\s ?\t)))
+                (goto-char run-beg)))))
+        (skip-chars-forward "[:blank:]" limit)
+        t))))
+
 (defun meep--join-maybe-skip-comment-prefix (limit)
   "Skip forward over comment chars and any following blank-space.
 Don't skip past LIMIT (the end of the current line)."
-  (let ((comment-start-consumed nil))
-    (let ((state (syntax-ppss))
-          (comment-start-quote (regexp-quote comment-start))
-          (ok t)
-          (point-init (point)))
+  (let ((comment-start-consumed nil)
+        (state (meep--syntax-ppss-skip-comment-start)))
+    (when (nth 4 state) ; Comment.
+      (setq comment-start-consumed (meep--join-skip-comment-opener limit)))
 
-      ;; We may be at the comment start, which isn't considered a comment.
-      (unless (nth 4 state)
-        (save-excursion
-          (skip-syntax-forward "^-")
-          (let ((state-test (syntax-ppss)))
-            (when (nth 4 state-test)
-              (when-let* ((beg-test (nth 8 state-test)))
-                (when (<= point-init beg-test)
-                  (setq state state-test)))))))
-
-      (when (nth 4 state) ; Comment.
-        (when (and ok (<= (point) limit) (looking-at-p comment-start-quote))
-          (let ((pos-next (+ (point) (length comment-start))))
-            (cond
-             ((<= pos-next limit)
-              (goto-char pos-next)
-              (setq comment-start-consumed t))
-             (t
-              (setq ok nil)))))))
     (when (< (point) limit)
       (skip-chars-forward "[:blank:]" limit)
 
       ;; A block comment's interior line leads with `comment-continue' (`* '),
       ;; not `comment-start' - strip that marker.  Skip when `comment-start'
       ;; was consumed above: that line led with the delimiter, not a marker.
+      ;;
+      ;; The opener is resolved again because it can follow the blank-space or
+      ;; the marker.  A second delimiter that is the comment's own text
+      ;; (`;; ;; (old-code)', a `/* a' body line reading `* // old-code();')
+      ;; is not stripped, `meep--join-skip-comment-opener' rejects it.
       (unless comment-start-consumed
-        (meep--join-skip-comment-marker limit))
-
-      (when comment-start-skip
-        (let ((pos-prev (point)))
-          (save-match-data
-            (when (save-excursion (re-search-forward comment-start-skip limit t))
-              ;; Only skip when the match is at point
-              ;; (blank-space was already skipped above).
-              ;; Without this, an inline comment such as "C D # E"
-              ;; would match the "# " before "E",
-              ;; causing the content before it to be lost.
-              (when (eq pos-prev (match-beginning 0))
-                (goto-char (match-end 0))
-                (skip-chars-forward "[:blank:]" limit)))))))))
+        (meep--join-skip-comment-marker limit)
+        (meep--join-skip-comment-opener limit)))))
 
 (defun meep--join-range-is-eol-comment (eol-ws bol-ws-next)
   "Detect if EOL-WS and BOL-WS-NEXT are comments that can be joined."
-  (let ((result nil)
-        ;; Get the range for the comment at point or nil.
-        (comment-range-fn
-         (lambda (pos)
-           (let ((range nil))
-             (save-excursion
-               (when-let* ((state (syntax-ppss pos)))
-                 (when (nth 4 state)
-                   (when-let* ((beg (nth 8 state)))
+  ;; The range for the comment at EOL-WS, nil when there is none.
+  (when-let* ((range-a
+               (save-excursion
+                 (let ((state (syntax-ppss eol-ws)))
+                   (when-let* ((beg (and (nth 4 state) (nth 8 state))))
                      (goto-char beg)
-                     (when (forward-comment 1)
-                       (setq range (cons beg (point))))))))
-             range))))
-
-    (when-let* ((range-a (funcall comment-range-fn eol-ws)))
-      (cond
-       ;; A multi-line comment which ends after the beginning of the next line.
-       ;; No need to check further.
-       ((< bol-ws-next (cdr range-a))
-        (setq result t))
-       ;; Detect two single line comments,
-       ;; we only need to check if the first non blank-space is a:
-       ;; - comment start 11.
-       ;; - comment generic 14.
-       ((memq (car (syntax-after bol-ws-next)) (list 11 14))
-        (setq result t))))
-    result))
+                     ;; An unfinished comment at EOF still spans its
+                     ;; current body and can be joined as such.
+                     (unless (forward-comment 1)
+                       (goto-char (point-max)))
+                     (cons beg (point)))))))
+    (or
+     ;; A multi-line comment which ends after the beginning of the next line.
+     ;; No need to check further.
+     (< bol-ws-next (cdr range-a))
+     ;; NOTE: a comment closed by CR or formfeed before the newline is
+     ;; intentionally not recognized here, the probe below answers nil for
+     ;; it & the opener is kept - see the NOTE in `meep--join-range'.
+     ;;
+     ;; Detect two single line comments.
+     ;;
+     ;; NOTE: a position within a two character opener (`//', `--') is not
+     ;; inside the comment yet & its characters are punctuation carrying
+     ;; comment-start flags, not the comment-start class - probing the
+     ;; class alone missed every such mode.  So read the comment from the
+     ;; line's end instead, where it is unambiguously open.
+     ;;
+     ;; It is the opener that gets stripped, so only a comment running to
+     ;; exactly the line's end can be merged.  One closing earlier
+     ;; (`/* b */', `{ b }') would leave its closer stranded on the joined
+     ;; line & one continuing past it would lose the block it opened.
+     ;;
+     ;; Comparing the start is what rejects the first case.  Asking only
+     ;; whether the line ends inside a comment is not enough: a *later*
+     ;; comment on the same line answers yes for its own sake, so
+     ;; `/* b */ // c' read as a comment running to the line's end & the
+     ;; `/*' about to be stripped had already closed.
+     ;;
+     ;; At the buffer's end there is no character past the line to read the
+     ;; answer from, so the comment's own style decides: a line comment is
+     ;; ended by the newline it never got, a block comment is simply open.
+     (save-excursion
+       (goto-char bol-ws-next)
+       (let* ((eol (pos-eol))
+              (state (syntax-ppss eol)))
+         (and (nth 4 state)
+              (eq (nth 8 state) bol-ws-next)
+              (cond
+               ((eq eol (point-max))
+                (meep--syntax-comment-closed-by-newline-p state))
+               (t
+                (null (nth 4 (syntax-ppss (1+ eol))))))))))))
 
 (defun meep--join-range (bol eol use-comment-strip)
   "Join newlines between BOL and EOL.
 When USE-COMMENT-STRIP is non-nil, strip comments."
+  ;; NOTE: CRLF is not a supported line ending here & skipping the CR as
+  ;; blank-space is not the fix.  Emacs decodes a DOS file on visit so the
+  ;; buffer holds LF alone, & `delete-indentation' makes no attempt either -
+  ;; it strands the CR mid-line & then pads it with a space.
+  ;;
+  ;; A comment the mode closes by CR or formfeed before the newline
+  ;; (`cc-mode' gives CR comment-end syntax, `tex-mode' the formfeed) is
+  ;; joined with its opener kept rather than stripped.  This is intentional
+  ;; & not to be supported: recognizing the case makes every ordinary join
+  ;; pay a whole-comment scan for files that are rare & already irregular,
+  ;; & Emacs's own `delete-indentation' special-cases neither character.
+  ;; The test `join-line-next-blank-closed-comment-keeps-prefix' pins the
+  ;; kept opener as the intended result.  The comment *bounds* still answer
+  ;; for CR/formfeed, that is damage prevention rather than convenience.
   (cond
    ;; Detect end of buffer.
    ((eq eol (point-max))
@@ -7635,6 +8118,16 @@ When ADD-SPACE is true, ensure a space separator."
         (setq result (- end beg)))))
     result))
 
+(defun meep--join-range-add-space-p (bol range)
+  "Return non-nil when joining RANGE after BOL needs a separator."
+  (and (not (eq bol (car range)))
+       ;; Stripping an empty comment line leaves no right-hand text to
+       ;; separate, so adding a space would create trailing whitespace.
+       (< (cdr range)
+          (save-excursion
+            (goto-char (cdr range))
+            (pos-eol)))))
+
 (defun meep--join-region-impl (beg end use-comment-strip)
   "Join region between BEG and END.
 USE-COMMENT-STRIP, strips comments between lines."
@@ -7647,7 +8140,7 @@ USE-COMMENT-STRIP, strips comments between lines."
           (let ((range (meep--join-range beg eol use-comment-strip)))
             (cond
              (range
-              (let ((add-space (/= beg (car range))))
+              (let ((add-space (meep--join-range-add-space-p beg range)))
                 (let ((ofs
                        (meep--join-delete-region-maybe-space (car range) (cdr range) add-space)))
                   (setq eol (pos-eol))
@@ -7688,7 +8181,7 @@ USE-COMMENT-STRIP, strips comments between lines."
                         (setq range (meep--join-range bol eol use-comment-strip)))
                        (t
                         nil))))
-          (let ((add-space (/= bol (car range))))
+          (let ((add-space (meep--join-range-add-space-p bol range)))
             (meep--join-delete-region-maybe-space (car range) (cdr range) add-space)
             (let ((pos-new (car range)))
               (when add-space
@@ -7731,7 +8224,7 @@ USE-COMMENT-STRIP, strips comments between lines."
                         (setq range (meep--join-range bol eol use-comment-strip)))
                        (t
                         nil))))
-          (let ((add-space (/= bol (car range))))
+          (let ((add-space (meep--join-range-add-space-p bol range)))
             (meep--join-delete-region-maybe-space (car range) (cdr range) add-space)
             (let ((pos-new (car range)))
               (when add-space

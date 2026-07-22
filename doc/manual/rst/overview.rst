@@ -131,6 +131,29 @@ To pick some concrete examples:
   that don't require additional complication for the common case.
 
 
+Joining Block Comment Lines
+---------------------------
+
+Joining lines inside a block comment strips the continuation marker (the ``*`` of a C style comment),
+but only when the major-mode sets ``comment-continue``.
+
+Emacs derives that variable from ``comment-start`` & only for modes whose *default* comment style is a
+block comment - among modes based on ``cc-mode`` that is ``c-mode`` alone.
+Modes preferring line comments (``c++-mode``, ``java-mode``, ``js-mode``, ``objc-mode`` ...)
+leave ``comment-end`` empty, so ``comment-continue`` is never derived & the marker is left behind:
+
+.. code-block:: java
+
+   /** first
+    * second
+    */
+
+Joining the first two lines gives ``/** first * second`` instead of ``/** first second``.
+
+The marker could be deduced from the block comment in the buffer,
+however ``comment-continue`` exists for this purpose and may be set in a mode hook.
+
+
 Motion First
 ------------
 
