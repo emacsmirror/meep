@@ -7,10 +7,12 @@
 ;; See: `../../emacs-run-local.sh' for running Emacs with this as an INIT file.
 ;; See: `meep-tests.py' for launching this script for tests.
 
+;;; Code:
+
 ;; Detect if this is running in a test environment.
 ;; Otherwise we can assume this is an example for trying out MEEP.
 (defconst my-meep-is-test-env (null (string-empty-p (or (getenv "MEEP_TEST_ENV") "")))
-  "True when running tests.")
+  "Non-nil when running tests.")
 
 ;; ----------------------------------------------------------------------------
 ;; Key-map
@@ -78,16 +80,19 @@
 ;; - s -: negative-argument.
 
 (defun my-key-free ()
+  "Report the key used to call this command as being free (unused)."
   (interactive)
   (let ((keys (this-command-keys-vector)))
     (message "Key Free: %s" (format-kbd-macro keys))))
 
 (defun my-meep-keymap-set-many (map &rest keybinds)
+  "Set KEYBINDS in MAP, each a (KEY . DEF) cons cell."
   (declare (indent 1))
   (pcase-dolist (`(,key . ,def) keybinds)
     (keymap-set map key def)))
 
 (defun my-meep-basis-keys ()
+  "Assign the key bindings documented in the table above."
 
   ;; For convenience of re-assigning these common prefix keys.
   (let ((my-find "f ")
@@ -451,6 +456,7 @@
     (add-hook 'bray-mode-hook (lambda () (repeat-fu-mode (or bray-mode 0))))))
 
 (defun printf (&rest args)
+  "Print ARGS (like C's `printf')."
   (princ (apply #'format args) #'external-debugging-output))
 
 
@@ -521,6 +527,7 @@
 
 
 (defun my-meep-setup-once ()
+  "Set up meep key bindings & states, called once on startup."
   ;; Extended functions.
   (meep-bootstrap-once)
 

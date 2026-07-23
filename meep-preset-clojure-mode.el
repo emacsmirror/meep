@@ -1,5 +1,11 @@
 ;;; meep-preset-clojure-mode.el --- Meep preset for `clojure-mode' -*- lexical-binding: t -*-
 
+;;; Commentary:
+
+;; Per-major-mode preset, loaded on demand by `meep-preset-ensure'.
+
+;;; Code:
+
 ;;;###autoload
 (defun meep-preset-clojure-mode ()
   "Return the meep preset alist for `clojure-mode'."

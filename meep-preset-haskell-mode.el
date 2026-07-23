@@ -1,5 +1,11 @@
 ;;; meep-preset-haskell-mode.el --- Meep preset for `haskell-mode' -*- lexical-binding: t -*-
 
+;;; Commentary:
+
+;; Per-major-mode preset, loaded on demand by `meep-preset-ensure'.
+
+;;; Code:
+
 ;;;###autoload
 (defun meep-preset-haskell-mode ()
   "Return the meep preset alist for `haskell-mode'."

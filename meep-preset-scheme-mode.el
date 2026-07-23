@@ -1,5 +1,11 @@
 ;;; meep-preset-scheme-mode.el --- Meep preset for `scheme-mode' -*- lexical-binding: t -*-
 
+;;; Commentary:
+
+;; Per-major-mode preset, loaded on demand by `meep-preset-ensure'.
+
+;;; Code:
+
 ;;;###autoload
 (defun meep-preset-scheme-mode ()
   "Return the meep preset alist for `scheme-mode'."

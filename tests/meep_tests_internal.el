@@ -305,7 +305,7 @@ is cleared on exit, even if BODY signals."
        (put ',child 'derived-mode-extra-parents nil))))
 
 (ert-deftest meep-preset-ensure-missing-returns-nil ()
-  "A mode with no preset returns nil; cache stores `t' (cached-missing-state)."
+  "A mode with no preset returns nil; cache stores t (cached-missing-state)."
   (with-meep-preset-test meep-test-no-such-mode
     (should (null (meep-preset-ensure)))
     (should (eq t (gethash 'meep-test-no-such-mode meep--preset-cache)))))
@@ -397,9 +397,9 @@ of `nxml-mode'.  A mode that is not installed cannot be checked, skip it."
     (should (eq :user-set meep-test--respected-var))))
 
 (ert-deftest meep-preset-ensure-walks-derived-mode-parent ()
-  "When the current mode has no preset but an ancestor does, the
-ancestor's preset is used; the result is cached under the original
-`major-mode'."
+  "Use an ancestor's preset when the current mode has none.
+
+The result is cached under the original `major-mode'."
   (with-meep-derived-mode-parent meep-test-child-mode meep-test-parent-mode
     (with-meep-preset-test meep-test-child-mode
       (with-meep-mock-preset meep-test-parent-mode '((meep-test--inherited-var . :from-parent))
@@ -412,9 +412,11 @@ ancestor's preset is used; the result is cached under the original
           (gethash 'meep-test-child-mode meep--preset-cache)))))))
 
 (ert-deftest meep-preset-ensure-falls-back-to-extra-parents ()
-  "When neither the mode nor its direct-parent chain has a preset, an
-`derived-mode-extra-parents' preset is used as a fallback - this is
-how a tree-sitter mode reaches its classic mode's preset (e.g.
+  "Fall back to an extra-parent preset when the parent chain has none.
+
+When neither the mode nor its direct-parent chain has a preset, an
+`derived-mode-extra-parents' preset is used - this is how a
+tree-sitter mode reaches its classic mode's preset (e.g.
 `c++-ts-mode' registers `c++-mode')."
   (with-meep-derived-mode-extra-parents meep-test-ts-child-mode (meep-test-classic-mode)
     (with-meep-preset-test meep-test-ts-child-mode
@@ -422,7 +424,9 @@ how a tree-sitter mode reaches its classic mode's preset (e.g.
         (should (equal '((meep-test--inherited-var . :from-extra)) (meep-preset-ensure)))))))
 
 (ert-deftest meep-preset-ensure-direct-parent-beats-extra-parent ()
-  "The direct `derived-mode-parent' preset is preferred over an
+  "The direct parent's preset beats an extra-parent's at the same level.
+
+The direct `derived-mode-parent' preset is preferred over an
 `derived-mode-extra-parents' preset present at the same level."
   (with-meep-derived-mode-parent meep-test-prio-child-mode meep-test-prio-direct-mode
     (with-meep-derived-mode-extra-parents meep-test-prio-child-mode (meep-test-prio-extra-mode)
@@ -432,10 +436,11 @@ how a tree-sitter mode reaches its classic mode's preset (e.g.
             (should (equal '((meep-test--prio-var . :direct)) (meep-preset-ensure)))))))))
 
 (ert-deftest meep-preset-ensure-breadth-first-nearest-ancestor-wins ()
-  "The walk is breadth-first: a level-1 `derived-mode-extra-parents'
-preset wins over a level-2 ancestor reached through the direct parent
-chain.  A depth-first walk would instead find the deeper ancestor
-first."
+  "The walk is breadth-first, the nearest ancestor's preset wins.
+
+A level-1 `derived-mode-extra-parents' preset wins over a level-2
+ancestor reached through the direct parent chain.  A depth-first walk
+would instead find the deeper ancestor first."
   ;; child --(direct)--> direct --(direct)--> grand (level 2, has preset)
   ;;   \--(extra)--> extra (level 1, has preset)
   (with-meep-derived-mode-parent meep-test-bf-child-mode meep-test-bf-direct-mode
@@ -500,8 +505,9 @@ the parent's preset is *not* silently substituted."
           (should (eq t (gethash 'meep-test-broken-child-mode meep--preset-cache))))))))
 
 (ert-deftest meep-preset-ensure-non-list-return-cached-missing ()
-  "A preset returning a non-list value is treated as cached-missing
-and does not propagate to the apply step."
+  "A preset returning a non-list value is treated as cached-missing.
+
+The value does not propagate to the apply step."
   (with-meep-preset-test meep-test-bad-return-mode
     (with-meep-mock-preset meep-test-bad-return-mode 42
       (should (null (meep-preset-ensure)))
@@ -568,7 +574,9 @@ over the bundled preset."
     (should-not (local-variable-p 'meep-test--evar))))
 
 (ert-deftest meep-preset-variables-bundled-presets-respect-allowlist ()
-  "Every bundled `meep-preset-*' file only sets variables in
+  "Bundled presets only set allowed variables.
+
+Every bundled `meep-preset-*' file only sets variables in
 `meep-preset-variables'."
   (dolist (file (directory-files my-meep-load-path nil "\\`meep-preset-.+\\.el\\'"))
     (let ((preset-sym (intern (file-name-sans-extension file))))
@@ -713,7 +721,7 @@ These delimiters have no syntax flags, exercising the class fall-backs."
 
 (ert-deftest comment-bounds-outer-keeps-printing-ender ()
   "A comment ending in a printing character keeps that character.
-The ender has comment-end syntax, so skipping that syntax would truncate
+The ender has `comment-end' syntax, so skipping that syntax would truncate
 `-->' to `--' & `}' from a Pascal brace comment."
   (with-temp-buffer
     (insert "<p>a</p>\n<!-- c -->\n")
@@ -912,7 +920,7 @@ back as `** a ' & deleting the selection left `/****/'."
     (should (equal '(3 . 10) (meep--bounds-at-point-for-comment-inner)))))
 
 (ert-deftest comment-bounds-inner-opener-run-of-differing-chars ()
-  "An opener written as differing comment-start characters stays whole.
+  "An opener written as differing `comment-start' characters stays whole.
 Scheme's `#;' & Fortran's `*!' are one delimiter, not decoration, so
 `meep-move-comment-skip-repeated' does not answer for them - leaving the
 `;' of `#;' as content let deleting the selection corrupt the comment."
@@ -927,7 +935,7 @@ Scheme's `#;' & Fortran's `*!' are one delimiter, not decoration, so
   "Do not extend a resolved two-character opener over its text.
 
 The semicolon after Scheme's `#|' is content even though it has
-comment-start syntax; removing it leaves it stranded when the body is
+`comment-start' syntax; removing it leaves it stranded when the body is
 replaced."
   (should (equal '(3 . 7) (meep-test--comment-inner-bounds #'scheme-mode "#|;foo|#\n" 4))))
 
@@ -942,7 +950,7 @@ Contracting by syntax alone steps over a single character, leaving
     (should (equal '(6 . 7) (meep-test--comment-inner-bounds #'nxml-mode "<!-- c -->\n" 6)))))
 
 (ert-deftest comment-bounds-inner-generic-fence-closer ()
-  "A generic-comment-fence closer contracts like a comment-end character.
+  "A generic-comment-fence closer contracts like a `comment-end' character.
 The opener path accepts the fence class (14); the inner-end must too, else
 `!inner!' keeps its closing fence & comes back as `inner!'.  No built-in
 mode exposes a bare class-14 comment fence, so install one directly."
@@ -1263,7 +1271,7 @@ has to answer instead."
     (should (null (meep--comment-inner-beg-from-vars 23)))))
 
 (ert-deftest comment-bounds-inner-repeated-opener-characters ()
-  "An opener written as a run of comment-start characters is stepped over whole.
+  "An opener written as a run of `comment-start' characters is stepped over whole.
 Scheme's `#;' & Fortran's `*!' are two such characters, not a two-character
 delimiter, and unlike `;;' they differ so `meep-move-comment-skip-repeated'
 cannot help.  The run is crossed whichever source matched the first
@@ -1274,7 +1282,7 @@ character - Scheme reaches it by syntax, Fortran by `comment-start-skip'."
 
 (ert-deftest comment-bounds-inner-two-char-delimiters-no-preset ()
   "A two-char delimiter contracts in a mode that never had a preset.
-Neither `--' nor `#|' has comment-start syntax, both are syntax flags on
+Neither `--' nor `#|' has `comment-start' syntax, both are syntax flags on
 character pairs."
   (should (equal '(4 . 5) (meep-test--comment-inner-bounds #'sql-mode "-- l\nselect 1;\n" 4)))
   (should (equal '(4 . 5) (meep-test--comment-inner-bounds #'lisp-mode "#| b |#\n" 4))))

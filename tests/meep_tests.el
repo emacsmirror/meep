@@ -34,7 +34,8 @@
 
 (defun meep-test--message-capture (format-string &rest args)
   "Capture message instead of displaying.
-Stores formatted message in `meep-test--captured-messages'."
+FORMAT-STRING & ARGS match `message', the formatted message is
+stored in `meep-test--captured-messages'."
   (when format-string
     (push (apply #'format format-string args) meep-test--captured-messages))
   ;; Return nil like `message' does when format-string is nil.
@@ -369,7 +370,8 @@ some meep commands (e.g. `meep-region-activate-and-reverse-motion')
 check `last-command' to determine the previous motion; executing keys
 separately causes these commands to fail.
 
-Plain strings and key vectors pass through without state validation."
+Plain strings and key vectors in KEYS pass through without state
+validation."
   (declare (indent 0))
   `(let ((keys-list (list ,@keys))
          (resolved-keys nil)
@@ -452,15 +454,15 @@ PLIST must contain exactly :state and :command keys."
     ;; Report errors.
     (cond
      (unknown-keys
-      (error "simulate-input-for-meep: unknown key(s) %s in %S; expected :state and :command"
+      (error "Unknown key(s) %s in `simulate-input-for-meep' spec %S; expected :state and :command"
              (mapconcat #'symbol-name (nreverse unknown-keys) ", ")
              plist))
      ((and (null state) (null command))
-      (error "simulate-input-for-meep: missing :state and :command in %S" plist))
+      (error "Missing :state and :command in `simulate-input-for-meep' spec %S" plist))
      ((null state)
-      (error "simulate-input-for-meep: missing :state in %S" plist))
+      (error "Missing :state in `simulate-input-for-meep' spec %S" plist))
      ((null command)
-      (error "simulate-input-for-meep: missing :command in %S" plist))
+      (error "Missing :command in `simulate-input-for-meep' spec %S" plist))
      (t
       (meep-test-key-deferred state command)))))
 
@@ -591,7 +593,7 @@ Line is 1-based, column is 0-based character index."
   "Return the region contents as a string.
 Signals an error if no region is active."
   (unless (region-active-p)
-    (error "meep-test-region-as-string: no active region"))
+    (error "No active region for `meep-test-region-as-string'"))
   (buffer-substring-no-properties (region-beginning) (region-end)))
 
 (defmacro simulate-input (&rest keys)
@@ -1071,7 +1073,7 @@ instead of a clear message."
   "Copy selected text and paste it elsewhere; original remains intact.
 
 Workflow: select 'bar' via motion, copy it, move to end, paste.
-Verifies: copy does not modify source, kill-ring contains copied text,
+Verifies: copy does not modify source, `kill-ring' contains copied text,
 paste inserts at point."
   (let ((text-initial "foo bar baz")
         ;;            "foo bar " + "bar" + "baz" = "foo bar barbaz"
@@ -1098,7 +1100,7 @@ paste inserts at point."
   "Cut selected text and paste it elsewhere; original is removed.
 
 Workflow: select 'bar' via motion, cut it, move forward, paste.
-Verifies: cut removes source text, kill-ring contains cut text,
+Verifies: cut removes source text, `kill-ring' contains cut text,
 paste inserts at new location."
   (let ((text-initial "foo bar baz")
         ;;            "foo " + " " + "bar" + "baz" = "foo  barbaz"
@@ -1121,7 +1123,7 @@ paste inserts at new location."
       (should (equal text-expected (buffer-string))))))
 
 (ert-deftest clipboard-region-paste-twice ()
-  "The non-popping yank can be repeated; the kill-ring entry is not consumed.
+  "The non-popping yank can be repeated; the `kill-ring' entry is not consumed.
 
 Workflow: copy 'aa', move to end, paste twice with `meep-clipboard-killring-yank'.
 Verifies: same content can be pasted multiple times and stays on the ring
@@ -1287,7 +1289,7 @@ for that paste alone, the stack position is untouched, so a plain yank
 afterwards shows the current item (the newest, nothing having been
 popped), not the selected one.
 
-Workflow: seed ring (cc bb aa), yank with C-u 2 (bb), yank again, commit.
+Workflow: seed ring (cc bb aa), yank with `C-u 2' (bb), yank again, commit.
 Verifies: the second paste is cc (the current item) and the stack position
 never moved; the ring is untouched."
   ;;   ()  ->  (bbcc)
@@ -1315,7 +1317,7 @@ never moved; the ring is untouched."
 The no-session fallback must be read-only the same way the cycling
 session is, or the two paths silently diverge.
 
-Workflow: disable undo, seed ring (cc bb aa), yank with C-u 2, yank again.
+Workflow: disable undo, seed ring (cc bb aa), yank with `C-u 2', yank again.
 Verifies: bb then cc (the current item) are pasted; the ring is untouched."
   ;;   ()  ->  (bbcc)
   (let ((text-initial "()")
@@ -1342,7 +1344,7 @@ Verifies: bb then cc (the current item) are pasted; the ring is untouched."
 The over-shooting ARG is folded into the ring up front; cached raw it
 would put the cycling session's position out of range (this was a bug).
 
-Workflow: seed ring (cc bb aa), yank with C-u 5 (folds to bb), '1', commit.
+Workflow: seed ring (cc bb aa), yank with `C-u 5' (folds to bb), '1', commit.
 Verifies: the step shows aa; the read-only yank consumes nothing and leaves
 the ring untouched."
   ;;   ()  ->  (aa)
@@ -1422,7 +1424,7 @@ ring is untouched."
 (ert-deftest clipboard-killring-yank-pop-stack-arg-pops-nth ()
   "A direct prefix ARG selects the ARG'th item, without cycling.
 
-Workflow: seed ring (cc bb aa), paste with C-u 2.
+Workflow: seed ring (cc bb aa), paste with `C-u 2'.
 Verifies: the 2nd item bb is pasted and the ring is untouched (a fresh
 paste with an ARG selects, it never cycles a prior paste)."
   ;;   ()  ->  (bb)
@@ -1446,10 +1448,10 @@ paste with an ARG selects, it never cycles a prior paste)."
   "A pop's ARG counts from the stack position, not the newest kill.
 
 At the head the two coincide (`arg-pops-nth' above), so only a mid-stack
-pop tells them apart: after one pop, C-u 2 must select the 2nd *unpopped*
+pop tells them apart: after one pop, `C-u 2' must select the 2nd *unpopped*
 item, skipping past it.
 
-Workflow: seed ring (cc bb aa), pop (cc), pop with C-u 2 (aa), commit.
+Workflow: seed ring (cc bb aa), pop (cc), pop with `C-u 2' (aa), commit.
 Verifies: aa is pasted (head-relative would give bb) and consumed, joining
 cc; the skipped bb stays poppable (only the selected items are consumed);
 the ring is untouched."
@@ -1478,7 +1480,7 @@ the ring is untouched."
 Only the no-ARG pop fails once every item is popped; an ARG selects
 regardless, counting from the head (index 0 wraps to the newest kill).
 
-Workflow: seed ring (bb aa), pop (bb), pop (aa), pop with C-u 1, commit.
+Workflow: seed ring (bb aa), pop (bb), pop (aa), pop with `C-u 1', commit.
 Verifies: the ARG'd pop re-pastes bb (a plain pop would fail, the stack
 being exhausted) and the stack stays exhausted; the ring is untouched."
   ;;   ()  ->  (bbaabb)
@@ -1507,7 +1509,7 @@ being exhausted) and the stack stays exhausted; the ring is untouched."
 The negative index is folded into the ring up front; cached raw it would
 put the cycling session's position out of range (this was a bug).
 
-Workflow: seed ring (cc bb aa), pop with C-u - (folds to bb), '1', commit.
+Workflow: seed ring (cc bb aa), pop with `C-u -' (folds to bb), '1', commit.
 Verifies: the step shows aa and the session leaves only it consumed (bb,
 cycled past, and the untouched cc stay poppable); the ring is untouched."
   ;;   ()  ->  (aa)
@@ -2128,7 +2130,7 @@ Only popping refuses to pass the end of the ring, cycling is circular.
 
 Workflow: seed ring (cc bb aa), paste (cc), '2' (aa, the oldest), '1'.
 Verifies: the second step wraps from aa back to cc which ends up consumed
-(only the finally-shown item is; aa and bb stay poppable); the ring is
+\(only the finally-shown item is; aa and bb stay poppable); the ring is
 untouched."
   ;;   ()  ->  (cc)
   (let ((text-initial "()")
@@ -2234,7 +2236,7 @@ Verifies: the second pop pastes bb, not cc again; the ring is untouched."
 
 Workflow: seed ring (aa), pop (aa), pop (fails, exhausted), plain yank.
 Verifies: the failed pop pastes nothing while the plain yank re-pastes aa
-(the last-popped item); the ring is untouched."
+\(the last-popped item); the ring is untouched."
   ;;   ()  ->  (aaaa)
   (let ((text-initial "()")
         (text-expected "(aaaa)"))
@@ -2265,7 +2267,7 @@ region spanning A-B.  Cut can then operate on this region directly.
 
 Workflow: move across 'bar' (setting mark), cut (uses implied region).
 Verifies: motion creates usable region, cut removes that text,
-kill-ring contains the cut text."
+`kill-ring' contains the cut text."
   (let ((text-initial "foo bar baz")
         ;;            "foo " + "baz" = "foo  baz" (bar removed)
         (text-expected "foo  baz"))
@@ -2567,7 +2569,7 @@ Without a region (either explicit visual selection or implied from motion),
 cut has nothing to operate on and should signal an error.
 
 Workflow: invoke cut immediately without any motion.
-Verifies: error is signaled, buffer unchanged, kill-ring empty."
+Verifies: error is signaled, buffer unchanged, `kill-ring' empty."
   (let ((text-initial "foo bar baz"))
     (with-meep-test text-initial
       (emacs-lisp-mode)
@@ -2587,7 +2589,7 @@ Verifies: error is signaled, buffer unchanged, kill-ring empty."
   "Copy without any region or motion signals an error.
 
 Workflow: invoke copy immediately without any motion.
-Verifies: error is signaled, kill-ring remains empty."
+Verifies: error is signaled, `kill-ring' remains empty."
   (let ((text-initial "foo bar baz"))
     (with-meep-test text-initial
       (emacs-lisp-mode)
@@ -2680,9 +2682,9 @@ Verifies: user-error is raised, buffer unchanged."
       (should (equal text-initial (buffer-string))))))
 
 (ert-deftest clipboard-yank-empty-kill-ring ()
-  "Yank when kill-ring is empty shows message.
+  "Yank when `kill-ring' is empty shows message.
 
-Workflow: yank immediately with empty kill-ring.
+Workflow: yank immediately with empty `kill-ring'.
 Verifies: buffer unchanged, informative message displayed."
   (let ((text-initial "unchanged"))
     (with-meep-test text-initial
@@ -5667,7 +5669,7 @@ Verifies: activates region at existing mark position without moving point."
 ;; region-toggle tests
 
 (ert-deftest selection-region-toggle-enable-disable ()
-  "Toggle on activates region, deactivate-mark deactivates.
+  "Toggle on activates region, the function `deactivate-mark' deactivates.
 
 Verifies: basic toggle on behavior and state transitions."
   (let ((text-initial "ABCDEF"))
@@ -8104,8 +8106,10 @@ variable, so the same code path also covers `c-ts-mode' and friends."
       (should (equal ?n (char-after))))))
 
 (ert-deftest join-line-next-c-mode-block-comment-preserves-content-after-marker ()
-  "Join a C-style block comment whose second line starts with the
-`* ' continuation marker, immediately followed by a `-' bullet.
+  "Join a C-style block comment continuation that begins with a bullet.
+
+The second line starts with the `* ' continuation marker, immediately
+followed by a `-' bullet.
 
 Verifies: only the mode's `comment-continue' marker is stripped -
 content after it (even punctuation such as `-') is preserved, not
@@ -8126,9 +8130,10 @@ swallowed along with it."
       (should (equal text-expected (buffer-string))))))
 
 (ert-deftest join-line-next-c-mode-block-comment-no-marker ()
-  "Join a C-style block comment whose second line has no marker at all -
-just plain continuation prose (a style some authors use instead of a
-per-line `* ').
+  "Join a C-style block comment whose second line has no marker at all.
+
+The second line is just plain continuation prose (a style some authors
+use instead of a per-line `* ').
 
 Verifies: the first letter of the continuation line is not mistaken
 for the mode's `comment-continue' marker and swallowed."
@@ -8148,9 +8153,10 @@ for the mode's `comment-continue' marker and swallowed."
       (should (equal text-expected (buffer-string))))))
 
 (ert-deftest join-line-next-c-mode-block-comment-punctuation-start ()
-  "Join a C-style block comment whose second line has no marker, but
-happens to start with punctuation (a parenthesis) rather than a
-letter.
+  "Join a marker-less block comment line starting with punctuation.
+
+The second line has no marker, and happens to start with punctuation
+\(a parenthesis) rather than a letter.
 
 Verifies: the opening `(' is not mistaken for a marker and swallowed -
 only the mode's `comment-continue' marker (`* ' here) is ever stripped,
@@ -8255,8 +8261,9 @@ and each `*/' terminator is preserved."
       (should (equal text-expected (buffer-string))))))
 
 (ert-deftest join-line-next-c-mode-block-comment-marker-abuts-content ()
-  "Join a continuation line whose `*' marker abuts its content, where the
-comment continues past the joined line.
+  "Join a continuation line whose `*' marker abuts its content.
+
+The comment continues past the joined line.
 
 Verifies: the terminator clamp only applies when the comment ends on
 the joined line - here it does not, so the `*' leader is still stripped
@@ -8321,8 +8328,9 @@ the blank-space before the delimiter - resolving the opener falls back to
   "Join line comments whose delimiter is two characters.
 
 Verifies: `//' is stripped from the joined line - its characters are
-punctuation carrying comment-start flags rather than the comment-start
-syntax class, so testing the class alone missed every such mode
+punctuation carrying `comment-start' flags rather than the
+`comment-start' syntax class, so testing the class alone missed every
+such mode
 \(`c++-mode', `js-mode', `sql-mode', `lua-mode', ...)."
   (let ((text-initial
          ;; format-next-line: off
@@ -8407,9 +8415,10 @@ comment there too, & the join that syntax approves must strip it."
       (should (equal text-expected (buffer-string))))))
 
 (ert-deftest join-line-next-unterminated-block-comment-at-buffer-end ()
-  "Join a line comment with a block comment that is still open at the
-buffer's end - a block comment being typed at the end of a file, where
-there is no trailing newline.
+  "Join a line comment with an unterminated trailing block comment.
+
+The block comment is still open at the buffer's end - being typed at
+the end of a file, where there is no trailing newline.
 
 Verifies: the opener is kept.  Nothing follows the line to show the
 comment continues past it, so the comment's own style has to say that a
@@ -8496,9 +8505,9 @@ for a closing token and the continuation marker is still stripped."
 
 Verifies: the whole run is stripped, not just the delimiter the comment
 variables resolve.  Their match is capped to the base delimiter (`//'),
-& the repeat left over is punctuation carrying comment-start flags rather
-than the comment-start syntax class - so extending by that class alone
-left a stray `/' mid-comment (`/// a / b')."
+& the repeat left over is punctuation carrying `comment-start' flags
+rather than the `comment-start' syntax class - so extending by that
+class alone left a stray `/' mid-comment (`/// a / b')."
   (let ((text-initial
          ;; format-next-line: off
          (concat
@@ -8557,7 +8566,7 @@ path in the comment text, so removing it silently changes that text."
       (should (equal text-expected (buffer-string))))))
 
 (ert-deftest join-line-next-keeps-foreign-comment-start-content ()
-  "Keep a different comment-start character after the opener as content.
+  "Keep a different `comment-start' character after the opener as content.
 
 `#' and `%` can begin comments in their own right, but after an existing
 opener they are ordinary text and must not be stripped."
@@ -9200,7 +9209,7 @@ and wraps the current line's content, skipping the gate's separate read."
 (ert-deftest surround-dispatch-delete ()
   "The surround dispatch deletes the surrounding pair on a double tap.
 
-Verifies: `meep-surround' then `t' strips the enclosing delimiters."
+Verifies: `meep-surround' then \"t\" strips the enclosing delimiters."
   (let ((text-initial "(hello)")
         (text-expected "hello"))
     (with-meep-test text-initial
@@ -9636,7 +9645,7 @@ next enclosing pair, ([{x}]) -> ([x]) -> (x)."
   "Repeat a `t x' add with repeat-fu (`q').
 
 Verifies: a `t x' delimiter add replays under repeat-fu - the named event command
-(`meep-surround-add-event') the run-time delimiter keymap routes to is recorded
+\(`meep-surround-add-event') the run-time delimiter keymap routes to is recorded
 and replayed by its key sequence."
   (require 'repeat-fu-preset-meep)
   (let ((repeat-fu-backend (repeat-fu-preset-meep))
@@ -9667,7 +9676,7 @@ and replayed by its key sequence."
 (ert-deftest surround-dispatch-delete-ignores-implied-region ()
   "Delete acts around point, not the implied region from a prior motion.
 
-Verifies: after a motion whose span crosses the inner `(', `t' still deletes the
+Verifies: after a motion whose span crosses the inner `(', \"t\" still deletes the
 innermost pair around point, not the outer pair enclosing the motion span."
   (let ((text-initial "[(foo)]")
         (text-expected "[foo]"))
@@ -9733,7 +9742,7 @@ every line the motion spanned."
   "An active selection lets delete reach the pair enclosing the region.
 
 Verifies: a selection running from the inner `(' out past its close cannot be
-enclosed by the inner `()', so the outer `[]' is the only enclosing pair and `t'
+enclosed by the inner `()', so the outer `[]' is the only enclosing pair and \"t\"
 deletes that - the point-based default would take the inner `()' (see
 `surround-dispatch-delete-ignores-implied-region').  This pins the
 region-vs-point contrast only; the fixture returns the outer pair with or without
@@ -9766,7 +9775,7 @@ the cursor-on-open behaviour, which is covered by
 
 Verifies: with point inside `([{x}])', `s t t (' removes the `()', even though
 `{}' and `[]' enclose point more tightly; `s t t {' removes the middle `{}'.  The
-`t' verb deletes, the following delimiter names which type."
+\"t\" verb deletes, the following delimiter names which type."
   (let ((text-initial "([{x}])")
         (text-expected "[{x}]"))
     (with-meep-test text-initial
@@ -9907,7 +9916,7 @@ innermost pair is caught (the old `((x))' fixture yielded `(x)' either way)."
 (ert-deftest surround-by-type-pick-does-not-leak ()
   "The pick is one-shot: a later plain `meep-surround' still takes the closest.
 
-Verifies: after a targeted delete, `meep-surround' then `t' removes the innermost
+Verifies: after a targeted delete, `meep-surround' then \"t\" removes the innermost
 pair of any type, proving the picked pair did not persist."
   (let ((text-initial "([{x}])")
         (text-expected-1 "[{x}]")
@@ -10234,7 +10243,7 @@ must keep working.  The distinct-bracket sibling of
 
 markdown-style: `code' is a single backtick while the contextual fall-backs
 hold the doubled token.  Verifies: recognition searches the longer token first
-(`meep--surround-recognition-pairs' orders longest-first), else the doubled
+\(`meep--surround-recognition-pairs' orders longest-first), else the doubled
 token's halves pair and its close is orphaned."
   (let ((text-initial "a ``code`` b")
         (text-expected "a code b"))
@@ -10273,7 +10282,7 @@ the enclosing pair rather than reporting no pair."
 `execute-extended-command' records `M-x', the command name and `RET' as the
 command keys, so the name's last character sits in the source slot; it was
 never typed as a delimiter and must not resolve as one (it deleted the two
-literal `t' characters).  Verifies: the buffer is untouched and the miss is
+literal \"t\" characters).  Verifies: the buffer is untouched and the miss is
 reported."
   (let ((text-initial "say t hello t end"))
     (with-meep-test text-initial
@@ -11538,7 +11547,7 @@ at each."
     (should (equal "c" (meep-test--list-item-mark-inner "(a, b; |c)" #'c-mode both)))))
 
 (ert-deftest mark-list-item-inner-whitespace-separator ()
-  "A `t' separator splits on whitespace runs (e.g. Lisp), not a literal token.
+  "A t separator splits on whitespace runs (e.g. Lisp), not a literal token.
 
 Verifies: consecutive whitespace counts once (no phantom empty items), newlines
 and tabs count, whitespace at the list edges is trivia, a separator inside a
@@ -11583,7 +11592,7 @@ contents."
   "Select comment content without delimiters.
 
 Verifies: inner selection excludes comment markers, with the
-c-mode preset auto-consulted on demand - no explicit
+`c-mode' preset auto-consulted on demand - no explicit
 `meep-preset-ensure' call required."
   (let ((text-initial
          ;; format-next-line: off
@@ -12091,6 +12100,7 @@ Verifies: matching-bracket-outer moves past the matching bracket."
       (should (equal nil (char-after))))))
 
 (defun meep_tests-run-all ()
+  "Run all tests in batch mode."
   (ert-run-tests-batch))
 
 ;; ---------------------------------------------------------------------------
@@ -12501,7 +12511,7 @@ Verifies: moves selected text to last insert location, deleting original."
 (ert-deftest insert-overwrite-basic ()
   "Toggle overwrite mode.
 
-Verifies: insert-overwrite enters insert state with overwrite-mode enabled."
+Verifies: insert-overwrite enters insert state with `overwrite-mode' enabled."
   (let* ((text-initial "hello world")
          (text-expected text-initial))
     (with-meep-test text-initial
@@ -14246,7 +14256,7 @@ Move right once, then press 3 three times to repeat the motion 3+3+3 more times.
   "Repeat once in the positive direction using the equals key.
 
 The `=' key is the positive counterpart of `-': it repeats the last
-command with a `nil' prefix, read as 1."
+command with a nil prefix, read as 1."
   (let ((text-initial "abcdefghij"))
     (with-meep-test text-initial
       (text-mode)
@@ -14261,7 +14271,7 @@ command with a `nil' prefix, read as 1."
   "Repeat once in the positive direction using the plus or keypad-add key.
 
 Both `+' and `<kp-add>' are positive counterparts of `-', repeating
-the last command with a `nil' prefix, read as 1.  `<kp-add>' resolves
+the last command with a nil prefix, read as 1.  `<kp-add>' resolves
 to `?+' via its `ascii-character' property."
   (let ((text-initial "abcdefghij"))
     (with-meep-test text-initial
@@ -14297,7 +14307,7 @@ command with a `-' prefix, read as -1.  It resolves to `?-' via its
       (should (equal '(1 . 3) (meep-test-point-line-column))))))
 
 (ert-deftest repeat-fu-upcase-region ()
-  "Repeat upcase-region on a visual selection using repeat-fu.
+  "Repeat `upcase-region' on a visual selection using repeat-fu.
 
 Select 3 middle words, upcase them, then move to the next line
 and repeat the action with repeat-fu-execute."
@@ -14341,7 +14351,7 @@ and repeat the action with repeat-fu-execute."
       (should (equal text-expected (buffer-string))))))
 
 (ert-deftest repeat-fu-upcase-region-rectangle ()
-  "Repeat a rectangle upcase-region using repeat-fu.
+  "Repeat a rectangle `upcase-region' using repeat-fu.
 
 Select the middle 3 words as a rectangle on lines 1-2, upcase them,
 then move to line 3 and repeat the action on lines 3-4.
@@ -14450,8 +14460,8 @@ than returning the mismatched inner pair."
 (ert-deftest selection-expand-to-line-bounds-initial-no-trailing-newline ()
   "Select current line when on last line of buffer with no trailing newline.
 
-Regression: goto-char was called with (1+ (pos-eol)) which equals
-(1+ (point-max)) on the last line without a trailing newline, raising
+Regression: `goto-char' was called with (1+ (pos-eol)) which equals
+\(1+ (point-max)) on the last line without a trailing newline, raising
 an out-of-range error."
   (let ((text-initial "hello")) ; No trailing newline.
     (with-meep-test text-initial

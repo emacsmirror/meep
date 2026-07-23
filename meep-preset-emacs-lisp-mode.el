@@ -1,5 +1,11 @@
 ;;; meep-preset-emacs-lisp-mode.el --- Meep preset for `emacs-lisp-mode' -*- lexical-binding: t -*-
 
+;;; Commentary:
+
+;; Per-major-mode preset, loaded on demand by `meep-preset-ensure'.
+
+;;; Code:
+
 ;;;###autoload
 (defun meep-preset-emacs-lisp-mode ()
   "Return the meep preset alist for `emacs-lisp-mode'."

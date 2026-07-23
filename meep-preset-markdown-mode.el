@@ -1,5 +1,11 @@
 ;;; meep-preset-markdown-mode.el --- Meep preset for `markdown-mode' -*- lexical-binding: t -*-
 
+;;; Commentary:
+
+;; Per-major-mode preset, loaded on demand by `meep-preset-ensure'.
+
+;;; Code:
+
 ;;;###autoload
 (defun meep-preset-markdown-mode ()
   "Return the meep preset alist for `markdown-mode'."

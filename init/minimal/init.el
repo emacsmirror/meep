@@ -19,12 +19,16 @@
 ;; - Visual mode.
 ;; - Insert mode keys.
 
+;;; Code:
+
 (defun my-meep-keymap-set-many (map &rest keybinds)
+  "Set KEYBINDS in MAP, each a (KEY . DEF) cons cell."
   (declare (indent 1))
   (pcase-dolist (`(,key . ,def) keybinds)
     (keymap-set map key def)))
 
 (defun my-meep-basis-keys ()
+  "Assign VIM-like key bindings."
   (my-meep-keymap-set-many meep-state-keymap-motion
 
     ;; Motion.
@@ -164,6 +168,7 @@
   :hook ((bray-mode . (lambda () (repeat-fu-mode (or bray-mode 0))))))
 
 (defun my-meep-setup-once ()
+  "Set up meep key bindings & states, called once on startup."
   ;; Extended functions.
   (meep-bootstrap-once)
 

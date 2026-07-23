@@ -1,5 +1,11 @@
 ;;; meep-preset-org-mode.el --- Meep preset for `org-mode' -*- lexical-binding: t -*-
 
+;;; Commentary:
+
+;; Per-major-mode preset, loaded on demand by `meep-preset-ensure'.
+
+;;; Code:
+
 ;;;###autoload
 (defun meep-preset-org-mode ()
   "Return the meep preset alist for `org-mode'."

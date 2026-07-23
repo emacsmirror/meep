@@ -11,7 +11,7 @@
 
 ;;; Commentary:
 
-;; Dump doc-strings from emacs.
+;; Dump doc-strings from Emacs.
 
 ;;; Call:
 

@@ -1,5 +1,11 @@
 ;;; meep-preset-ruby-mode.el --- Meep preset for `ruby-mode' -*- lexical-binding: t -*-
 
+;;; Commentary:
+
+;; Per-major-mode preset, loaded on demand by `meep-preset-ensure'.
+
+;;; Code:
+
 ;;;###autoload
 (defun meep-preset-ruby-mode ()
   "Return the meep preset alist for `ruby-mode'."
