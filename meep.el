@@ -5752,19 +5752,26 @@ When HAD-REGION is non-nil, mark the region."
      (t
       (setq deactivate-mark t)))))
 
+(defun meep--isearch-regexp-impl (dir)
+  "Start a regexp ISEARCH along DIR."
+  (add-hook 'isearch-mode-end-hook #'meep--isearch-done-hook 0 t)
+  (cond
+   ((< dir 0)
+    (call-interactively #'isearch-backward-regexp))
+   (t
+    (call-interactively #'isearch-forward-regexp))))
+
 ;;;###autoload
 (defun meep-isearch-regexp-next ()
   "Search forward for a regexp."
   (interactive)
-  (add-hook 'isearch-mode-end-hook #'meep--isearch-done-hook 0 t)
-  (call-interactively #'isearch-forward-regexp))
+  (meep--isearch-regexp-impl 1))
 
 ;;;###autoload
 (defun meep-isearch-regexp-prev ()
   "Search backward for a regexp."
   (interactive)
-  (add-hook 'isearch-mode-end-hook #'meep--isearch-done-hook 0 t)
-  (call-interactively #'isearch-backward-regexp))
+  (meep--isearch-regexp-impl -1))
 
 (defun meep--isearch-repeat-impl (dir)
   "Repeat search in direction DIR.
