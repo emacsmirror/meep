@@ -4225,18 +4225,36 @@ Dispatches via `meep-text-object-alist's :bounds-step-fn slot (plus
 ;; ---------------------------------------------------------------------------
 ;; Motion: Bounds
 
+(defmacro meep--move-to-bounds-body (kind arg inner &optional no-check)
+  "Body of a bounds-motion command for text-object KIND.
+Take the bounds from `meep--bounds-of-KIND' called with INNER and move point to
+ARG's endpoint.  When NO-CHECK is non-nil the bounds are assumed non-nil,
+otherwise a nil result echoes a not-found message naming KIND."
+  ;; NOTE: ARG & INNER are passed in rather than read from the enclosing command's
+  ;; locals by name, which only worked while every caller happened to name its
+  ;; parameters `arg' & `inner'.  This follows `meep--transpose-with-adjusted-motion'
+  ;; & `meep--keypad-which-key-c-h-maybe', which also take the caller's variable.
+  (let ((bounds-fn (intern (format "meep--bounds-of-%s" kind)))
+        ;; Un-interned so the binding can't shadow anything at the call site.
+        (bounds-var (make-symbol "bounds")))
+    `(let ((,bounds-var (,bounds-fn ,inner)))
+       ,(cond
+         (no-check
+          `(meep--move-to-bounds-endpoint ,bounds-var ,arg))
+         (t
+          `(cond
+            (,bounds-var
+             (meep--move-to-bounds-endpoint ,bounds-var ,arg))
+            (t
+             (message ,(format "Not found: bounds of %s" kind))
+             nil)))))))
+
 ;;;###autoload
 (defun meep-move-to-bounds-of-sentence (arg &optional inner)
   "Move to the sentence start/end (start when ARG is negative).
 When INNER is non-nil, move to the inner bound."
   (interactive "^p")
-  (let ((bounds (meep--bounds-of-sentence inner)))
-    (cond
-     (bounds
-      (meep--move-to-bounds-endpoint bounds arg))
-     (t
-      (message "Not found: bounds of sentence")
-      nil))))
+  (meep--move-to-bounds-body sentence arg inner))
 ;;;###autoload
 (defun meep-move-to-bounds-of-sentence-inner (arg)
   "Move to the inner sentence start/end (start when ARG is negative)."
@@ -4248,13 +4266,7 @@ When INNER is non-nil, move to the inner bound."
   "Move to the paragraph start/end (start when ARG is negative).
 When INNER is non-nil, move to the inner bound."
   (interactive "^p")
-  (let ((bounds (meep--bounds-of-paragraph inner)))
-    (cond
-     (bounds
-      (meep--move-to-bounds-endpoint bounds arg))
-     (t
-      (message "Not found: bounds of paragraph")
-      nil))))
+  (meep--move-to-bounds-body paragraph arg inner))
 ;;;###autoload
 (defun meep-move-to-bounds-of-paragraph-inner (arg)
   "Move to the inner paragraph start/end (start when ARG is negative)."
@@ -4266,18 +4278,7 @@ When INNER is non-nil, move to the inner bound."
   "Move to the comment start/end (start when ARG is negative).
 When INNER is non-nil, move to the inner bound."
   (interactive "^p")
-  (let ((bounds
-         (cond
-          (inner
-           (meep--bounds-at-point-for-comment-inner))
-          (t
-           (meep--bounds-at-point-for-comment-outer)))))
-    (cond
-     (bounds
-      (meep--move-to-bounds-endpoint bounds arg))
-     (t
-      (message "Not found: bounds of comment")
-      nil))))
+  (meep--move-to-bounds-body comment arg inner))
 ;;;###autoload
 (defun meep-move-to-bounds-of-comment-inner (arg)
   "Move to the comment inner start/end (start when ARG is negative)."
@@ -4289,18 +4290,7 @@ When INNER is non-nil, move to the inner bound."
   "Move to the string start/end (start when ARG is negative).
 When INNER is non-nil, move to the inner bound."
   (interactive "^p")
-  (let ((bounds
-         (cond
-          (inner
-           (meep--bounds-at-point-for-string-inner))
-          (t
-           (meep--bounds-at-point-for-string-outer)))))
-    (cond
-     (bounds
-      (meep--move-to-bounds-endpoint bounds arg))
-     (t
-      (message "Not found: bounds of string")
-      nil))))
+  (meep--move-to-bounds-body string arg inner))
 ;;;###autoload
 (defun meep-move-to-bounds-of-string-inner (arg)
   "Move to the string inner start/end (start when ARG is negative)."
@@ -4342,9 +4332,8 @@ When INNER is non-nil, move to the inner bound."
   "Move to the visual-line start/end (start when ARG is negative).
 When INNER is non-nil, move to the inner bound."
   (interactive "^p")
-  (let ((bounds (meep--bounds-of-visual-line inner)))
-    ;; No need to check for nil.
-    (meep--move-to-bounds-endpoint bounds arg)))
+  ;; No need to check for nil.
+  (meep--move-to-bounds-body visual-line arg inner t))
 ;;;###autoload
 (defun meep-move-to-bounds-of-visual-line-inner (arg)
   "Move to the inner visual-line start/end (start when ARG is negative)."
