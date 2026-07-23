@@ -765,11 +765,7 @@ on point and do not use this, see `meep--surround-operate-region'."
   "Move to the end of the previous symbol, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (cond
-     ((< arg 0)
-      (meep-motion-at-point 'symbol nil (- arg) nil))
-     (t
-      (meep-motion-at-point 'symbol nil (- arg) nil t)))))
+    (meep-motion-at-point 'symbol nil (- arg) nil (<= 0 arg))))
 
 ;;;###autoload
 (defun meep-move-symbol-next-end (arg)
@@ -784,11 +780,7 @@ on point and do not use this, see `meep--surround-operate-region'."
   "Move point to the beginning of the next symbol, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (cond
-     ((< arg 0)
-      (meep-motion-at-point 'symbol nil arg t))
-     (t
-      (meep-motion-at-point 'symbol nil arg t t)))))
+    (meep-motion-at-point 'symbol nil arg t (<= 0 arg))))
 
 ;;;###autoload
 (defun meep-move-word-prev (arg)
@@ -811,22 +803,14 @@ on point and do not use this, see `meep--surround-operate-region'."
   "Move to the end of the previous word, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (cond
-     ((< arg 0)
-      (meep-motion-at-point 'word nil (- arg) nil))
-     (t
-      (meep-motion-at-point 'word nil (- arg) nil t)))))
+    (meep-motion-at-point 'word nil (- arg) nil (<= 0 arg))))
 
 ;;;###autoload
 (defun meep-move-word-next (arg)
   "Move point to the beginning of the next word, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (cond
-     ((< arg 0)
-      (meep-motion-at-point 'word nil arg t))
-     (t
-      (meep-motion-at-point 'word nil arg t t)))))
+    (meep-motion-at-point 'word nil arg t (<= 0 arg))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -860,22 +844,14 @@ on point and do not use this, see `meep--surround-operate-region'."
   "Move to the end of the previous list item, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (cond
-     ((< arg 0)
-      (meep-motion-at-point 'list-item t (- arg) nil))
-     (t
-      (meep-motion-at-point 'list-item t (- arg) nil t)))))
+    (meep-motion-at-point 'list-item t (- arg) nil (<= 0 arg))))
 
 ;;;###autoload
 (defun meep-move-list-item-next (arg)
   "Move point to the beginning of the next list item, ARG times."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (cond
-     ((< arg 0)
-      (meep-motion-at-point 'list-item t arg t))
-     (t
-      (meep-motion-at-point 'list-item t arg t t)))))
+    (meep-motion-at-point 'list-item t arg t (<= 0 arg))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -2395,11 +2371,12 @@ IS-TILL when non-nil, stop just before the character."
          (end
           (save-mark-and-excursion
             (when is-till
-              (cond
-               ((> n 0)
-                (forward-char 1))
-               (t
-                (forward-char -1))))
+              (forward-char
+               (cond
+                ((> n 0)
+                 1)
+                (t
+                 -1))))
 
             (search-forward ch-str end-limit t n))))
 
@@ -2576,11 +2553,7 @@ When INNER is non-nil, contract to inner bounds."
   ;; Always set the mark so `meep-region-activate-and-reverse-motion' works
   ;; even when the point doesn't move, see: #8.
   (meep--with-mark-on-motion-always-set
-    (cond
-     ((< n 0)
-      (goto-char (car bounds)))
-     (t
-      (goto-char (cdr bounds))))))
+    (goto-char (meep--bounds-endpoint bounds (< n 0)))))
 
 (defun meep--move-to-bounds-of-thing (thing n)
   "Move to bounds of THING (start when N is negative)."
@@ -5755,11 +5728,12 @@ When HAD-REGION is non-nil, mark the region."
 (defun meep--isearch-regexp-impl (dir)
   "Start a regexp ISEARCH along DIR."
   (add-hook 'isearch-mode-end-hook #'meep--isearch-done-hook 0 t)
-  (cond
-   ((< dir 0)
-    (call-interactively #'isearch-backward-regexp))
-   (t
-    (call-interactively #'isearch-forward-regexp))))
+  (call-interactively
+   (cond
+    ((< dir 0)
+     #'isearch-backward-regexp)
+    (t
+     #'isearch-forward-regexp))))
 
 ;;;###autoload
 (defun meep-isearch-regexp-next ()
