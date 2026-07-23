@@ -14,6 +14,9 @@ define HELP_TEXT
 - check, watch_check
   Runs all checks.
 
+- check_checkdoc
+  Run checkdoc on all Emacs Lisp files.
+
 - format
   Format all Emacs Lisp files.
 
@@ -58,6 +61,9 @@ EL_FILES := \
 	./tests/meep_tests.el \
 	./tests/meep_tests_internal.el \
 	./tests/emacs/init.el
+
+# All tracked Emacs Lisp files, checked by `check_checkdoc`.
+CHECKDOC_EL_FILES := $(shell git ls-files '*.el')
 
 # Check for emacs-batch-check availability.
 EMACS_BATCH_CHECK_BIN ?= $(shell which emacs-batch-check)
@@ -133,6 +139,11 @@ watch_test: FORCE
 .PHONY: check
 check: FORCE
 	@$(EMACS_BATCH_CHECK_BIN) --load-path-self --load-path=../bray --load-path=../melpazoid/melpazoid meep.el
+
+.PHONY: check_checkdoc
+check_checkdoc: FORCE
+	@cd "$(BASE_DIR)" && \
+	$(EMACS_BIN) --batch -l ./_misc/checkdoc_batch.el $(CHECKDOC_EL_FILES)
 
 .PHONY: watch_check
 watch_check: FORCE
