@@ -8100,7 +8100,6 @@ USE-COMMENT-STRIP, strips comments between lines."
       (goto-char beg)
       (while (< (point) end)
         (let ((eol (pos-eol)))
-          ;;
           (let ((range (meep--join-range beg eol use-comment-strip)))
             (cond
              (range
@@ -9230,7 +9229,6 @@ When DO-CUT is non-nil, cut instead of copying."
   "Cut the whole line to the system clipboard."
   (interactive "*")
   ;; Note that this command writes to the system clipboard.
-  ;; (kill-whole-line)
   (meep--with-respect-goal-column
    (meep--clipboard-only-cut-or-copy-impl (pos-bol) (min (1+ (pos-eol)) (point-max)) t)))
 
@@ -9554,7 +9552,6 @@ The region need not be active."
 (defun meep-clipboard-killring-cut-line ()
   "Kill the whole line."
   (interactive "*")
-  ;; (kill-whole-line)
   (let ((region-type 'line-wise)
         (beg (pos-bol))
         (end (min (1+ (pos-eol)) (point-max)))
@@ -9566,7 +9563,6 @@ The region need not be active."
 (defun meep-clipboard-killring-copy-line ()
   "Copy the whole line to the kill ring."
   (interactive)
-  ;; (kill-whole-line)
   (let ((region-type 'line-wise)
         (beg (pos-bol))
         (end (min (1+ (pos-eol)) (point-max)))
@@ -10276,7 +10272,6 @@ re-feeds for the normal dispatcher doesn't leak into the keypad's next
                   ;; break.
                   (setq keyseq-str-list nil)))
 
-              ;; (printf "RESULT: '%S' | %S | %S\n" keyseq bind (type-of bind))
               (cond
                ((or (and bind (symbolp bind) (commandp bind))
                     (and bind (null (symbolp bind)) (interpreted-function-p bind)))
