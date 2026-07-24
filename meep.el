@@ -9394,6 +9394,7 @@ When DO-CUT is non-nil, cut instead of copying."
 ;; Note that rect-wise regions are also stored in the kill-ring and paste from the top-left.
 
 ;; Currently only used to differentiate region types (line-wise and rect-wise).
+;; Keep them distinct - merging breaks the round-trip in `meep--yank-handler-to-region-type'.
 (defun meep--yank-handler-line-wise (&rest args)
   "Line-wise yank-handler, forward ARGS to `insert'."
   (apply #'insert args))
