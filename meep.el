@@ -1843,23 +1843,6 @@ Return non-nil when point was moved."
           (when (<= pos-orig (point))
             (cons start (point))))))))
 
-(defun meep--bounds-match-at-end-points (bounds beg-re end-re)
-  "Return t if BOUNDS begins and ends with BEG-RE and END-RE."
-  (declare (important-return-value t))
-  (save-excursion
-    (cond
-     ((and (or (null beg-re)
-               (progn
-                 (goto-char (car bounds))
-                 (looking-at-p beg-re)))
-           (or (null end-re)
-               (progn
-                 (goto-char (cdr bounds))
-                 (save-match-data (looking-back end-re (car bounds))))))
-      t)
-     (t
-      nil))))
-
 (defun meep--bounds-equal-at-end-points (bounds beg-str end-str)
   "Return t if BOUNDS begins and ends with BEG-STR and END-STR."
   (declare (important-return-value t))
