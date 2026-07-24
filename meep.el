@@ -9965,40 +9965,49 @@ Use the `meep-clipboard-register-map' key-map."
                      nil ; Don't run anything when exiting.
                      "Clipboard keys: %k or any other to exit"))
 
+(defun meep--clipboard-register-current-or-message ()
+  "Return the pre-defined clipboard register, or nil after messaging when unset."
+  (declare (important-return-value t))
+  (cond
+   (meep--clipboard-register-current)
+   (t
+    (message "No clipboard register set")
+    nil)))
+
 ;;;###autoload
 (defun meep-clipboard-register-copy ()
   "Copy to pre-defined register."
   (interactive)
-  (cond
-   ((region-active-p)
-    (let ((reg meep--clipboard-register-current))
-      (meep--clipboard-register-copy-impl reg)))
-   (t
-    (message "No region to copy"))))
+  (when-let* ((reg (meep--clipboard-register-current-or-message)))
+    (cond
+     ((region-active-p)
+      (meep--clipboard-register-copy-impl reg))
+     (t
+      (message "No region to copy")))))
 
 ;;;###autoload
 (defun meep-clipboard-register-cut ()
   "Cut to pre-defined register."
   (interactive "*")
-  (cond
-   ((region-active-p)
-    (let ((reg meep--clipboard-register-current))
-      (meep--clipboard-register-cut-impl reg)))
-   (t
-    (message "No region to cut"))))
+  (when-let* ((reg (meep--clipboard-register-current-or-message)))
+    (cond
+     ((region-active-p)
+      (meep--clipboard-register-cut-impl reg))
+     (t
+      (message "No region to cut")))))
 
 ;;;###autoload
 (defun meep-clipboard-register-yank ()
   "Yank from pre-defined register."
   (interactive "*")
-  (let ((reg meep--clipboard-register-current))
+  (when-let* ((reg (meep--clipboard-register-current-or-message)))
     (meep--clipboard-register-yank-impl reg)))
 
 ;;;###autoload
 (defun meep-clipboard-register-yank-lines ()
   "Yank from pre-defined register as lines."
   (interactive "*")
-  (let ((reg meep--clipboard-register-current))
+  (when-let* ((reg (meep--clipboard-register-current-or-message)))
     (cond
      ((region-active-p)
       (let ((beg (region-beginning))
