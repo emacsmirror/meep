@@ -1299,6 +1299,64 @@ The echo escapes user-interpolated `%' before `set-transient-map' reads it throu
         (should (functionp exit))
         (funcall exit)))))
 
+(ert-deftest with-temp-trailing-newline-ensure ()
+  "`meep--with-temp-trailing-newline' adds the newline only when missing.
+It is visible to BODY, removed again on exit, and BODY's value is returned."
+  ;; Missing: added for BODY, removed after, value passed through.
+  (with-temp-buffer
+    (insert "no newline")
+    (let ((seen nil))
+      (should
+       (eq
+        'body-value
+        (meep--with-temp-trailing-newline
+         (setq seen (eq (char-before (point-max)) ?\n)) 'body-value)))
+      (should seen)
+      (should (equal "no newline" (buffer-string)))))
+  ;; Already terminated: a no-op, nothing added and nothing stripped.
+  (with-temp-buffer
+    (insert "has newline\n")
+    (meep--with-temp-trailing-newline (ignore))
+    (should (equal "has newline\n" (buffer-string))))
+  ;; An empty buffer is left empty.
+  (with-temp-buffer
+    (meep--with-temp-trailing-newline (ignore))
+    (should (equal "" (buffer-string)))))
+
+(ert-deftest with-temp-trailing-newline-removed-on-error ()
+  "An error in BODY must not leak the temporary newline, nor be masked by cleanup."
+  (with-temp-buffer
+    (insert "no newline")
+    (let ((err nil))
+      (condition-case err-data
+          (meep--with-temp-trailing-newline (error "Simulated failure inside body"))
+        (error
+         (setq err (error-message-string err-data))))
+      ;; BODY's own error propagates, not one raised by the cleanup.
+      (should (equal "Simulated failure inside body" err))
+      (should (equal "no newline" (buffer-string))))))
+
+(ert-deftest transpose-line-wise-temp-newline-removed-on-error ()
+  "An error inside BODY-FN must not leak the temporary trailing newline.
+`meep--transpose-with-adjusted-motion-line-wise' inserts a newline when the buffer
+lacks one, so both lines end consistently during the swap; removing it again is in
+an `unwind-protect' cleanup precisely so a failing body cannot leave it behind."
+  (with-temp-buffer
+    (insert "line one\nline two")
+    (goto-char (point-max))
+    (let* ((text-expected (buffer-string))
+           (info (list (point-min) 'meep-move-line-next))
+           (err nil))
+      (condition-case err-data
+          (meep--transpose-with-adjusted-motion-line-wise
+           info (lambda (_adjusted) (error "Simulated failure inside body")))
+        (error
+         (setq err (error-message-string err-data))))
+      ;; The body's own error propagates, not one from the cleanup.
+      (should (equal "Simulated failure inside body" err))
+      ;; The temporary newline is gone, the buffer is byte-for-byte unchanged.
+      (should (equal text-expected (buffer-string))))))
+
 (provide 'meep_tests_internal)
 ;; Local Variables:
 ;; fill-column: 99

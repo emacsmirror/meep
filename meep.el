@@ -8260,6 +8260,33 @@ Return non-nil when a change was made."
 ;; Text Editing: Transpose
 
 
+(defmacro meep--with-temp-trailing-newline (&rest body)
+  "Execute BODY, temporarily giving the buffer a trailing newline.
+BODY must leave the newline as the last character."
+  (declare (indent 0))
+  (let ((added (make-symbol "added"))
+        (done (make-symbol "done")))
+    `(let ((,added (not (eq (char-before (point-max)) ?\n)))
+           (,done nil))
+       (when ,added
+         (save-excursion
+           (goto-char (point-max))
+           (insert "\n")))
+       (unwind-protect
+           (prog1 (progn
+                    ,@body)
+             (setq ,done t))
+         (when ,added
+           ;; NOTE: BODY leaving the newline last is only worth asserting on the normal
+           ;; path.  While unwinding, the buffer state is unknown and signalling from here
+           ;; would mask BODY's own error, so the removal is guarded on the newline
+           ;; actually being present instead.
+           (when ,done
+             (meep--assert (eq (char-before (point-max)) ?\n)))
+           (when (eq (char-before (point-max)) ?\n)
+             (delete-region (1- (point-max)) (point-max))))))))
+
+
 ;; Special handling is only needed because character motions do *not* set the mark.
 ;; This function adjusts the motion to behave as if it did.
 (defun meep--transpose-with-adjusted-motion-char-wise (last-motion-info body-fn)
@@ -8332,8 +8359,6 @@ Return non-nil when a change was made."
          (first-bol (min mark-bol point-bol))
          ;; The second line's bol (later position) is where body executes.
          (second-bol (max mark-bol point-bol))
-         ;; Check if last line has no trailing newline (needed for swap fix).
-         (no-trailing-newline (not (eq (char-before (point-max)) ?\n)))
          ;; Create adjusted-info for the body.
          (adjusted-info
           (cond
@@ -8346,24 +8371,16 @@ Return non-nil when a change was made."
          (result nil))
     ;; Move point to the second line for body execution.
     (goto-char second-bol)
-    ;; If buffer lacks trailing newline, add one temporarily so both lines
-    ;; have consistent newline endings during swap.
-    (when no-trailing-newline
-      (save-excursion
-        (goto-char (point-max))
-        (insert "\n")))
+    ;; The temporary newline gives both lines consistent endings during the swap.
     ;; Execute body with adjusted positions.
     ;; Clear goal-column so line motions go to column 0.
-    (let ((goal-column 0))
-      (setq result (funcall body-fn adjusted-info)))
+    (meep--with-temp-trailing-newline
+      (let ((goal-column 0))
+        (setq result (funcall body-fn adjusted-info))))
     ;; Restore cursor position using relative navigation from first-bol.
     ;; After swap, first-bol is still valid (earlier line's bol doesn't shift).
     (cond
      ((eq result t)
-      ;; Remove temporary trailing newline if we added one.
-      (when no-trailing-newline
-        (meep--assert (eq (char-before (point-max)) ?\n))
-        (delete-region (1- (point-max)) (point-max)))
       (goto-char first-bol)
       (cond
        ((< dir 0)
@@ -8384,10 +8401,6 @@ Return non-nil when a change was made."
       ;; Return repeat info: (PRE-MOTION . REPEAT-MARK-POS).
       (cons orig-cmd (point)))
      (t
-      ;; Remove temporary trailing newline if we added one.
-      (when no-trailing-newline
-        (meep--assert (eq (char-before (point-max)) ?\n))
-        (delete-region (1- (point-max)) (point-max)))
       result))))
 
 (defmacro meep--transpose-with-adjusted-motion (last-motion-info-sym &rest body)
