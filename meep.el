@@ -2538,11 +2538,6 @@ When INNER is non-nil, contract to inner bounds."
   (meep--with-mark-on-motion-always-set
     (goto-char (meep--bounds-endpoint bounds (< n 0)))))
 
-(defun meep--move-to-bounds-of-thing (thing n)
-  "Move to bounds of THING (start when N is negative)."
-  (when-let* ((bounds (bounds-of-thing-at-point thing)))
-    (meep--move-to-bounds-endpoint bounds n)))
-
 ;; ---------------------------------------------------------------------------
 ;; Mark: Bounds
 ;;
@@ -4302,8 +4297,7 @@ When INNER is non-nil, move to the inner bound."
   "Move to the function start/end (start when ARG is negative).
 When INNER is non-nil, move to the inner bound."
   (interactive "^p")
-  (ignore inner) ;; TODO: support inner.
-  (meep--move-to-bounds-of-thing 'defun arg))
+  (meep--move-to-bounds-body defun arg inner))
 ;;;###autoload
 (defun meep-move-to-bounds-of-defun-inner (arg)
   "Move to the inner function start/end (start when ARG is negative)."

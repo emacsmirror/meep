@@ -507,6 +507,8 @@ PLIST must contain exactly :state and :command keys."
     (meep-move-to-bounds-of-string-inner . (normal))
     (meep-move-to-bounds-of-comment . (normal))
     (meep-move-to-bounds-of-comment-inner . (normal))
+    (meep-move-to-bounds-of-defun . (normal))
+    (meep-move-to-bounds-of-defun-inner . (normal))
     (meep-move-to-bounds-of-list-item . (normal))
     (meep-move-to-bounds-of-list-item-inner . (normal))
     ;; List item text-object mark commands.
@@ -12286,6 +12288,68 @@ Verifies: bounds-of-line-inner excludes trailing whitespace."
       (should (equal '(1 . 0) (meep-test-mark-line-column)))
       (should (equal ?\s (char-after)))
       (should (equal ?d (char-before)))
+      ;; Buffer unchanged by bounds operation.
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest bounds-of-defun-basic ()
+  "Select entire defun.
+
+Verifies: bounds-of-defun sets mark at start, moves point past the defun."
+  (let* ((text-initial
+          ;; format-next-line: off
+          (concat
+           "(defun foo ()\n"
+           "  1)\n"
+           "\n"
+           "(defun bar ()\n"
+           "  2)\n"))
+         (text-expected text-initial))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: (defun foo ()
+      ;;         ^
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      (should (equal 'normal (bray-state)))
+      ;; Move to bounds of defun.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-to-bounds-of-defun))
+      ;; Mark at start, point after the defun's trailing newline.
+      (should (equal 'normal (bray-state)))
+      (should (equal '(3 . 0) (meep-test-point-line-column)))
+      (should (equal '(1 . 0) (meep-test-mark-line-column)))
+      ;; Buffer unchanged by bounds operation.
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest bounds-of-defun-inner-basic ()
+  "Select defun content excluding surrounding blanks.
+
+Verifies: bounds-of-defun-inner stops at the closing paren, unlike the outer
+variant which steps past the trailing newline."
+  (let* ((text-initial
+          ;; format-next-line: off
+          (concat
+           "(defun foo ()\n"
+           "  1)\n"
+           "\n"
+           "(defun bar ()\n"
+           "  2)\n"))
+         (text-expected text-initial))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: (defun foo ()
+      ;;         ^
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      (should (equal 'normal (bray-state)))
+      ;; Move to inner bounds of defun (excludes the trailing newline).
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-to-bounds-of-defun-inner))
+      ;; Mark at start, point directly after the closing paren.
+      (should (equal 'normal (bray-state)))
+      (should (equal '(2 . 4) (meep-test-point-line-column)))
+      (should (equal '(1 . 0) (meep-test-mark-line-column)))
+      (should (equal ?\) (char-before)))
       ;; Buffer unchanged by bounds operation.
       (should (equal text-expected (buffer-string))))))
 
