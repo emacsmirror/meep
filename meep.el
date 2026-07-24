@@ -9571,7 +9571,6 @@ The region need not be active."
 (defun meep-clipboard-killring-cut-line ()
   "Kill the whole line."
   (interactive "*")
-  ;; Note that this command writes to the system clipboard.
   ;; (kill-whole-line)
   (let ((region-type 'line-wise)
         (beg (pos-bol))
@@ -9584,7 +9583,6 @@ The region need not be active."
 (defun meep-clipboard-killring-copy-line ()
   "Copy the whole line to the kill ring."
   (interactive)
-  ;; Note that this command writes to the system clipboard.
   ;; (kill-whole-line)
   (let ((region-type 'line-wise)
         (beg (pos-bol))
