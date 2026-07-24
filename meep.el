@@ -10361,7 +10361,7 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 (defun meep-command-prop-set (cmd prop value)
   "Set CMD property PROP to VALUE."
   (let ((sym 'meep))
-    (put cmd sym (cons prop (cons value (get cmd sym))))))
+    (put cmd sym (plist-put (get cmd sym) prop value))))
 
 ;;;###autoload
 (defun meep-command-prop-get (cmd prop)
