@@ -10903,6 +10903,8 @@ Return the alist, or nil if no preset is available."
   "Initialize MEEP.
 
 This may be used with `use-package' to defer loading MEEP until needed."
+  ;; NOTE: the body is intentionally a no-op. Loading this file *is* the initialization;
+  ;; referencing this auto-loaded symbol (e.g. from `use-package') is what triggers that load.
   (ignore))
 
 (provide 'meep)
