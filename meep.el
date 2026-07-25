@@ -8758,6 +8758,17 @@ Intended to be called by a hook."
 ;;   keystrokes during insert mode, replayed on remaining lines on exit.
 (defvar meep--rectangle-edit-data nil)
 
+(defmacro meep--with-undo-limits-disabled (&rest body)
+  "Execute BODY without the undo list being truncated.
+Use this to keep a whole operation in the undo list, a garbage collect
+truncating it can discard a position recorded to fuse undo steps from.
+The limits are dynamically bound, so they are restored on any non-local exit."
+  (declare (indent 0))
+  `(let ((undo-outer-limit nil)
+         (undo-limit most-positive-fixnum)
+         (undo-strong-limit most-positive-fixnum))
+     ,@body))
+
 (defun meep--rectangle-edit-undo-fuse (undo-tail)
   "Remove all undo boundaries between the head of `buffer-undo-list' and UNDO-TAIL.
 This fuses multiple undo steps into a single atomic undo operation."
@@ -8852,9 +8863,10 @@ LINE-MARKER and MARK-MARKER delimit the replay range."
             ;; `repeat-fu-listener-unregister-and-collect' returns nil
             ;; when no keys were recorded, never an empty vector.
             (meep--assert (length> macro 0))
-            (save-mark-and-excursion
-              (meep--rectangle-edit-replay-lines
-               macro col line-direction line-marker mark-marker)))
+            (meep--with-undo-limits-disabled
+              (save-mark-and-excursion
+                (meep--rectangle-edit-replay-lines
+                 macro col line-direction line-marker mark-marker))))
           ;; Clean up marker.
           (meep--assert line-marker)
           (set-marker line-marker nil)
@@ -8930,7 +8942,8 @@ Callers must ensure `repeat-fu-mode' is active."
             (setq end (copy-marker end)))
 
           ;; Delete the rectangle content.
-          (delete-rectangle beg end)
+          (meep--with-undo-limits-disabled
+            (delete-rectangle beg end))
 
           (deactivate-mark t)
 
