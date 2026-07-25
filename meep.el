@@ -873,8 +873,9 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
      ((< n 0)
       (setq n (- n))
 
-      (when skip-space-end
-        (skip-chars-backward "[:blank:]" (point-min)))
+      (when (and skip-space-end (< 0 n))
+        (unless (zerop (skip-chars-backward "[:blank:]" (point-min)))
+          (meep--decf n skip-space-end)))
       (while (and (null (bobp))
                   (null
                    (zerop
@@ -896,10 +897,11 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
           (setq skip-single nil)
           ;; Skip the first item if this would have only moved one.
           (when (eq 1 (- pos-orig (point)))
-            (meep--incf n))))
-      (when (and skip-space-beg (< 0 n))
-        (unless (zerop (skip-chars-backward "[:blank:]" (point-min)))
-          (meep--decf n skip-space-beg))))
+            (meep--incf n)))
+
+        ;; Absorb the space beside each span, so span-and-space is one step.
+        (when skip-space-beg
+          (skip-chars-backward "[:blank:]" (point-min)))))
      ;; Forwards (matches "Backwards" logic closely).
      (t
       (when (and skip-space-beg (< 0 n))
@@ -925,10 +927,11 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
           (setq skip-single nil)
           ;; Skip the first item if this would have only moved one.
           (when (eq 1 (- (point) pos-orig))
-            (meep--incf n))))
+            (meep--incf n)))
 
-      (when skip-space-end
-        (skip-chars-forward "[:blank:]" (point-max))))))
+        ;; Absorb the space beside each span, so span-and-space is one step.
+        (when skip-space-end
+          (skip-chars-forward "[:blank:]" (point-max)))))))
   nil)
 
 ;;;###autoload
@@ -998,7 +1001,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
     (meep-move-same-syntax-and-space-next (- arg)))
    (t
     (meep--with-mark-on-motion-maybe-set
-      (meep--move-same-syntax-impl (- arg) nil (cons 0 nil) nil)))))
+      (meep--move-same-syntax-impl (- arg) nil (cons 0 1) nil)))))
 
 ;;;###autoload
 (defun meep-move-same-syntax-and-space-next (arg)
@@ -1017,10 +1020,21 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
   (interactive "^p")
   (cond
    ((< arg 0)
-    (meep-move-same-syntax-and-space-prev (- arg)))
+    (meep-move-same-syntax-and-space-prev-end (- arg)))
    (t
     (meep--with-mark-on-motion-maybe-set
       (meep--move-same-syntax-impl arg nil (cons 1 nil) nil)))))
+
+;;;###autoload
+(defun meep-move-same-syntax-and-space-prev-end (arg)
+  "Move to the end of the previous syntax-and-space, ARG times."
+  (interactive "^p")
+  (cond
+   ((< arg 0)
+    (meep-move-same-syntax-and-space-next-end (- arg)))
+   (t
+    (meep--with-mark-on-motion-maybe-set
+      (meep--move-same-syntax-impl (- arg) nil (cons nil 1) nil)))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -10530,6 +10544,7 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
            meep-move-same-syntax-and-space-next
            meep-move-same-syntax-and-space-next-end
            meep-move-same-syntax-and-space-prev
+           meep-move-same-syntax-and-space-prev-end
            meep-move-same-syntax-next
            meep-move-same-syntax-prev
            meep-move-line-beginning

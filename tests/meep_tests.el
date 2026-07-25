@@ -486,6 +486,7 @@ PLIST must contain exactly :state and :command keys."
     (meep-move-list-item-prev . (normal))
     (meep-move-list-item-next-end . (normal))
     (meep-move-list-item-prev-end . (normal))
+    (meep-move-same-syntax-and-space-prev-end . (normal))
     ;; Delete commands (tested in insert state).
     (meep-delete-symbol-next . (insert))
     (meep-delete-symbol-prev . (insert))
@@ -7663,6 +7664,66 @@ Verifies: expansion is a no-op at maximum extent."
 
 ;; ---------------------------------------------------------------------------
 ;; Movement
+
+(ert-deftest movement-same-syntax-and-space-next-count ()
+  "Move over syntax-and-space with a count.
+
+Each step takes a span together with the space beside it, so a count of two
+reaches the second span rather than stopping short on the space between.
+
+Workflow: from the buffer start, move with a count of two.
+Verifies: point lands on the third span, not the first."
+  (let ((text-initial "foo   bar   baz")
+        (point-expected '(1 . 12)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor: foo   bar   baz
+      ;;         ^
+      (simulate-input-for-meep
+        "\C-u2"
+        '(:state normal :command meep-move-same-syntax-and-space-next))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest movement-same-syntax-and-space-prev-skips-space ()
+  "Move back over syntax-and-space.
+
+The space beside the span is taken with it, mirroring the forward motion.
+
+Workflow: from the buffer end, move back once.
+Verifies: point lands before the space, not on the span start."
+  (let ((text-initial "foo   bar   baz")
+        (point-expected '(1 . 9)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-max))
+      ;; Cursor: foo   bar   baz
+      ;;                        ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-same-syntax-and-space-prev))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest movement-same-syntax-and-space-prev-end ()
+  "Move back to the end of the previous syntax-and-space.
+
+Mirrors `meep-move-same-syntax-and-space-next-end', which had no backward
+counterpart - a negative count reached the non-end command instead.
+
+Workflow: from the buffer end, move back once.
+Verifies: point lands on the span start, the space is not taken."
+  (let ((text-initial "foo   bar   baz")
+        (point-expected '(1 . 12)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-same-syntax-and-space-prev-end))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column))))))
 
 (ert-deftest movement-word-next-basic ()
   "Move forward by word.
