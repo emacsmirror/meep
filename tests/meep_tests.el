@@ -4916,6 +4916,139 @@ First three succeed, fourth does nothing and prints a message."
       (should (equal '("Transpose: no element to swap with") (meep-test-messages)))
       (should (equal 'normal (bray-state))))))
 
+;; A negative prefix on the *motion* must match the equivalent motion in the
+;; opposite direction, the sign belongs to the motion and not to the transpose.
+
+(ert-deftest transpose-char-negative-motion-prefix-next ()
+  "Transpose after a backward char motion driven by a negative prefix.
+
+Move back two chars with a negative prefix, then transpose.
+Verifies: `C-u -2' with char-next matches `C-u 2' with char-prev."
+  (let ((text-initial "ABCDEFG")
+        (text-expected "ADBCEFG")
+        (point-expected '(1 . 2))
+        (mark-expected '(1 . 2)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor: ABCDEFG
+      ;;            ^
+      (goto-char 4)
+      (simulate-input-for-meep
+        [?\C-u ?- ?2]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-transpose))
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      ;; The mark bounds the span that moved.
+      (should (equal mark-expected (meep-test-mark-line-column)))
+      ;; A successful transpose reports nothing.
+      (should (equal nil (meep-test-messages))))))
+
+(ert-deftest transpose-char-negative-motion-prefix-prev ()
+  "Transpose after a forward char motion driven by a negative prefix.
+
+Move forward two chars with a negative prefix, then transpose.
+Verifies: `C-u -2' with char-prev matches `C-u 2' with char-next."
+  (let ((text-initial "ABCDEFG")
+        (text-expected "ABCFDEG")
+        (point-expected '(1 . 5))
+        (mark-expected '(1 . 4)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor: ABCDEFG
+      ;;            ^
+      (goto-char 4)
+      (simulate-input-for-meep
+        [?\C-u ?- ?2]
+        '(:state normal :command meep-move-char-prev)
+        '(:state normal :command meep-transpose))
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      ;; The mark bounds the span that moved.
+      (should (equal mark-expected (meep-test-mark-line-column)))
+      ;; A successful transpose reports nothing.
+      (should (equal nil (meep-test-messages))))))
+
+(ert-deftest transpose-line-negative-motion-prefix-next ()
+  "Transpose after a backward line motion driven by a negative prefix.
+
+Move up two lines with a negative prefix, then transpose.
+Verifies: `C-u -2' with line-next matches `C-u 2' with line-prev."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBB\n"
+          "CCC\n"
+          "DDD"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "CCC\n"
+          "AAA\n"
+          "BBB\n"
+          "DDD"))
+        (point-expected '(1 . 0))
+        (mark-expected '(2 . 0)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Start on the third line (CCC).
+      (forward-line 2)
+      (simulate-input-for-meep
+        [?\C-u ?- ?2]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-transpose))
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      ;; The mark bounds the span that moved.
+      (should (equal mark-expected (meep-test-mark-line-column)))
+      ;; A successful transpose reports nothing.
+      (should (equal nil (meep-test-messages))))))
+
+(ert-deftest transpose-line-negative-motion-prefix-prev ()
+  "Transpose after a forward line motion driven by a negative prefix.
+
+Move down one line with a negative prefix, then transpose.
+Verifies: `C-u -1' with line-prev matches line-next."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBB\n"
+          "CCC\n"
+          "DDD"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "AAA\n"
+          "BBB\n"
+          "DDD\n"
+          "CCC"))
+        (point-expected '(4 . 0))
+        (mark-expected '(3 . 3)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Start on the third line (CCC).
+      (forward-line 2)
+      (simulate-input-for-meep
+        [?\C-u ?- ?1]
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-transpose))
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      ;; The mark bounds the span that moved.
+      (should (equal mark-expected (meep-test-mark-line-column)))
+      ;; A successful transpose reports nothing.
+      (should (equal nil (meep-test-messages))))))
+
 
 ;; ---------------------------------------------------------------------------
 ;; Selection Tests

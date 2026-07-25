@@ -8305,17 +8305,15 @@ BODY must leave the newline as the last character."
             -1)
            (t
             1)))
-         ;; For backward motion, flip positions and use char-next.
-         (adjusted-info
-          (cond
-           ((< dir 0)
-            (cons (point) (cons 'meep-move-char-next (cddr last-motion-info))))
-           (t
-            last-motion-info)))
+         ;; Start at the earlier position and step forward one.
+         ;;
+         ;; NOTE: the adjusted motion must not carry the original prefix argument,
+         ;; `meep--transpose-any-motion' would apply its sign a second time - reversing
+         ;; the step so the two spans overlap and text is lost.
+         (adjusted-info (cons (min mark-pos (point)) (cons 'meep-move-char-next 1)))
          (result nil))
-    ;; For backward motion, move to mark position before executing body.
-    (when (< dir 0)
-      (goto-char mark-pos))
+    ;; Execute the body from the later position.
+    (goto-char (max mark-pos (point)))
     ;; Execute body with adjusted positions.
     (setq result (funcall body-fn adjusted-info))
     (cond
@@ -8365,15 +8363,9 @@ BODY must leave the newline as the last character."
          (first-bol (min mark-bol point-bol))
          ;; The second line's bol (later position) is where body executes.
          (second-bol (max mark-bol point-bol))
-         ;; Create adjusted-info for the body.
-         (adjusted-info
-          (cond
-           ((< dir 0)
-            ;; Backward: flipped positions and line-next command.
-            (cons first-bol (cons 'meep-move-line-next (cddr last-motion-info))))
-           (t
-            ;; Forward: mark at bol, original command.
-            (cons first-bol (cdr last-motion-info)))))
+         ;; Start at the earlier line and step forward one, see the note in
+         ;; `meep--transpose-with-adjusted-motion-char-wise' for the prefix argument.
+         (adjusted-info (cons first-bol (cons 'meep-move-line-next 1)))
          (result nil))
     ;; Move point to the second line for body execution.
     (goto-char second-bol)
