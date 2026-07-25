@@ -7915,6 +7915,40 @@ Verifies: find-at moves to just after the target character."
       (should (equal '(1 . 8) (meep-test-point-line-column)))
       (should (equal ?o (char-before))))))
 
+(ert-deftest movement-find-char-till-at-line-bound ()
+  "Find till a character with no room to step over one.
+
+At the line end there is nothing between point and the limit, which is a
+failed search and not an error - matching the `at' commands.
+
+Workflow: from each line bound, find till a character in that direction.
+Verifies: the search reports not found, point and the buffer are unchanged."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "hello\n"
+          "world"))
+        ;; Line end, line start, buffer end and buffer start.
+        (cases '((6 (1 . 5) next) (7 (2 . 0) prev) (12 (2 . 5) next) (1 (1 . 0) prev))))
+    (dolist (case cases)
+      (with-meep-test text-initial
+        (text-mode)
+        (bray-mode 1)
+        (goto-char (nth 0 case))
+        (cond
+         ((eq (nth 2 case) 'next)
+          (simulate-input-for-meep
+            '(:state normal :command meep-move-find-char-on-line-till-next)
+            "o"))
+         (t
+          (simulate-input-for-meep
+            '(:state normal :command meep-move-find-char-on-line-till-prev)
+            "o")))
+        (should (equal '("char o not found") (meep-test-messages)))
+        (should (equal 'normal (bray-state)))
+        (should (equal text-initial (buffer-string)))
+        (should (equal (nth 1 case) (meep-test-point-line-column)))))))
+
 (ert-deftest movement-find-char-till-next ()
   "Find character on line (till position).
 
