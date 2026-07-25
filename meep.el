@@ -5423,11 +5423,12 @@ When only blank space was skipped, skip all blank space."
               (and (or (null meep--region-syntax-asym) (null is-forward)) (/= beg (point-min))))
              (end-ok (and (or (null meep--region-syntax-asym) is-forward) (/= end (point-max))))
 
+             ;; NOTE: an empty region at either buffer bound has no syntax to read.
              (beg-syn (syntax-after beg))
-             (end-syn (syntax-after (1- end)))
+             (end-syn (and (< (point-min) end) (syntax-after (1- end))))
 
-             (beg-syn-str (funcall syn-as-str-fn beg-syn))
-             (end-syn-str (funcall syn-as-str-fn end-syn))
+             (beg-syn-str (and beg-syn (funcall syn-as-str-fn beg-syn)))
+             (end-syn-str (and end-syn (funcall syn-as-str-fn end-syn)))
 
              (do-beg nil)
              (do-end nil)
@@ -5435,6 +5436,12 @@ When only blank space was skipped, skip all blank space."
              (do-symmetry nil))
 
         (cond
+         ((or (null beg-syn) (null end-syn))
+          ;; Only on the first step, otherwise silently skip.
+          (unless found
+            (message "No syntax around the point (empty buffer?)"))
+          ;; Break.
+          (setq n 0))
          ((and (null beg-ok) (null end-ok))) ; Do nothing.
          ((null beg-ok)
           (setq do-end t))

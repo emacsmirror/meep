@@ -2627,6 +2627,25 @@ Verifies: the characters swap instead of the command signaling."
         '(:state normal :command meep-transpose))
       (should (equal text-expected (buffer-string))))))
 
+(ert-deftest selection-syntax-contract-empty-region-at-buffer-bound ()
+  "Contracting an empty region at a buffer bound reports instead of failing.
+
+There is no syntax to read on the outer side of an empty region at either
+bound, which is not an error - nothing can be contracted.
+
+Workflow: enable an empty region at the buffer start, then contract.
+Verifies: a message is given, the buffer and region are left alone."
+  (let ((text-initial "abc def"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (call-interactively 'meep-region-enable)
+      (call-interactively 'meep-region-syntax-contract)
+      (should (equal '("No syntax around the point (empty buffer?)") (meep-test-messages)))
+      (should (equal text-initial (buffer-string)))
+      (should (equal (cons (point-min) (point-min)) (cons (region-beginning) (region-end)))))))
+
 (ert-deftest clipboard-error-cut-no-region ()
   "Cut without any region or motion signals an error.
 
