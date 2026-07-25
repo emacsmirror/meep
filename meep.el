@@ -9943,13 +9943,17 @@ then pastes as usual)."
     (copy-to-register reg beg end nil t)
     (delete-region beg end)))
 
-(defun meep--clipboard-register-yank-impl (reg)
-  "Yank from register REG."
-  (when (region-active-p)
+(defun meep--clipboard-register-yank-impl (reg line-wise)
+  "Yank from register REG, replacing the active region.
+When LINE-WISE is non-nil and there is no region, insert at the line start."
+  (cond
+   ((region-active-p)
     (let ((beg (region-beginning))
           (end (region-end)))
       (deactivate-mark t)
       (delete-region beg end)))
+   (line-wise
+    (goto-char (pos-bol))))
 
   (let ((pos-init (point)))
     (insert-register reg t)
@@ -10014,24 +10018,14 @@ Use the `meep-clipboard-register-map' key-map."
   "Yank from pre-defined register."
   (interactive "*")
   (when-let* ((reg (meep--clipboard-register-current-or-message)))
-    (meep--clipboard-register-yank-impl reg)))
+    (meep--clipboard-register-yank-impl reg nil)))
 
 ;;;###autoload
 (defun meep-clipboard-register-yank-lines ()
   "Yank from pre-defined register as lines."
   (interactive "*")
   (when-let* ((reg (meep--clipboard-register-current-or-message)))
-    (cond
-     ((region-active-p)
-      (let ((beg (region-beginning))
-            (end (region-end)))
-        (deactivate-mark t)
-        (delete-region beg end)))
-     (t
-      (goto-char (pos-bol))))
-    (let ((pos-init (point)))
-      (insert-register reg t)
-      (meep--set-marker pos-init))))
+    (meep--clipboard-register-yank-impl reg t)))
 
 
 ;; ---------------------------------------------------------------------------
