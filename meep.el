@@ -2210,23 +2210,26 @@ they passed in.  Nil means the delimiters cross irreconcilably."
         ;; Skip repeated chars: "/***** "
         ;; TODO: check if the characters are space (seems very unlikely).
         ;; but could mess with `meep-move-comment-skip-space'.
+        ;; NOTE: brackets are content, `--[[t[1]]]' must not lose its `]'.
         (when meep-move-comment-skip-repeated
           (unless (eq beg (car bounds-outer))
             (save-excursion
               (goto-char beg)
               (when-let* ((ch-code (char-before beg)))
-                (let ((ch (char-to-string ch-code)))
-                  (skip-chars-forward ch end)
-                  (unless (eq (point) end)
-                    (setq beg (point)))))))
+                (unless (memq (char-syntax ch-code) '(?\( ?\)))
+                  (let ((ch (char-to-string ch-code)))
+                    (skip-chars-forward ch end)
+                    (unless (eq (point) end)
+                      (setq beg (point))))))))
           (unless (eq end (cdr bounds-outer))
             (save-excursion
               (goto-char end)
               (when-let* ((ch-code (char-after end)))
-                (let ((ch (char-to-string ch-code)))
-                  (skip-chars-backward ch beg)
-                  (unless (eq (point) beg)
-                    (setq end (point))))))))
+                (unless (memq (char-syntax ch-code) '(?\( ?\)))
+                  (let ((ch (char-to-string ch-code)))
+                    (skip-chars-backward ch beg)
+                    (unless (eq (point) beg)
+                      (setq end (point)))))))))
 
         (unless (and (eq beg (car bounds-outer)) (eq end (cdr bounds-outer)))
           (setq result (cons beg end))))

@@ -11875,6 +11875,34 @@ Verifies: inner selection excludes comment markers, with the
       ;; Inner content is "bar baz" (starts after // and space).
       (should (equal "bar baz" (meep-test-region-as-string))))))
 
+(ert-deftest bounds-of-comment-inner-delimiter-spec-not-stripped ()
+  "Select comment content resolved by a `meep-bounds-for-inner-comment' spec.
+
+An explicit pairing resolves both ends, so a body character that repeats the
+closer's first character is content, not decoration.  Here the body is `a[1]'
+and its final `]' repeats the `]]*/' closer.
+
+Workflow: select the comment inner, then replace the selection with `_'.
+Verifies: the whole body is selected, replacing it leaves the delimiters whole."
+  (let ((text-initial "/*[[a[1]]]*/\n")
+        (text-expected "/*[[____]]*/\n")
+        (spec (list #'meep-bounds-inner-from-delimiters '(("/*[[" . "]]*/")))))
+    (with-meep-test text-initial
+      (c-mode)
+      (bray-mode 1)
+      (setq-local meep-move-comment-skip-space nil)
+      (setq-local meep-bounds-for-inner-comment spec)
+      ;; Cursor: /*[[a[1]]]*/
+      ;;              ^
+      (goto-char 6)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-to-bounds-of-comment-inner)
+        '(:state normal :command meep-region-activate-and-reverse-motion)
+        '(:state visual :command meep-char-replace)
+        "_")
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
 (ert-deftest bounds-of-comment-outer-basic ()
   "Select comment including delimiters.
 
