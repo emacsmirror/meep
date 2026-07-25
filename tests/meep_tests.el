@@ -12759,6 +12759,59 @@ Verifies: char-insert replaces active region with character."
       (should (equal '(1 . 0) (meep-test-point-line-column)))
       (should (equal ?X (char-after))))))
 
+(ert-deftest char-insert-count-zero-multi-line-region ()
+  "Replace a multi-line selection with zero characters.
+
+Verifies: a zero count removes the selection instead of looping forever."
+  ;; A multi-line region is required, `pos-eol' then holds the loop short of the
+  ;; region end so the break is never reached.
+  (let ((text-initial "abc\nd\nghi")
+        (text-expected "\n\n"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the whole buffer.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-move-line-end))
+      (should (equal text-initial (meep-test-region-as-string)))
+      ;; Replace the selection with zero copies of X.
+      (simulate-input-for-meep
+        "\C-u0"
+        '(:state visual :command meep-char-insert)
+        "X")
+      ;; Selection removed, state returns to normal.
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest char-insert-with-count-multi-line-region ()
+  "Insert characters over a multi-line selection.
+
+Verifies: the region end accounts for lines that change length."
+  ;; The middle line is shorter than the count, so replacing it grows the buffer.
+  (let ((text-initial "abc\nd\nghi")
+        (text-expected "ZZZ\nZZZ\nZZZ"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the whole buffer.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-move-line-end))
+      (should (equal text-initial (meep-test-region-as-string)))
+      ;; Replace each line's selected text with 3 copies of Z.
+      (simulate-input-for-meep
+        "\C-u3"
+        '(:state visual :command meep-char-insert)
+        "Z")
+      ;; Every line replaced, including the last.
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
 (ert-deftest surround-add-lines-basic ()
   "Surround current line with character pair.
 

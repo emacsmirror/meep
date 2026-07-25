@@ -6204,7 +6204,9 @@ Insert ARG times."
   (meep--char-is-ok-or-error "insert" ch)
 
   (let ((insert-in-range-fn
-         `(lambda (beg end n) (meep--replace-in-region (make-string n ,ch) beg end)))
+         `(lambda (beg end n)
+            (meep--replace-in-region (make-string n ,ch) beg end)
+            (- n (- end beg))))
 
         (insert-in-range-from-columns-fn
          `(lambda (col-beg col-end n)
@@ -6239,7 +6241,11 @@ Insert ARG times."
             (while (< (point) end)
               (let ((end-iter (min end (pos-eol))))
                 (when (< (point) end-iter)
-                  (funcall insert-in-range-fn (point) end-iter arg))
+                  (let ((line-offset (funcall insert-in-range-fn (point) end-iter arg)))
+                    ;; The number of characters inserted may differ from the span replaced.
+                    (unless (zerop line-offset)
+                      (meep--incf end-iter line-offset)
+                      (meep--incf end line-offset))))
                 (cond
                  ((eq end-iter end)
                   ;; Break.
