@@ -2564,6 +2564,69 @@ returns to normal state after copy."
 ;; Cut/copy should signal an error when there is no region to operate on.
 ;; This catches user errors (e.g., pressing cut without selecting anything).
 
+(ert-deftest motion-line-next-mark-even-if-inactive-nil ()
+  "Line motion works when `mark-even-if-inactive' is nil.
+
+`mark' signals unless the mark is active with that setting, so reading it to
+maintain a line-wise region broke the motion outright - no mark need exist.
+
+Workflow: set the option, then move down a line.
+Verifies: the motion moves point instead of signaling."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "aaa\n"
+          "bbb\n"
+          "ccc\n"))
+        (point-expected '(2 . 0)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (transient-mark-mode 1)
+      (setq-local mark-even-if-inactive nil)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest selection-activate-or-reverse-mark-even-if-inactive-nil ()
+  "Region activate works when `mark-even-if-inactive' is nil.
+
+The command tests `mark' to decide whether a mark already exists, which
+signals with that setting rather than reporting no mark.
+
+Workflow: set the option, then activate the region.
+Verifies: the region is activated instead of signaling."
+  (let ((text-initial "foo bar"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (transient-mark-mode 1)
+      (setq-local mark-even-if-inactive nil)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-activate-or-reverse))
+      (should (equal 'visual (bray-state)))
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest transpose-char-next-mark-even-if-inactive-nil ()
+  "Transpose works when `mark-even-if-inactive' is nil.
+
+The last-motion lookup reads `mark', which signals with that setting.
+
+Workflow: set the option, move forward a char, then transpose.
+Verifies: the characters swap instead of the command signaling."
+  (let ((text-initial "ABC")
+        (text-expected "BAC"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (transient-mark-mode 1)
+      (setq-local mark-even-if-inactive nil)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-transpose))
+      (should (equal text-expected (buffer-string))))))
+
 (ert-deftest clipboard-error-cut-no-region ()
   "Cut without any region or motion signals an error.
 

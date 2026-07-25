@@ -644,7 +644,7 @@ POS-ORIG and MRK-ORIG define the original region."
          (region-active-p))
     (cond
      ((< pos-orig mrk-orig)
-      (when (>= (point) (mark))
+      (when (>= (point) (mark t))
         (beginning-of-line)
         (forward-line 1)
         (save-excursion
@@ -653,7 +653,7 @@ POS-ORIG and MRK-ORIG define the original region."
           (forward-line -1)
           (meep--set-marker (point)))))
      ((> pos-orig mrk-orig)
-      (when (<= (point) (mark))
+      (when (<= (point) (mark t))
         (beginning-of-line)
         (forward-line -1)
         (save-excursion
@@ -669,7 +669,9 @@ POS-ORIG and MRK-ORIG define the original region."
         (mrk-orig (make-symbol "mrk-orig"))
         (was-active (make-symbol "was-active")))
     `(let ((,pos-orig (point))
-           (,mrk-orig (mark))
+           ;; NOTE: `mark' signals unless the mark is active when
+           ;; `mark-even-if-inactive' is nil, the position is wanted either way.
+           (,mrk-orig (mark t))
            (,was-active (region-active-p)))
        (prog1 (progn
                 ,@body)
@@ -690,7 +692,7 @@ Use this where a command must read those bounds without making the region visibl
       (let ((local-last-command (meep--last-command)))
         (when (and (symbolp local-last-command)
                    (meep-command-is-mark-set-on-motion-any local-last-command))
-          (let ((a (mark))
+          (let ((a (mark t))
                 (b (point)))
             (setq result
                   (cond
@@ -710,7 +712,7 @@ were to be made into the active region."
       (when (and (symbolp local-last-command)
                  (meep-command-is-mark-set-on-motion-any local-last-command))
         (let ((a (point))
-              (b (mark)))
+              (b (mark t)))
           (cond
            ((<= a b)
             (cons a b))
@@ -4480,7 +4482,7 @@ See: `meep-region-activate-and-reverse'."
   (cond
    ((region-active-p)
     (meep-region-activate-and-reverse))
-   ((mark)
+   ((mark t)
     (activate-mark t))
    (t
     (meep-region-enable))))
@@ -4534,7 +4536,7 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
   (declare (important-return-value t))
   (let ((local-last-command (meep--last-command))
         (local-last-prefix-arg (meep--last-prefix-arg))
-        (local-mrk (mark))
+        (local-mrk (mark t))
         (new-mrk nil)
         (prefix "region-activate-and-reverse-motion"))
 
@@ -8423,7 +8425,7 @@ Dispatches to motion-specific wrappers that normalize direction and cursor."
             ((eq ,result t)
              ;; Return repeat info: (nil . REPEAT-MARK-POS).
              ;; No pre-motion needed, use current mark as repeat position.
-             (cons nil (mark)))
+             (cons nil (mark t)))
             (t
              ,result))))))))
 
@@ -8556,7 +8558,7 @@ Returns motion-info on success, \\='transpose-abort if pre-motion failed."
 Returns t on success, \\='transpose-abort if at buffer boundary.
 On abort, point and mark are restored to their original positions."
   (let ((point-before (point))
-        (mark-before (mark)))
+        (mark-before (mark t)))
     (meep--set-marker (point))
     (condition-case nil
         (progn
@@ -8638,7 +8640,7 @@ Transposing lines and characters is also supported."
                  (t
                   ;; Success: capture positions before macro restores them.
                   (setq success-point (point))
-                  (setq success-mark (mark))
+                  (setq success-mark (mark t))
                   (setq changed t)
                   (meep--incf i))))))))
         ;; Apply success positions after save-mark-and-excursion restores.
@@ -8699,7 +8701,7 @@ You may wish to bind this TAB, so pressing TAB twice re-indents."
   (interactive)
   (cond
    ((region-active-p)
-    (goto-char (mark)))
+    (goto-char (mark t)))
    (t
     (unless (eobp)
       (forward-char 1))))
@@ -9116,7 +9118,7 @@ When MOVE is non-nil, delete the original text."
     (cond
      ((null pos-last-insert)
       nil)
-     ((null (mark))
+     ((null (mark t))
       (message "No mark found!")
       nil)
      (t
@@ -9424,9 +9426,9 @@ The `kill-ring' and its pointer are left untouched."
         ;; Important for the point to be at the start.
         ;; So pasting replaces this region.
         ;; This is needed for both `line-wise' and `rect-wise' paste.
-        (when (< (mark) (point))
+        (when (< (mark t) (point))
           (let ((pos-orig (point)))
-            (goto-char (mark))
+            (goto-char (mark t))
             (meep--set-marker pos-orig)))
 
         (cond
