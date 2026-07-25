@@ -2628,6 +2628,119 @@ The region need not be active; reading the mark directly avoids the
       (should (equal "foo" (car kill-ring)))
       (should (equal text-expected (buffer-string))))))
 
+(ert-deftest clipboard-only-cut-rectangle ()
+  "Cut a rectangle to the system clipboard.
+
+Workflow: select a rectangle spanning three rows, then cut.
+Verifies: only the rectangle's columns are removed and stored, the text
+between the corners is left alone."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "mnopqr"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "aef\n"
+          "gkl\n"
+          "mqr"))
+        (captured nil))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (let ((interprogram-cut-function (lambda (text) (setq captured text))))
+        ;; Select columns 1..4 over all three rows.
+        (simulate-input-for-meep
+          '(:state normal :command meep-move-char-next)
+          '(:state normal :command meep-region-toggle-rectangle)
+          '(:state visual :command meep-move-char-next)
+          '(:state visual :command meep-move-char-next)
+          '(:state visual :command meep-move-char-next)
+          '(:state visual :command meep-move-line-next)
+          '(:state visual :command meep-move-line-next)
+          '(:state visual :command meep-clipboard-only-cut)))
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string)))
+      ;; The rows are stored newline separated, not as one linear span.
+      (should (equal "bcd\nhij\nnop" captured))
+      ;; Only the rectangle toggle reports, the cut itself is silent.
+      (should (equal '("Mark set (rectangle mode)") (meep-test-messages))))))
+
+(ert-deftest clipboard-only-copy-rectangle ()
+  "Copy a rectangle to the system clipboard.
+
+Workflow: select a rectangle spanning three rows, then copy.
+Verifies: the rectangle's columns are stored, not the linear span between
+the corners."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "mnopqr"))
+        (captured nil))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (let ((interprogram-cut-function (lambda (text) (setq captured text))))
+        ;; Select columns 1..4 over all three rows.
+        (simulate-input-for-meep
+          '(:state normal :command meep-move-char-next)
+          '(:state normal :command meep-region-toggle-rectangle)
+          '(:state visual :command meep-move-char-next)
+          '(:state visual :command meep-move-char-next)
+          '(:state visual :command meep-move-char-next)
+          '(:state visual :command meep-move-line-next)
+          '(:state visual :command meep-move-line-next)
+          '(:state visual :command meep-clipboard-only-copy)))
+      (should (equal 'normal (bray-state)))
+      ;; Copy never modifies the buffer.
+      (should (equal text-initial (buffer-string)))
+      (should (equal "bcd\nhij\nnop" captured))
+      (should (equal '("Mark set (rectangle mode)") (meep-test-messages))))))
+
+(ert-deftest clipboard-register-cut-rectangle ()
+  "Cut a rectangle into a register.
+
+Workflow: select a rectangle spanning three rows, then cut to a register.
+Verifies: only the rectangle's columns are removed, so nothing is deleted
+without being stored."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "mnopqr"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "aef\n"
+          "gkl\n"
+          "mqr")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (setq meep--clipboard-register-current ?a)
+      ;; Select columns 1..4 over all three rows.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-move-line-next))
+      ;; Not bound in visual state, it is reached via the register transient map.
+      (meep-clipboard-register-cut)
+      (should (equal 'visual (bray-state)))
+      (should (equal text-expected (buffer-string)))
+      ;; Stored newline separated, with Emacs's own rectangle yank-handler.
+      (should (equal "bcd\nhij\nnop" (substring-no-properties (get-register ?a))))
+      ;; Only the rectangle toggle reports, the cut itself is silent.
+      (should (equal '("Mark set (rectangle mode)") (meep-test-messages))))))
+
 (ert-deftest clipboard-only-copy-no-tty-clipboard ()
   "Copy to system clipboard raises error when no clipboard integration.
 

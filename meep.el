@@ -9182,9 +9182,10 @@ When there is no active region, the symbol at point is used."
 ;; These commands only wrap the system's clipboard,
 ;; without mixing the kill-ring or primary clipboard - for predictable results.
 
-(defun meep--clipboard-only-cut-or-copy-impl (beg end do-cut)
+(defun meep--clipboard-only-cut-or-copy-impl (beg end region-type do-cut)
   "Copy or cut to system clipboard.
 Arguments BEG and END define the region.
+REGION-TYPE selects how the region is read, `rect-wise' takes the columns only.
 When DO-CUT is non-nil, cut instead of copying."
   (cond
    ((eq beg end)
@@ -9197,9 +9198,20 @@ When DO-CUT is non-nil, cut instead of copying."
    (t
     (unless interprogram-cut-function
       (user-error "No clipboard integration available in this terminal"))
-    (let ((text (buffer-substring-no-properties beg end)))
+    (let ((text
+           (cond
+            ((eq region-type 'rect-wise)
+             (mapconcat #'identity (extract-rectangle beg end) "\n"))
+            (t
+             (buffer-substring-no-properties beg end)))))
+      ;; NOTE: the text is deleted before the clipboard write, a failed write loses it.
+      ;; This is an acceptable limitation, not something to fix.
       (when do-cut
-        (delete-region beg end))
+        (cond
+         ((eq region-type 'rect-wise)
+          (delete-rectangle beg end))
+         (t
+          (delete-region beg end))))
 
       (let ((select-enable-clipboard t)
             (select-enable-primary nil))
@@ -9210,13 +9222,15 @@ When DO-CUT is non-nil, cut instead of copying."
 (defun meep-clipboard-only-copy ()
   "Copy the region to the system clipboard."
   (interactive)
-  (meep--clipboard-only-cut-or-copy-impl (region-beginning) (region-end) nil))
+  (meep--clipboard-only-cut-or-copy-impl
+   (region-beginning) (region-end) (meep--state-region-type) nil))
 
 ;;;###autoload
 (defun meep-clipboard-only-cut ()
   "Cut the region to the system clipboard."
   (interactive "*")
-  (meep--clipboard-only-cut-or-copy-impl (region-beginning) (region-end) t))
+  (meep--clipboard-only-cut-or-copy-impl
+   (region-beginning) (region-end) (meep--state-region-type) t))
 
 ;;;###autoload
 (defun meep-clipboard-only-cut-line ()
@@ -9224,7 +9238,9 @@ When DO-CUT is non-nil, cut instead of copying."
   (interactive "*")
   ;; Note that this command writes to the system clipboard.
   (meep--with-respect-goal-column
-   (meep--clipboard-only-cut-or-copy-impl (pos-bol) (min (1+ (pos-eol)) (point-max)) t)))
+   ;; The span is already line bounds, the system clipboard is plain text and
+   ;; cannot carry the line-wise hint, so read it linearly.
+   (meep--clipboard-only-cut-or-copy-impl (pos-bol) (min (1+ (pos-eol)) (point-max)) nil t)))
 
 (defun meep--clipboard-only-yank-impl ()
   "Yank-replace from the system clipboard."
@@ -9930,16 +9946,14 @@ then pastes as usual)."
 
 (defun meep--clipboard-register-copy-impl (reg)
   "Copy in the active region and place it in register REG."
-  (let ((beg (region-beginning))
-        (end (region-end)))
-    (copy-to-register reg beg end nil t)))
+  (copy-to-register reg nil nil nil t))
 
 (defun meep--clipboard-register-cut-impl (reg)
   "Cut in the active region and place it in register REG."
-  (let ((beg (region-beginning))
-        (end (region-end)))
-    (copy-to-register reg beg end nil t)
-    (delete-region beg end)))
+  ;; NOTE: `copy-to-register' deletes via `region-extract-function', the same
+  ;; accessor it captures with - so a rectangle removes only its own columns.
+  ;; Deleting the span between the corners would destroy text it never stored.
+  (copy-to-register reg nil nil t t))
 
 (defun meep--clipboard-register-yank-impl (reg line-wise)
   "Yank from register REG, replacing the active region.
