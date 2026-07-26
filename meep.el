@@ -4193,12 +4193,12 @@ past the last/first item is a no-op, left in the returned remainder."
   "Alist mapping a text-object KIND to a plist of operations.
 
 Plist keys:
-  :bounds-fn (INNER) -> BOUNDS
+  :bounds-fn (INNER) -> BOUNDS (required)
     Pure query: return `(BEG . END)' of the object at point, or nil.
   :bounds-step-fn (INNER STEP AT-START) -> (LANDING-POS . REMAINING)
-    Pure query (does not move point): scan STEP objects forward (backward
-    if negative) and return the precise landing plus the signed count of
-    steps that could not be advanced.
+    Required for motion.  Pure query (does not move point): scan STEP objects
+    forward (backward if negative) and return the precise landing plus the
+    signed count of steps that could not be advanced.
     LANDING-POS is the AT-START side (start when non-nil, end otherwise)
     of the target object's INNER bounds;
     the motion dispatcher uses it directly without further lookup.
@@ -4208,6 +4208,8 @@ Plist keys:
     When non-nil, the kind has no meaningful inner variant (its `:bounds-fn'
     ignores INNER, e.g. word, symbol).  Consumers (e.g. the mark commands)
     may generate only an `-outer' variant and skip the `-inner' one.
+
+A kind missing a required key is inert rather than an error.
 
 Extension packages may extend this alist to register new kinds.")
 
