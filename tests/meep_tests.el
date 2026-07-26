@@ -478,6 +478,8 @@ PLIST must contain exactly :state and :command keys."
     (meep-move-symbol-prev-end . (normal))
     (meep-move-sentence-prev . (normal))
     (meep-move-sentence-next . (normal))
+    (meep-move-by-sexp-any-prev . (normal))
+    (meep-move-by-sexp-any-next . (normal))
     (meep-move-by-sexp-over-prev . (normal))
     (meep-move-by-sexp-over-next . (normal))
     (meep-move-by-sexp-out-next . (normal))
@@ -7664,6 +7666,185 @@ Verifies: expansion is a no-op at maximum extent."
 
 ;; ---------------------------------------------------------------------------
 ;; Movement
+
+(ert-deftest movement-by-sexp-any-next-basic ()
+  "Move forward by one S-expression.\n\nVerifies: point lands at the end of the S-expression at point."
+  (let ((text-initial "(a) (b) (c) (d) (e)")
+        (point-expected '(1 . 2)))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      (goto-char 2)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-by-sexp-any-next))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      (should (equal ?\) (char-after))))))
+
+(ert-deftest movement-by-sexp-any-prev-basic ()
+  "Move backward by one S-expression.\n\nVerifies: point lands at the end of the preceding S-expression."
+  (let ((text-initial "(a) (b) (c) (d) (e)")
+        (point-expected '(1 . 14)))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      (goto-char 18)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-by-sexp-any-prev))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      (should (equal ?\) (char-after))))))
+
+(ert-deftest movement-by-sexp-any-prev-count ()
+  "Move backward by S-expression with a count.\n\nThe count was only honoured where the major mode names its brackets, so in a\nLisp mode it was taken as a nesting depth and the motion did nothing.\n\nVerifies: point moves back two S-expressions."
+  (let ((text-initial "(a) (b) (c) (d) (e)")
+        (point-expected '(1 . 13)))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      (goto-char 18)
+      (simulate-input-for-meep
+        "\C-u2"
+        '(:state normal :command meep-move-by-sexp-any-prev))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      (should (equal ?d (char-after))))))
+
+(ert-deftest movement-by-sexp-any-prev-skips-other-brackets ()
+  "Move backward where the major mode names its brackets.\n\nC++ names only braces, so parentheses and square brackets are stepped over\nwithout counting.\n\nVerifies: point is inside the second brace pair from the end."
+  (let ((text-initial "{a} (b) [c] {d} (e) {f}")
+        (point-expected '(1 . 13)))
+    (with-meep-test text-initial
+      (c++-mode)
+      (bray-mode 1)
+      (goto-char 22)
+      (simulate-input-for-meep
+        "\C-u2"
+        '(:state normal :command meep-move-by-sexp-any-prev))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      (should (equal ?d (char-after))))))
+
+(ert-deftest movement-by-sexp-any-next-at-buffer-end ()
+  "Move forward by S-expression with nothing following.\n\nVerifies: point does not move and the buffer is unchanged."
+  (let ((text-initial "(a) (b) (c) (d) (e)")
+        (point-expected '(1 . 18)))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      (goto-char 19)
+      (simulate-input-for-meep
+        "\C-u3"
+        '(:state normal :command meep-move-by-sexp-any-next))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      (should (equal ?\) (char-after))))))
+
+(ert-deftest movement-by-sexp-any-prev-at-buffer-start ()
+  "Move backward by S-expression with nothing preceding.\n\nVerifies: point does not move and the buffer is unchanged."
+  (let ((text-initial "(a) (b) (c) (d) (e)")
+        (point-expected '(1 . 0)))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      (goto-char 1)
+      (simulate-input-for-meep
+        "\C-u3"
+        '(:state normal :command meep-move-by-sexp-any-prev))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      (should (equal ?\( (char-after))))))
+
+(ert-deftest movement-by-sexp-any-next-count ()
+  "Move by S-expression with a count in a Lisp mode.
+
+The count was only honoured where the major mode names its brackets, so in a
+Lisp mode it was taken as a nesting depth and the motion did nothing.
+
+Workflow: from inside the first form, move with a count of two.
+Verifies: point advances two S-expressions, as it does in a C-like mode."
+  (let ((text-initial "(a) (b) (c) (d) (e)")
+        (point-expected '(1 . 5)))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: (a) (b) (c) (d) (e)
+      ;;          ^
+      (goto-char 2)
+      (simulate-input-for-meep
+        "\C-u2"
+        '(:state normal :command meep-move-by-sexp-any-next))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest movement-by-sexp-any-next-skips-other-brackets ()
+  "Move by S-expression where the major mode names its brackets.
+
+C++ names only braces, so parentheses and square brackets are stepped over
+without counting - a count of two reaches the second brace pair, not the
+parentheses between them.
+
+Workflow: from inside the first braces, move with a count of two.
+Verifies: point is inside the second brace pair."
+  (let ((text-initial "{a} (b) [c] {d} (e) {f}")
+        (point-expected '(1 . 13)))
+    (with-meep-test text-initial
+      (c++-mode)
+      (bray-mode 1)
+      ;; Cursor: {a} (b) [c] {d} (e) {f}
+      ;;          ^
+      (goto-char 2)
+      (should (equal '(?{ ?}) (meep--jump-brackets-from-mode)))
+      (simulate-input-for-meep
+        "\C-u2"
+        '(:state normal :command meep-move-by-sexp-any-next))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      (should (equal ?d (char-after))))))
+
+(ert-deftest movement-by-sexp-over-next-count ()
+  "Step over S-expressions with a count in a Lisp mode.
+
+The count never reached the step-over motion, so every count moved out by a
+single level.
+
+Workflow: from the innermost-but-one form, step over with a count of two.
+Verifies: point moves out two levels, not one."
+  (let ((text-initial "(a (b (c (d))))")
+        (point-expected '(1 . 13)))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: (a (b (c (d))))
+      ;;               ^
+      (goto-char 8)
+      (simulate-input-for-meep
+        "\C-u2"
+        '(:state normal :command meep-move-by-sexp-over-next))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
+(ert-deftest movement-by-sexp-over-prev-count ()
+  "Step back over S-expressions with a count in a Lisp mode.
+
+A count of three moved nowhere at all, the count was taken as a nesting level
+which no longer existed once the outermost form was reached.
+
+Workflow: from the innermost-but-one form, step back over with a count of three.
+Verifies: point stops at the outermost form instead of staying put."
+  (let ((text-initial "(a (b (c (d))))")
+        (point-expected '(1 . 1)))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: (a (b (c (d))))
+      ;;               ^
+      (goto-char 8)
+      (simulate-input-for-meep
+        "\C-u3"
+        '(:state normal :command meep-move-by-sexp-over-prev))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column))))))
 
 (ert-deftest movement-same-syntax-and-space-next-count ()
   "Move over syntax-and-space with a count.

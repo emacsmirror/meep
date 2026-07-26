@@ -1315,60 +1315,64 @@ Return t when stepping out of string or comment bounds."
   "Jump to the next SEXP N times.
 When STEP-OVER is non-nil, don't step into expressions."
   (declare (important-return-value t))
-  (let ((pos nil)
-        (changed nil))
-    (cond
-     ((and step-over (meep--jump-next-sexp-step-over-impl))
-      (setq changed t))
-     (t
-      (save-excursion
-        ;; When in a comment or string, skip out of it.
-        (ignore (meep--goto-comment-or-string-bounds 1))
-        (condition-case _
-            (progn
-              (down-list n)
-              (setq pos (point)))
-          (error ; Fallback.
-           ;; This may error too, do nothing in this case.
-           (when (ignore-errors
-                   (up-list n)
-                   t)
-             (setq pos (point))))))
-      (when pos
-        (setq changed t)
-        (goto-char pos))))
+  ;; NOTE: `down-list' & `up-list' take a level count, so stepping N times must
+  ;; repeat a single level, passing N descends or ascends N levels instead.
+  (let ((pos-init (point)))
+    (while (<= 0 (meep--decf n))
+      (let ((pos-prev (point))
+            (pos nil))
+        (unless (and step-over (meep--jump-next-sexp-step-over-impl))
+          (save-excursion
+            ;; When in a comment or string, skip out of it.
+            (ignore (meep--goto-comment-or-string-bounds 1))
+            (condition-case _
+                (progn
+                  (down-list 1)
+                  (setq pos (point)))
+              (scan-error ; Fallback.
+               ;; This may error too, do nothing in this case.
+               (when (ignore-error scan-error
+                       (up-list 1)
+                       t)
+                 (setq pos (point))))))
+          (when pos
+            (goto-char pos)))
+        ;; Break, once a step can't move no later step can either.
+        (when (eq pos-prev (point))
+          (setq n 0))))
 
-    changed))
+    (not (eq pos-init (point)))))
 
 (defun meep--jump-prev-sexp-impl (n step-over)
   "Jump to the previous SEXP N times.
 When STEP-OVER is non-nil, don't step into expressions."
   (declare (important-return-value t))
-  (setq n (- n))
-  (let ((pos nil)
-        (changed nil))
-    (cond
-     ((and step-over (meep--jump-prev-sexp-step-over-impl))
-      (setq changed t))
-     (t
-      (save-excursion
-        ;; When in a comment or string, skip out of it.
-        (ignore (meep--goto-comment-or-string-bounds -1))
-        (condition-case _
-            (progn
-              (down-list n)
-              (setq pos (point)))
-          (error ; Fallback.
-           ;; This may error too, do nothing in this case.
-           (when (ignore-errors
-                   (up-list n)
-                   t)
-             (setq pos (point))))))
-      (when pos
-        (setq changed t)
-        (goto-char pos))))
+  ;; NOTE: see `meep--jump-next-sexp-impl', each step is a single level.
+  (let ((pos-init (point)))
+    (while (<= 0 (meep--decf n))
+      (let ((pos-prev (point))
+            (pos nil))
+        (unless (and step-over (meep--jump-prev-sexp-step-over-impl))
+          (save-excursion
+            ;; When in a comment or string, skip out of it.
+            (ignore (meep--goto-comment-or-string-bounds -1))
+            (condition-case _
+                (progn
+                  (down-list -1)
+                  (setq pos (point)))
+              (scan-error ; Fallback.
+               ;; This may error too, do nothing in this case.
+               (when (ignore-error scan-error
+                       (up-list -1)
+                       t)
+                 (setq pos (point))))))
+          (when pos
+            (goto-char pos)))
+        ;; Break, once a step can't move no later step can either.
+        (when (eq pos-prev (point))
+          (setq n 0))))
 
-    changed))
+    (not (eq pos-init (point)))))
 
 (defsubst meep--is-bracket-at-p-impl (pos syntax-class bracket-chars)
   "Return t if POS has SYNTAX-CLASS and char at POS is in BRACKET-CHARS.
