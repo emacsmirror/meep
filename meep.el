@@ -1852,8 +1852,10 @@ Return non-nil when point was moved."
             (when (<= pos-orig (point))
               (cons beg (point)))))))))
 
-(defun meep--syntax-state-is-string (state)
-  "Return non-nil if STATE is a string."
+(defun meep--syntax-state-string-start (state)
+  "Return the start position of the string STATE is inside, or nil.
+STATE is a `syntax-ppss' result; nil is returned when it is not in a string
+\(a comment's `nth 8' is excluded)."
   (declare (important-return-value t))
   (and (null (nth 4 state)) (nth 8 state)))
 
@@ -1862,12 +1864,12 @@ Return non-nil when point was moved."
   (declare (important-return-value t))
   (let ((pos-orig (point)))
     (when-let* ((start
-                 (or (meep--syntax-state-is-string (syntax-ppss))
+                 (or (meep--syntax-state-string-start (syntax-ppss))
                      (and (null (bobp))
-                          (meep--syntax-state-is-string
+                          (meep--syntax-state-string-start
                            (save-excursion (syntax-ppss (1- pos-orig)))))
                      (and (null (eobp))
-                          (meep--syntax-state-is-string
+                          (meep--syntax-state-string-start
                            (save-excursion (syntax-ppss (1+ pos-orig))))))))
       (when (<= start pos-orig)
         (save-excursion
