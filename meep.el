@@ -1040,10 +1040,14 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 ;; ---------------------------------------------------------------------------
 ;; Motion: Line
 
-(defun meep--move-line-beginning-end-impl (n)
-  "Move to line beginning or end based on sign of N."
+;; NOTE: only the sign of ARG is used, it selects the edge. Stepping ARG-1 lines
+;; as `beginning-of-line' does isn't possible here, a negative ARG is how
+;; `meep--last-motion-calc-whole-mark-pos' runs any motion in reverse and it
+;; calls twice - a line offset would compound where a repeat count cancels.
+(defun meep--move-line-beginning-end-impl (is-beginning)
+  "Move to the line beginning when IS-BEGINNING, otherwise the line end."
   (cond
-   ((< n 0)
+   (is-beginning
     (beginning-of-line))
    (t
     (end-of-line))))
@@ -1054,7 +1058,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 Move to the end when ARG is negative."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (meep--move-line-beginning-end-impl (- arg))))
+    (meep--move-line-beginning-end-impl (<= 0 arg))))
 
 ;;;###autoload
 (defun meep-move-line-end (arg)
@@ -1062,12 +1066,12 @@ Move to the end when ARG is negative."
 Move to the beginning when ARG is negative."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (meep--move-line-beginning-end-impl arg)))
+    (meep--move-line-beginning-end-impl (< arg 0))))
 
-(defun meep--move-line-non-space-beginning-end-impl (n)
-  "Move to non-space line beginning or end based on sign of N."
+(defun meep--move-line-non-space-beginning-end-impl (is-beginning)
+  "Move to the non-space line beginning when IS-BEGINNING, otherwise the end."
   (cond
-   ((< n 0)
+   (is-beginning
     (beginning-of-line)
     (skip-chars-forward "[:blank:]" (pos-eol)))
    (t
@@ -1088,7 +1092,7 @@ Move to the beginning when ARG is negative."
 A negative ARG moves to the end."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (meep--move-line-non-space-beginning-end-impl (- arg))))
+    (meep--move-line-non-space-beginning-end-impl (<= 0 arg))))
 
 ;;;###autoload
 (defun meep-move-line-non-space-end (arg)
@@ -1096,7 +1100,7 @@ A negative ARG moves to the end."
 A negative ARG moves to the beginning."
   (interactive "^p")
   (meep--with-mark-on-motion-maybe-set
-    (meep--move-line-non-space-beginning-end-impl arg)))
+    (meep--move-line-non-space-beginning-end-impl (< arg 0))))
 
 (defun meep--move-line-wrapper (n &optional noerror)
   "Call `line-move' with N, setting `last-command' to respect the goal column.

@@ -172,6 +172,7 @@ Also suppresses minibuffer prompts from interactive specs."
       meep-move-find-char-on-line-till-next
       meep-move-find-char-on-line-till-prev
       meep-move-line-beginning
+      meep-move-line-end
       meep-move-line-next
       meep-move-line-non-space-beginning
       meep-move-line-non-space-end
@@ -12709,6 +12710,92 @@ Verifies: line-non-space-end stops before trailing whitespace."
       (should (equal '(1 . 11) (meep-test-point-line-column)))
       (should (equal ?d (char-before)))
       (should (equal ?\s (char-after))))))
+
+;; ---------------------------------------------------------------------------
+;; Line Edge Motions: ARG
+;;
+;; The magnitude moves forward that many lines minus one (as `beginning-of-line'
+;; does), the sign selects the edge (as the reverse-motion protocol needs).
+
+(ert-deftest movement-line-beginning-count-zero-keeps-direction ()
+  "Move to the line beginning with a count of zero.
+
+A zero count keeps the direction of the command, it used to invert it and
+land on the end of the line instead.
+
+Workflow: from the middle of line three, move with a count of zero.
+Verifies: point is at the beginning of line three."
+  (let ((text-initial "  aaa  \n  bbb  \n  ccc  \n  ddd  "))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor:   ccc
+      ;;            ^
+      (goto-char 20)
+      (should (equal '(3 . 3) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        "\C-u0"
+        '(:state normal :command meep-move-line-beginning))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(3 . 0) (meep-test-point-line-column))))))
+
+(ert-deftest movement-line-non-space-beginning-count-zero-keeps-direction ()
+  "Move to the first non-blank character with a count of zero.
+
+Workflow: from the middle of line three, move with a count of zero.
+Verifies: point is on the first non-blank of line three, not the line end."
+  (let ((text-initial "  aaa  \n  bbb  \n  ccc  \n  ddd  "))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 20)
+      (should (equal '(3 . 3) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        "\C-u0"
+        '(:state normal :command meep-move-line-non-space-beginning))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(3 . 2) (meep-test-point-line-column)))
+      (should (equal ?c (char-after))))))
+
+(ert-deftest movement-line-non-space-beginning-negative-inverts-edge ()
+  "Move to the first non-blank character with a negative count.
+
+Workflow: from the middle of line three, move with a count of minus one.
+Verifies: point is after the last non-blank of line three."
+  (let ((text-initial "  aaa  \n  bbb  \n  ccc  \n  ddd  "))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 20)
+      (should (equal '(3 . 3) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        [?\C-u ?- ?1]
+        '(:state normal :command meep-move-line-non-space-beginning))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(3 . 5) (meep-test-point-line-column)))
+      (should (equal ?c (char-before))))))
+
+(ert-deftest movement-line-beginning-reverse-motion-spans-line-with-count ()
+  "Reverse a counted line-beginning motion.
+
+The reverse-motion protocol re-runs the motion with a negative count and does
+so twice, so the count must not move the motion off its line - the
+reconstructed span would then straddle two lines.
+
+Workflow: move to the line beginning with a count of two, then reverse.
+Verifies: the region is the whole line, exactly as with no count."
+  (let ((text-initial "  aaa  \n  bbb  \n  ccc  \n  ddd  "))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 20)
+      (simulate-input-for-meep
+        "\C-u2"
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-region-activate-and-reverse-motion))
+      (should (equal text-initial (buffer-string)))
+      (should
+       (equal "  ccc  " (buffer-substring-no-properties (region-beginning) (region-end)))))))
 
 (ert-deftest movement-matching-bracket-outer ()
   "Jump to matching bracket (outer).
