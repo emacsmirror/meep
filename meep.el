@@ -5396,7 +5396,7 @@ When only blank space was skipped, skip all blank space."
            ((eq end (point))
             (setq do-end t))
            (t
-            (user-error "Invalid state")))
+            (meep--assert-unreachable)))
 
           (let ((beg-next beg)
                 (end-next end))
@@ -5581,7 +5581,7 @@ When only blank space was skipped, skip all blank space."
          ((eq end (point))
           (setq do-end t))
          (t
-          (user-error "Invalid state")))
+          (meep--assert-unreachable)))
 
         (let ((beg-next beg)
               (end-next end))
