@@ -309,6 +309,19 @@ First checks `meep-test-keymap-alist', then falls back to direct keymap lookup."
      ;; Fall back to direct keymap lookup for commands bound in default keymap.
      (meep-test-lookup-key state command))))
 
+(defun meep-test-key-in-map (keymap command)
+  "Look up the key for COMMAND in KEYMAP.
+Used for key-maps that are not bound to a bray state, such as the transient
+maps entered by an action command.
+
+Signals an error when COMMAND is unbound so that re-binding it fails loudly,
+instead of the key falling through to whatever the state key-map binds."
+  ;; NOTE: `where-is-internal' also searches the global map when passed a bare
+  ;; key-map, which would silently accept a command KEYMAP never bound.
+  ;; A list restricts the search to KEYMAP alone.
+  (or (where-is-internal command (list keymap) t)
+      (error "Command `%s' is not bound in the key-map" command)))
+
 (defun meep-test-key-deferred (state command)
   "Return a deferred key spec for COMMAND in STATE.
 The spec is resolved later by `simulate-input-for-meep', which
@@ -628,7 +641,8 @@ to retrieve captured messages for validation."
            ;; Isolate `kill-ring' state for clipboard tests.
            (kill-ring nil)
            (kill-ring-yank-pointer nil)
-           (meep--clipboard-killring-yank-popped nil))
+           ;; Isolate register clipboard state too.
+           (register-alist nil))
 
        (switch-to-buffer buf)
        (buffer-reset-text ,initial-buffer-text)
@@ -1295,12 +1309,14 @@ for that paste alone, the stack position is untouched, so a plain yank
 afterwards shows the current item (the newest, nothing having been
 popped), not the selected one.
 
-Workflow: seed ring (cc bb aa), yank with `C-u 2' (bb), yank again, commit.
-Verifies: the second paste is cc (the current item) and the stack position
-never moved; the ring is untouched."
-  ;;   ()  ->  (bbcc)
+Workflow: seed ring (cc bb aa), yank with `C-u 2' (bb), yank again, then
+pop the whole stack.
+Verifies: the second paste and first pop are both cc, followed by bb and aa,
+so neither read-only yank consumed anything; the ring is untouched."
+  ;;   ()  ->  (bbcc)  ->  (bbcc)ccbbaa
   (let ((text-initial "()")
-        (text-expected "(bbcc)"))
+        (text-expected "(bbcc)")
+        (text-expected-after-pops "(bbcc)ccbbaa"))
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
@@ -1314,8 +1330,12 @@ never moved; the ring is untouched."
         '(:state normal :command meep-clipboard-killring-yank)
         '(:state normal :command meep-move-char-next))
       (should (equal text-expected (buffer-string)))
-      (should (equal '("cc" "bb" "aa") kill-ring))
-      (should (null meep--clipboard-killring-yank-popped)))))
+      (simulate-input-for-meep
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected-after-pops (buffer-string)))
+      (should (equal '("cc" "bb" "aa") kill-ring)))))
 
 (ert-deftest clipboard-killring-yank-arg-no-undo-fallback ()
   "With undo disabled an ARG'd yank is still a one-off selection.
@@ -1350,12 +1370,14 @@ Verifies: bb then cc (the current item) are pasted; the ring is untouched."
 The over-shooting ARG is folded into the ring up front; cached raw it
 would put the cycling session's position out of range (this was a bug).
 
-Workflow: seed ring (cc bb aa), yank with `C-u 5' (folds to bb), '1', commit.
-Verifies: the step shows aa; the read-only yank consumes nothing and leaves
-the ring untouched."
-  ;;   ()  ->  (aa)
+Workflow: seed ring (cc bb aa), yank with `C-u 5' (folds to bb), '1', commit,
+then pop the whole stack.
+Verifies: the step shows aa, then cc, bb, and aa remain poppable; the read-only
+yank consumed nothing and the ring is untouched."
+  ;;   ()  ->  (aa)  ->  (aa)ccbbaa
   (let ((text-initial "()")
-        (text-expected "(aa)"))
+        (text-expected "(aa)")
+        (text-expected-after-pops "(aa)ccbbaa"))
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
@@ -1369,8 +1391,12 @@ the ring untouched."
         "1" ; bb -> aa
         '(:state normal :command meep-move-char-next))
       (should (equal text-expected (buffer-string)))
-      (should (equal '("cc" "bb" "aa") kill-ring))
-      (should (null meep--clipboard-killring-yank-popped)))))
+      (simulate-input-for-meep
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected-after-pops (buffer-string)))
+      (should (equal '("cc" "bb" "aa") kill-ring)))))
 
 (ert-deftest clipboard-killring-yank-handoff-from-pop-cycle ()
   "A plain yank after a pop-cycling session re-pastes the cycled-to item.
@@ -1457,13 +1483,15 @@ At the head the two coincide (`arg-pops-nth' above), so only a mid-stack
 pop tells them apart: after one pop, `C-u 2' must select the 2nd *unpopped*
 item, skipping past it.
 
-Workflow: seed ring (cc bb aa), pop (cc), pop with `C-u 2' (aa), commit.
-Verifies: aa is pasted (head-relative would give bb) and consumed, joining
-cc; the skipped bb stays poppable (only the selected items are consumed);
+Workflow: seed ring (cc bb aa), pop (cc), pop with `C-u 2' (aa), commit,
+then pop twice.
+Verifies: aa is selected rather than bb, the skipped bb remains poppable,
+and the second follow-up pop is a no-op because cc and aa were consumed;
 the ring is untouched."
-  ;;   ()  ->  (ccaa)
+  ;;   ()  ->  (ccaa)  ->  (ccaa)bb
   (let ((text-initial "()")
-        (text-expected "(ccaa)"))
+        (text-expected "(ccaa)")
+        (text-expected-after-pops "(ccaa)bb"))
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
@@ -1477,8 +1505,11 @@ the ring is untouched."
         '(:state normal :command meep-clipboard-killring-yank-pop-stack)
         '(:state normal :command meep-move-char-next))
       (should (equal text-expected (buffer-string)))
-      (should (equal '("cc" "bb" "aa") kill-ring))
-      (should (equal '("aa" "cc") (mapcar #'car meep--clipboard-killring-yank-popped))))))
+      (simulate-input-for-meep
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected-after-pops (buffer-string)))
+      (should (equal '("cc" "bb" "aa") kill-ring)))))
 
 (ert-deftest clipboard-killring-yank-pop-stack-arg-when-exhausted ()
   "An explicit ARG pops from the head once the stack is exhausted.
@@ -1486,9 +1517,10 @@ the ring is untouched."
 Only the no-ARG pop fails once every item is popped; an ARG selects
 regardless, counting from the head (index 0 wraps to the newest kill).
 
-Workflow: seed ring (bb aa), pop (bb), pop (aa), pop with `C-u 1', commit.
+Workflow: seed ring (bb aa), pop (bb), pop (aa), pop with `C-u 1', commit,
+then try one more plain pop.
 Verifies: the ARG'd pop re-pastes bb (a plain pop would fail, the stack
-being exhausted) and the stack stays exhausted; the ring is untouched."
+being exhausted), and the final plain pop is a no-op; the ring is untouched."
   ;;   ()  ->  (bbaabb)
   (let ((text-initial "()")
         (text-expected "(bbaabb)"))
@@ -1505,9 +1537,10 @@ being exhausted) and the stack stays exhausted; the ring is untouched."
         '(:state normal :command meep-clipboard-killring-yank-pop-stack)
         '(:state normal :command meep-move-char-next))
       (should (equal text-expected (buffer-string)))
-      (should (equal '("bb" "aa") kill-ring))
-      ;; Every item is popped: the stack is exhausted.
-      (should (null (meep--clipboard-killring-yank-unpopped-positions))))))
+      (simulate-input-for-meep
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected (buffer-string)))
+      (should (equal '("bb" "aa") kill-ring)))))
 
 (ert-deftest clipboard-killring-yank-pop-stack-arg-negative-then-cycle ()
   "A pop with a bare `-' ARG selects like `yank', cycling still works.
@@ -1515,12 +1548,14 @@ being exhausted) and the stack stays exhausted; the ring is untouched."
 The negative index is folded into the ring up front; cached raw it would
 put the cycling session's position out of range (this was a bug).
 
-Workflow: seed ring (cc bb aa), pop with `C-u -' (folds to bb), '1', commit.
-Verifies: the step shows aa and the session leaves only it consumed (bb,
-cycled past, and the untouched cc stay poppable); the ring is untouched."
-  ;;   ()  ->  (aa)
+Workflow: seed ring (cc bb aa), pop with `C-u -' (folds to bb), '1', commit,
+then pop until exhausted.
+Verifies: the step shows aa, followed by the still-poppable cc and bb; the
+next pop is a no-op because only aa remained consumed; the ring is untouched."
+  ;;   ()  ->  (aa)  ->  (aa)ccbb
   (let ((text-initial "()")
-        (text-expected "(aa)"))
+        (text-expected "(aa)")
+        (text-expected-after-pops "(aa)ccbb"))
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
@@ -1534,8 +1569,12 @@ cycled past, and the untouched cc stay poppable); the ring is untouched."
         "1" ; bb -> aa
         '(:state normal :command meep-move-char-next))
       (should (equal text-expected (buffer-string)))
-      (should (equal '("cc" "bb" "aa") kill-ring))
-      (should (equal '("aa") (mapcar #'car meep--clipboard-killring-yank-popped))))))
+      (simulate-input-for-meep
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected-after-pops (buffer-string)))
+      (should (equal '("cc" "bb" "aa") kill-ring)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Kill-Ring Yank Numeric Cycling (Digit Argument Repeat)
@@ -1583,12 +1622,14 @@ the ring is untouched."
 
 Only popping refuses to pass the end of the ring, cycling is circular.
 
-Workflow: seed ring (cc bb aa), paste (shows cc), press '-', commit.
-Verifies: the step wraps from cc to aa which ends up consumed (only the
-finally-shown item is; cc and bb stay poppable); the ring is untouched."
-  ;;   ()  ->  (aa)
+Workflow: seed ring (cc bb aa), paste (shows cc), press '-', commit, then pop
+until exhausted.
+Verifies: the step wraps from cc to aa, then cc and bb remain poppable and the
+next pop is a no-op; the ring is untouched."
+  ;;   ()  ->  (aa)  ->  (aa)ccbb
   (let ((text-initial "()")
-        (text-expected "(aa)"))
+        (text-expected "(aa)")
+        (text-expected-after-pops "(aa)ccbb"))
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
@@ -1601,8 +1642,12 @@ finally-shown item is; cc and bb stay poppable); the ring is untouched."
         "-" ; cc -> aa (wraps).
         '(:state normal :command meep-move-char-next))
       (should (equal text-expected (buffer-string)))
-      (should (equal '("cc" "bb" "aa") kill-ring))
-      (should (equal '("aa") (mapcar #'car meep--clipboard-killring-yank-popped))))))
+      (simulate-input-for-meep
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected-after-pops (buffer-string)))
+      (should (equal '("cc" "bb" "aa") kill-ring)))))
 
 (ert-deftest clipboard-killring-yank-pop-stack-cycle-message ()
   "Each cycling step shows a 1-based \"yank N of M\" position in the echo area.
@@ -2134,13 +2179,14 @@ untouched."
 
 Only popping refuses to pass the end of the ring, cycling is circular.
 
-Workflow: seed ring (cc bb aa), paste (cc), '2' (aa, the oldest), '1'.
-Verifies: the second step wraps from aa back to cc which ends up consumed
-\(only the finally-shown item is; aa and bb stay poppable); the ring is
-untouched."
-  ;;   ()  ->  (cc)
+Workflow: seed ring (cc bb aa), paste (cc), '2' (aa, the oldest), '1', commit,
+then pop until exhausted.
+Verifies: the second step wraps from aa back to cc, then bb and aa remain
+poppable and the next pop is a no-op; the ring is untouched."
+  ;;   ()  ->  (cc)  ->  (cc)bbaa
   (let ((text-initial "()")
-        (text-expected "(cc)"))
+        (text-expected "(cc)")
+        (text-expected-after-pops "(cc)bbaa"))
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
@@ -2154,8 +2200,12 @@ untouched."
         "1" ; aa -> cc (wraps).
         '(:state normal :command meep-move-char-next))
       (should (equal text-expected (buffer-string)))
-      (should (equal '("cc" "bb" "aa") kill-ring))
-      (should (equal '("cc") (mapcar #'car meep--clipboard-killring-yank-popped))))))
+      (simulate-input-for-meep
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected-after-pops (buffer-string)))
+      (should (equal '("cc" "bb" "aa") kill-ring)))))
 
 (ert-deftest clipboard-killring-copy-drops-popped ()
   "Adding to the ring first drops the items the pop sweep stepped past.
@@ -2214,8 +2264,8 @@ the stack afresh."
 (ert-deftest clipboard-killring-yank-pop-stack-pops-across-commands ()
   "A pop consumes its item no matter what commands run before the next pop.
 
-The popped items live in `meep--clipboard-killring-yank-popped', not in the
-command history, so navigating between pops must not re-paste the same item.
+Consumption persists independently of command history, so navigating between
+pops must not re-paste the same item.
 
 Workflow: seed ring (cc bb aa), pop (cc), move around, pop again.
 Verifies: the second pop pastes bb, not cc again; the ring is untouched."
@@ -2694,25 +2744,23 @@ Verifies: error is signaled, `kill-ring' remains empty."
 (ert-deftest clipboard-cut-inactive-mark ()
   "Cut acts on a set but inactive mark, even with `mark-even-if-inactive' nil.
 The region need not be active; reading the mark directly avoids the
-`(mark-inactive)' error `region-beginning' would signal, see
-`meep--region-or-mark-bounds'."
-  (let ((text-initial "foo bar baz")
-        (text-expected " bar baz")
+`(mark-inactive)' error `region-beginning' would signal."
+  (let ((text-initial " bar baz")
         (mark-even-if-inactive nil))
     (with-meep-test text-initial
       (emacs-lisp-mode)
       (bray-mode 1)
-      ;; Set a mark at the start, move point along, and leave it inactive.
-      (goto-char (point-min))
-      (set-mark (point))
-      (goto-char (+ (point-min) 3))
-      (deactivate-mark)
+      ;; Insert mode leaves the inserted span between mark and point, inactive.
+      (simulate-input-for-meep
+        '(:state normal :command meep-insert)
+        "foo"
+        '(:state insert :command bray-state-stack-pop))
       (should-not (region-active-p))
       ;; Cut operates on the implied region rather than signalling an error.
       (simulate-input-for-meep
         '(:state normal :command meep-clipboard-killring-cut))
       (should (equal "foo" (car kill-ring)))
-      (should (equal text-expected (buffer-string))))))
+      (should (equal text-initial (buffer-string))))))
 
 (ert-deftest clipboard-only-cut-rectangle ()
   "Cut a rectangle to the system clipboard.
@@ -2808,7 +2856,6 @@ without being stored."
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
-      (setq meep--clipboard-register-current ?a)
       ;; Select columns 1..4 over all three rows.
       (simulate-input-for-meep
         '(:state normal :command meep-move-char-next)
@@ -2818,14 +2865,22 @@ without being stored."
         '(:state visual :command meep-move-char-next)
         '(:state visual :command meep-move-line-next)
         '(:state visual :command meep-move-line-next))
-      ;; Not bound in visual state, it is reached via the register transient map.
-      (meep-clipboard-register-cut)
       (should (equal 'visual (bray-state)))
+      (should (equal '("Mark set (rectangle mode)") (meep-test-messages)))
+      (meep-test-messages-clear)
+      ;; Choose register a, then cut through the register map.
+      (simulate-input-for-meep
+        '(:state visual :command meep-clipboard-register-actions)
+        "a")
+      (meep-test-messages-clear)
+      (simulate-input-for-meep
+        (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-cut))
+      (should (equal 'normal (bray-state)))
       (should (equal text-expected (buffer-string)))
       ;; Stored newline separated, with Emacs's own rectangle yank-handler.
       (should (equal "bcd\nhij\nnop" (substring-no-properties (get-register ?a))))
-      ;; Only the rectangle toggle reports, the cut itself is silent.
-      (should (equal '("Mark set (rectangle mode)") (meep-test-messages))))))
+      ;; Exiting the transient map only clears its prompt; the cut itself is silent.
+      (should (seq-every-p #'string-empty-p (meep-test-messages))))))
 
 (ert-deftest clipboard-only-copy-no-tty-clipboard ()
   "Copy to system clipboard raises error when no clipboard integration.
@@ -2901,10 +2956,55 @@ Verifies: buffer unchanged, informative message displayed."
       ;; Verify informative message was displayed.
       (should (equal '("Kill ring is empty") (meep-test-messages))))))
 
-(ert-deftest clipboard-register-yank-lines-no-region ()
-  "Register yank-lines inserts at beginning of current line.
+(ert-deftest clipboard-register-yank-no-region ()
+  "Register yank inserts at point when there is no active region.
 
-Verifies: with no active region, content is inserted at (pos-bol)."
+Workflow: cut a word into register z through the register action map, move into
+the middle of another line, then yank through the same map.
+Verifies: the register content is inserted at point, splitting the word."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "foo\n"
+          "bar\n"
+          "baz"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "foo\n"
+          "bINSERTEDar\n"
+          "baz")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Insert "INSERTED", reactivate the inserted region, choose register z,
+      ;; and cut through the register map.
+      (simulate-input-for-meep
+        '(:state normal :command meep-insert)
+        "INSERTED"
+        '(:state insert :command bray-state-stack-pop)
+        '(:state normal :command meep-region-activate-or-reverse)
+        '(:state visual :command meep-clipboard-register-actions)
+        "z"
+        (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-cut))
+      ;; Move into "bar", then yank through the register action map.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-register-actions)
+        "z"
+        (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-yank))
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest clipboard-register-yank-lines-no-region ()
+  "Register yank-lines inserts at the line start when there is no active region.
+
+Workflow: cut a whole line (including its newline) into register z through the
+register action map, move into the middle of another line, then yank it
+line-wise.
+Verifies: the line is re-inserted as its own line no matter which column point
+is on, and that the yank reports nothing."
   (let ((text-initial
          ;; format-next-line: off
          (concat
@@ -2919,20 +3019,70 @@ Verifies: with no active region, content is inserted at (pos-bol)."
           "bar\n"
           "baz")))
     (with-meep-test text-initial
-      (emacs-lisp-mode)
+      (text-mode)
       (bray-mode 1)
-      ;; Pre-load register ?a with "INSERTED\n".
-      (set-register ?a "INSERTED\n")
-      (setq meep--clipboard-register-current ?a)
-      ;; Move point to middle of "bar" line (col 1).
-      (goto-char 6)
-      (should (equal ?a (char-after)))
-      ;; Yank as lines: should insert at start of "bar" line.
+      ;; Insert "INSERTED\n", reactivate the inserted region, choose register z,
+      ;; and cut through the register map.
+      (simulate-input-for-meep
+        '(:state normal :command meep-insert)
+        "INSERTED"
+        '(:state insert :command newline)
+        '(:state insert :command bray-state-stack-pop)
+        '(:state normal :command meep-region-activate-or-reverse)
+        '(:state visual :command meep-clipboard-register-actions)
+        "z"
+        (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-cut))
+      ;; Move into "bar" before yanking to prove the command ignores the column.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-char-next))
+      ;; Discard the register map prompts so the yank alone is checked.
+      (meep-test-messages-clear)
       (simulate-input-for-meep
         '(:state normal :command meep-clipboard-register-yank-lines))
+      (should (equal 'normal (bray-state)))
       (should (equal text-expected (buffer-string)))
       ;; A yank reports nothing.
       (should (equal nil (meep-test-messages))))))
+
+(ert-deftest clipboard-register-yank-lines-no-region-no-newline ()
+  "Register yank-lines moves to the line start without changing register text.
+
+Workflow: insert and cut text without a trailing newline into register z, move
+into the middle of another line, then yank it line-wise.
+Verifies: insertion occurs at the line start and no newline is synthesized."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "foo\n"
+          "bar\n"
+          "baz"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "foo\n"
+          "INSERTEDbar\n"
+          "baz")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Insert "INSERTED", reactivate the inserted region, choose register z,
+      ;; and cut through the register map.
+      (simulate-input-for-meep
+        '(:state normal :command meep-insert)
+        "INSERTED"
+        '(:state insert :command bray-state-stack-pop)
+        '(:state normal :command meep-region-activate-or-reverse)
+        '(:state visual :command meep-clipboard-register-actions)
+        "z"
+        (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-cut))
+      ;; Move into "bar" to prove line-wise insertion ignores the column.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-register-yank-lines))
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
 
 (ert-deftest clipboard-register-yank-lines-with-region ()
   "Register yank-lines with active region replaces the region.
@@ -2943,9 +3093,16 @@ Verifies: active region is deleted and register content inserted in its place."
     (with-meep-test text-initial
       (emacs-lisp-mode)
       (bray-mode 1)
-      ;; Pre-load register ?a with "INSERTED".
-      (set-register ?a "INSERTED")
-      (setq meep--clipboard-register-current ?a)
+      ;; Insert "INSERTED", reactivate the inserted region, choose register z,
+      ;; and cut through the register map.
+      (simulate-input-for-meep
+        '(:state normal :command meep-insert)
+        "INSERTED"
+        '(:state insert :command bray-state-stack-pop)
+        '(:state normal :command meep-region-activate-or-reverse)
+        '(:state visual :command meep-clipboard-register-actions)
+        "z"
+        (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-cut))
       ;; Select "bar" via motion then activate visual region.
       (simulate-input-for-meep
         '(:state normal :command meep-move-symbol-next)

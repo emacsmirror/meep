@@ -1299,23 +1299,6 @@ The echo escapes user-interpolated `%' before `set-transient-map' reads it throu
         (should (functionp exit))
         (funcall exit)))))
 
-(ert-deftest clipboard-register-yank-impl-line-wise ()
-  "LINE-WISE selects where a no-region yank inserts.
-Non-nil moves to the line start first, nil leaves point where it is."
-  (set-register ?z "INSERTED")
-  ;; Not line-wise: inserted at point, mid-word.
-  (with-temp-buffer
-    (insert "foo\nbar\nbaz")
-    (goto-char 6)
-    (meep--clipboard-register-yank-impl ?z nil)
-    (should (equal "foo\nbINSERTEDar\nbaz" (buffer-string))))
-  ;; Line-wise: inserted at the start of the line point was on.
-  (with-temp-buffer
-    (insert "foo\nbar\nbaz")
-    (goto-char 6)
-    (meep--clipboard-register-yank-impl ?z t)
-    (should (equal "foo\nINSERTEDbar\nbaz" (buffer-string)))))
-
 (ert-deftest with-temp-trailing-newline-ensure ()
   "`meep--with-temp-trailing-newline' adds the newline only when missing.
 It is visible to BODY, removed again on exit, and BODY's value is returned."
