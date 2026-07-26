@@ -1634,7 +1634,8 @@ Move forward when ARG is positive, otherwise backwards."
       (let ((keep-looking t))
         (while keep-looking
           (let ((pos-prev (point)))
-            (backward-up-list (abs arg) nil t)
+            (ignore-error user-error
+              (backward-up-list (abs arg) nil t))
             (cond
              ;; Stop if we didn't move (reached top of buffer/structure).
              ((eq (point) pos-prev)
@@ -1715,10 +1716,13 @@ Return non-nil when point was moved."
                (save-excursion
                  (when pos-outer
                    (goto-char pos-outer))
-                 (backward-up-list arg nil t)
-                 (point))))
-          (setq result t)
-          (goto-char pos)))
+                 (when (ignore-error user-error
+                         (backward-up-list arg nil t)
+                         t)
+                   (point)))))
+          (when pos
+            (setq result t)
+            (goto-char pos))))
       result)))
 
 
@@ -1776,11 +1780,14 @@ Return non-nil when point was moved."
                (save-excursion
                  (when pos-outer
                    (goto-char pos-outer))
-                 (backward-up-list arg nil t)
-                 (forward-char 1)
-                 (point))))
-          (setq result t)
-          (goto-char pos)))
+                 (when (ignore-error user-error
+                         (backward-up-list arg nil t)
+                         t)
+                   (forward-char 1)
+                   (point)))))
+          (when pos
+            (setq result t)
+            (goto-char pos))))
       result)))
 
 (defun meep--bounds-at-point-for-comment-outer ()

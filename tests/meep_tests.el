@@ -12664,6 +12664,25 @@ Verifies: sexp-out-prev moves to start of enclosing sexp content."
       (should (equal '(1 . 1) (meep-test-point-line-column)))
       (should (equal ?o (char-after))))))
 
+(ert-deftest movement-sexp-out-next-at-top-level ()
+  "Move out of the current S-expression with no enclosing one.
+
+Stepping out used to signal `At top level' rather than stopping, so the
+no-motion check that ends the search was never reached.
+
+Workflow: from plain text with no brackets, move out of the S-expression.
+Verifies: point does not move and nothing is reported."
+  (let ((text-initial "hello world"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 6)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-by-sexp-out-next))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(1 . 5) (meep-test-point-line-column)))
+      (should (equal nil (meep-test-messages))))))
+
 (ert-deftest movement-line-non-space-beginning ()
   "Move to first non-whitespace character on line.
 
@@ -12905,6 +12924,41 @@ Verifies: matching-bracket-outer moves past the matching bracket."
 
 ;; ---------------------------------------------------------------------------
 ;; Delete: Completeness
+
+(ert-deftest movement-matching-bracket-outer-at-top-level ()
+  "Jump to the matching outer bracket with nothing to match.
+
+The fallback jumps up to the enclosing bracket, which at the top level used to
+signal `At top level' out of the command instead of doing nothing.
+
+Workflow: from plain text with no brackets, jump to the matching bracket.
+Verifies: point does not move and nothing is reported."
+  (let ((text-initial "hello world"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 6)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-matching-bracket-outer))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(1 . 5) (meep-test-point-line-column)))
+      (should (equal nil (meep-test-messages))))))
+
+(ert-deftest movement-matching-bracket-inner-at-top-level ()
+  "Jump to the matching inner bracket with nothing to match.
+
+Workflow: from plain text with no brackets, jump to the matching bracket.
+Verifies: point does not move and nothing is reported."
+  (let ((text-initial "hello world"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 6)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-matching-bracket-inner))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(1 . 5) (meep-test-point-line-column)))
+      (should (equal nil (meep-test-messages))))))
 
 (ert-deftest delete-char-next-basic ()
   "Delete single character forward.
