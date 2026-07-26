@@ -4429,13 +4429,14 @@ Each element is (key function description)."
      (function :tag "Function")
      (string :tag "Description"))))
 
-(defun meep--set-transient-map-echo (km live escaped)
+(defun meep--set-transient-map-echo (km live escaped &optional on-exit)
   "Activate KM as a transient map echoing LIVE then the `%'-escaped ESCAPED.
+ON-EXIT is called with no arguments once KM is deactivated.
 `set-transient-map' reads its message through `format-spec', so a literal `%' in
 user-interpolated text (a bound key or a symbol name) would be an invalid spec and
 error; ESCAPED is that text, with each `%' doubled.  LIVE is fixed message text
 where a `%k' key-list hint stays live for `format-spec' to expand."
-  (set-transient-map km nil nil (concat live (string-replace "%" "%%" escaped))))
+  (set-transient-map km nil on-exit (concat live (string-replace "%" "%%" escaped))))
 
 (defun meep--move-bounds-of-thing-impl (n)
   "Initiate a bounds motion, forward when N is positive."
@@ -4454,7 +4455,18 @@ where a `%k' key-list hint stays live for `format-spec' to expand."
       (format "Jump to the %s of"
               (or (and (< n 0) "beginning") "end"))
       ": %k or any other to exit\n")
-     (mapconcat #'identity info-text ", "))))
+     (mapconcat #'identity info-text ", ")
+     ;; NOTE: pairs with the prefix set above - exiting on a key outside KM must
+     ;; not leave it pending, it would apply to whichever command that key runs.
+     ;; Emacs calls this from `pre-command-hook', before the prefix is read, so
+     ;; KM's own commands have to be excluded or they lose the direction.
+     ;;
+     ;; Test the lookup with `commandp', not for non-nil: given no key sequence
+     ;; `lookup-key' answers with KM itself, which would skip the clear.
+     (when (< n 0)
+       (lambda ()
+         (unless (commandp (lookup-key km (this-command-keys-vector)))
+           (setq prefix-arg nil)))))))
 
 ;;;###autoload
 (defun meep-move-to-bounds-of-thing-beginning (arg)

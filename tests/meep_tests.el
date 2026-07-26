@@ -12797,6 +12797,46 @@ Verifies: the region is the whole line, exactly as with no count."
       (should
        (equal "  ccc  " (buffer-substring-no-properties (region-beginning) (region-end)))))))
 
+(ert-deftest movement-bounds-of-thing-exit-key-ignores-pending-count ()
+  "Exit the bounds transient map with a key the map does not bind.
+
+The map signals its direction with a pending negative prefix, which used to be
+left behind - the exiting key then ran its own command with that count, so a
+downward motion went up.
+
+Workflow: start the bounds motion towards the beginning, then press `j'.
+Verifies: `j' moves down a line, exactly as it does on its own."
+  (let ((text-initial "one\ntwo\nthree"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 5)
+      (should (equal '(2 . 0) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-to-bounds-of-thing-beginning)
+        "j")
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(3 . 0) (meep-test-point-line-column))))))
+
+(ert-deftest movement-bounds-of-thing-map-key-keeps-the-direction ()
+  "Exit the bounds transient map with a key the map binds.
+
+The pending prefix carries the direction, so clearing it must exclude the map's
+own commands or they lose it.
+
+Workflow: start the bounds motion towards the beginning, then press `l'.
+Verifies: point is at the line inner beginning, not its end."
+  (let ((text-initial "  hello world  "))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 8)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-to-bounds-of-thing-beginning)
+        "l")
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(1 . 2) (meep-test-point-line-column))))))
+
 (ert-deftest movement-matching-bracket-outer ()
   "Jump to matching bracket (outer).
 
