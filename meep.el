@@ -885,6 +885,12 @@ on point and do not use this, see `meep--surround-operate-region'."
 ;; ---------------------------------------------------------------------------
 ;; Motion: Same Syntax
 
+(defun meep--move-same-syntax-step-over-thing (thing edge-fn)
+  "Jump to the EDGE-FN (`car' or `cdr') of THING when point sits strictly inside it."
+  (when-let* ((bounds (bounds-of-thing-at-point thing)))
+    (when (and (< (car bounds) (point)) (< (point) (cdr bounds)))
+      (goto-char (funcall edge-fn bounds)))))
+
 (defun meep--move-same-syntax-impl (n skip-single skip-space or-thing)
   "Move forward over N syntax-spans, a negative argument skips backwards.
 When SKIP-SINGLE isn't nil, initial single motion isn't counted as a step for N.
@@ -913,11 +919,9 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
         (setq syn (syntax-after (1- (point))))
         (while (and (null (bobp)) (equal syn (syntax-after (1- (point)))))
           (forward-char -1)
-          ;; Optionally step over blocks.
+          ;; Optionally step over a block, to its start (the direction of travel).
           (when or-thing
-            (let ((bounds (bounds-of-thing-at-point or-thing)))
-              (when (and bounds (>= (cdr bounds) (1+ (point))) (> (point) (car bounds)))
-                (goto-char (car bounds)))))
+            (meep--move-same-syntax-step-over-thing or-thing #'car))
 
           (syntax-ppss))
 
@@ -944,11 +948,9 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
         (setq syn (syntax-after (point)))
         (while (and (null (eobp)) (equal syn (syntax-after (point))))
           (forward-char 1)
-          ;; Optionally step over blocks.
+          ;; Optionally step over a block, to its end (the direction of travel).
           (when or-thing
-            (let ((bounds (bounds-of-thing-at-point or-thing)))
-              (when (and bounds (<= (car bounds) (1- (point))) (< (point) (cdr bounds)))
-                (goto-char (cdr bounds)))))
+            (meep--move-same-syntax-step-over-thing or-thing #'cdr))
           (syntax-ppss))
 
         (when skip-single
