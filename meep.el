@@ -8555,6 +8555,21 @@ Dispatches to motion-specific wrappers that normalize direction and cursor."
             (t
              ,result))))))))
 
+(defun meep--transpose-swap-text (range-a range-b)
+  "Swap the buffer text of the two disjoint spans RANGE-A & RANGE-B."
+  ;; NOTE: replace the later-starting span first so the earlier span's positions
+  ;; stay valid.  Each span's endpoints pass through unchanged - a reversed span
+  ;; disables `meep--replace-in-region's prefix/suffix trim, which the callers rely on.
+  (let ((str-a (buffer-substring-no-properties (car range-a) (cdr range-a)))
+        (str-b (buffer-substring-no-properties (car range-b) (cdr range-b))))
+    (cond
+     ((< (min (car range-a) (cdr range-a)) (min (car range-b) (cdr range-b)))
+      (meep--replace-in-region str-a (car range-b) (cdr range-b))
+      (meep--replace-in-region str-b (car range-a) (cdr range-a)))
+     (t
+      (meep--replace-in-region str-b (car range-a) (cdr range-a))
+      (meep--replace-in-region str-a (car range-b) (cdr range-b))))))
+
 (defun meep--transpose-any-motion (last-motion-info)
   "Transpose based on any motion using LAST-MOTION-INFO.
 Returns t if transpose succeeded, \\='transpose-abort if at boundary, nil if not applicable."
@@ -8614,10 +8629,7 @@ Returns t if transpose succeeded, \\='transpose-abort if at boundary, nil if not
         ;; So clamp it by the previous bounds.
         (setcar range-b (max (point) (cdr range-a)))
 
-        (let ((str-a (buffer-substring-no-properties (car range-a) (cdr range-a)))
-              (str-b (buffer-substring-no-properties (car range-b) (cdr range-b))))
-          (meep--replace-in-region str-a (car range-b) (cdr range-b))
-          (meep--replace-in-region str-b (car range-a) (cdr range-a)))
+        (meep--transpose-swap-text range-a range-b)
 
         (goto-char (cdr range-b))
         (setq deactivate-mark nil)
@@ -8632,10 +8644,7 @@ Returns t if transpose succeeded, \\='transpose-abort if at boundary, nil if not
         (setq range-a (cons (cdr range-a) (car range-a)))
         (setq range-b (cons (cdr range-b) (car range-b)))
 
-        (let ((str-a (buffer-substring-no-properties (car range-a) (cdr range-a)))
-              (str-b (buffer-substring-no-properties (car range-b) (cdr range-b))))
-          (meep--replace-in-region str-b (car range-a) (cdr range-a))
-          (meep--replace-in-region str-a (car range-b) (cdr range-b)))
+        (meep--transpose-swap-text range-a range-b)
 
         (goto-char (car range-b))
         (setq deactivate-mark nil)
