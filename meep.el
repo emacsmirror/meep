@@ -3287,7 +3287,7 @@ When INNER is non-nil, mark the inner bounds."
           (meep--region-mark-bounds-to-region bounds is-forward))
         t)))))
 
-(defun meep-region-mark-bounds-of-char-contextual-impl (n inner)
+(defun meep--region-mark-bounds-of-char-contextual-impl (n inner)
   "Mark region bounds contextually, N times.
 
 When INNER is non-nil, mark the inner bounds."
@@ -3390,7 +3390,7 @@ A negative ARG positions point at the end of the region.
 
 Character pairs are detected using: `meep-match-bounds-of-char-contextual'."
   (interactive "p")
-  (meep-region-mark-bounds-of-char-contextual-impl arg t))
+  (meep--region-mark-bounds-of-char-contextual-impl arg t))
 
 ;;;###autoload
 (defun meep-region-mark-bounds-of-char-contextual-outer (arg)
@@ -3399,7 +3399,7 @@ A negative ARG positions point at the end of the region.
 
 Bounds are detected using: `meep-match-bounds-of-char-contextual'."
   (interactive "p")
-  (meep-region-mark-bounds-of-char-contextual-impl arg nil))
+  (meep--region-mark-bounds-of-char-contextual-impl arg nil))
 
 ;; ---------------------------------------------------------------------------
 ;; Implementation: Bounds and Motion
@@ -6738,7 +6738,7 @@ per layer.  Return nil when none enclose ANCHOR within CLAMP."
                                                      match-at-start
                                                      paragraph-fallback)))
         ;; Keep the innermost across pair types; the recognized pairs are ordered
-        ;; multi-character-first (`meep-region-mark-bounds-of-char-contextual-impl'
+        ;; multi-character-first (`meep--region-mark-bounds-of-char-contextual-impl'
         ;; runs the same reduction with a one-sided clamp).
         (when (meep--bounds-supersedes-p bounds-test result result-pair)
           (setq result bounds-test)
