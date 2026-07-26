@@ -4327,6 +4327,18 @@ When INNER is non-nil, move to the inner bound."
   (meep-move-to-bounds-of-comment arg t))
 
 ;;;###autoload
+(defun meep-move-to-bounds-of-comment-block (arg &optional inner)
+  "Move to the comment block start/end (start when ARG is negative).
+When INNER is non-nil, move to the inner bound."
+  (interactive "^p")
+  (meep--move-to-bounds-body comment-block arg inner))
+;;;###autoload
+(defun meep-move-to-bounds-of-comment-block-inner (arg)
+  "Move to the comment block inner start/end (start when ARG is negative)."
+  (interactive "^p")
+  (meep-move-to-bounds-of-comment-block arg t))
+
+;;;###autoload
 (defun meep-move-to-bounds-of-string (arg &optional inner)
   "Move to the string start/end (start when ARG is negative).
 When INNER is non-nil, move to the inner bound."
