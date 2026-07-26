@@ -7298,7 +7298,7 @@ See `meep--surround-delete-impl' on the recognized-pair search."
 ;; transiently (`meep--surround-set-keymap'), so it always reflects the current
 ;; buffer and the echo leads with the verb's prompt.  Every key in the map routes
 ;; to the verb's named event command (see `meep--surround-event-command'), which
-;; resolves the invoking key with `meep--surround-from-event'; the verb lives in
+;; resolves the invoking key with `meep--surround-action-from-event'; the verb lives in
 ;; the binding, so one command resolves any delimiter (alias, literal,
 ;; multi-character, or `RET' to prompt).  The one map serves a key-bound verb and a
 ;; direct `M-x' call alike - there is no prefix keymap to dispatch through.
@@ -7396,7 +7396,7 @@ non-nil return."
       (message "Surround cancelled")
       nil))))
 
-(defun meep--surround-from-event (count line-wise action)
+(defun meep--surround-action-from-event (count line-wise action)
   "Apply ACTION with the delimiter named by `last-command-event'.
 COUNT is the nesting depth and LINE-WISE selects per-line operation.  ACTION is
 `add' to wrap with the delimiter, `replace' to replace the surrounding pair with
@@ -7428,7 +7428,7 @@ ACTION is `add', `replace', `delete', or `region-activate'.  LINE-WISE selects t
 per-line variant, except for `region-activate' which is single-region and has none.
 One named command per verb / line-wise pair, so `meep--surround-make-delimiter-map'
 carries the verb in the binding it chooses; the command resolves its own invoking
-key via `meep--surround-from-event'."
+key via `meep--surround-action-from-event'."
   (declare (important-return-value t))
   (cond
    ((eq action 'add)
@@ -7481,7 +7481,7 @@ Each `meep-surround-alist' alias the buffer's `meep-surround-pairs' defines is
 bound (carried as a `menu-item' labelled with its symbol, so `which-key' lists
 `bold' / `italic' rather than the shared command name), `RET' / `<return>' for an
 arbitrary pair, and a `[t]' catch-all for any other key as a literal delimiter.
-CMD resolves the invoking key with `meep--surround-from-event' (the verb event
+CMD resolves the invoking key with `meep--surround-action-from-event' (the verb event
 commands) or wraps it (the by-type replace).  Built fresh on each use so it always
 reflects the current buffer's configuration; shared by the verb-first verbs (via
 `meep--surround-read-delimiter-verb') and the by-type replace map."
@@ -7529,27 +7529,27 @@ The line-wise variant of `meep-surround-add'."
 A direct shortcut for `meep-surround-add' followed by that delimiter: bind a
 delimiter key to this and it wraps with that delimiter immediately, with no
 separate delimiter read.  The delimiter is `last-command-event', resolved by
-`meep--surround-from-event'; the target is the active or implied region, as for
+`meep--surround-action-from-event'; the target is the active or implied region, as for
 `meep-surround-add'."
   (interactive "*p")
-  (meep--surround-from-event arg nil 'add))
+  (meep--surround-action-from-event arg nil 'add))
 
 ;;;###autoload
 (defun meep-surround-add-lines-event (arg)
   "Surround each line's content with the delimiter named by the invoking key.
 Wrap ARG times.  The line-wise variant of `meep-surround-add-event'."
   (interactive "*p")
-  (meep--surround-from-event arg t 'add))
+  (meep--surround-action-from-event arg t 'add))
 
 ;;;###autoload
 (defun meep-surround-replace-event (arg)
   "Replace the surrounding pair with the delimiter named by the invoking key.
 Replace ARG times (the nesting depth).  The replace counterpart of
 `meep-surround-add-event': the delimiter is `last-command-event', resolved by
-`meep--surround-from-event'.  Routed to by the run-time delimiter keymap, and
+`meep--surround-action-from-event'.  Routed to by the run-time delimiter keymap, and
 bindable directly to a delimiter key."
   (interactive "*p")
-  (meep--surround-from-event arg nil 'replace))
+  (meep--surround-action-from-event arg nil 'replace))
 
 ;;;###autoload
 (defun meep-surround-replace-lines-event (arg)
@@ -7557,24 +7557,24 @@ bindable directly to a delimiter key."
 Replace ARG times (the nesting depth).  The line-wise variant of
 `meep-surround-replace-event'."
   (interactive "*p")
-  (meep--surround-from-event arg t 'replace))
+  (meep--surround-action-from-event arg t 'replace))
 
 ;;;###autoload
 (defun meep-surround-delete-event (arg)
   "Delete the surrounding pair of the type named by the invoking key, ARG times.
 The by-type delete counterpart of `meep-surround-add-event': the delimiter is
-`last-command-event', resolved by `meep--surround-from-event', and names which
+`last-command-event', resolved by `meep--surround-action-from-event', and names which
 pair type to strip - a closer pair of another type is skipped.  To strip the
 nearest pair of any type with no read, use `meep-surround-delete-at-point'."
   (interactive "*p")
-  (meep--surround-from-event arg nil 'delete))
+  (meep--surround-action-from-event arg nil 'delete))
 
 ;;;###autoload
 (defun meep-surround-delete-lines-event (arg)
   "Delete each line's surrounding pair of the type named by the invoking key.
 Delete ARG times.  The line-wise variant of `meep-surround-delete-event'."
   (interactive "*p")
-  (meep--surround-from-event arg t 'delete))
+  (meep--surround-action-from-event arg t 'delete))
 
 ;;;###autoload
 (defun meep-surround-replace ()
@@ -7633,12 +7633,12 @@ surrounding pair are skipped.  ARG peels that many nested layers per line."
 (defun meep-surround-region-activate-event (arg)
   "Select the content of the surrounding pair of the type named by the invoking key.
 The region-activate counterpart of `meep-surround-delete-event': the delimiter is
-`last-command-event', resolved by `meep--surround-from-event', and names which pair
+`last-command-event', resolved by `meep--surround-action-from-event', and names which pair
 type to select - a closer pair of another type is skipped.  ARG is the nesting
 depth.  To select the nearest pair of any type with no read, use
 `meep-surround-region-activate-at-point'."
   (interactive "p")
-  (meep--surround-from-event arg nil 'region-activate))
+  (meep--surround-action-from-event arg nil 'region-activate))
 
 ;;;###autoload
 (defun meep-surround-region-activate ()
