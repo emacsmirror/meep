@@ -3008,7 +3008,7 @@ encloses BOUNDS-INIT within BOUNDS-LIMIT."
           (let* ((open-beg (pop opens))
                  (close-end
                   (and (eq (char-after open-beg) open-char)
-                       (ignore-errors
+                       (ignore-error scan-error
                          (scan-sexps open-beg 1)))))
             ;; A pair qualifies when it lies within the clamp and contains
             ;; BOUNDS-INIT; candidates run innermost-first, so the first to qualify
@@ -3673,7 +3673,7 @@ that bracket (one per matching CONFIG entry, tried as fallbacks)."
           ;; point inside the bracket, and the at-point case has point *on* the
           ;; open (resolving to the first list item downstream).
           (when-let* ((close-end
-                       (ignore-errors
+                       (ignore-error scan-error
                          (scan-sexps open-beg 1))))
             (let ((open-char (char-after open-beg)))
               (cons
@@ -3718,7 +3718,7 @@ bracket, string or comment is skipped."
              ;; sub-expression so its interior separators are never considered.
              ((and open (not (eql open list-open)))
               (when-let* ((close
-                           (ignore-errors
+                           (ignore-error scan-error
                              (scan-sexps open 1))))
                 (goto-char (min close end))))
              ;; A real separator: at the list level (not in a string/comment),
