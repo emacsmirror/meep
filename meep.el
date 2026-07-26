@@ -1035,7 +1035,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
 
 ;;;###autoload
 (defun meep-move-same-syntax-and-space-next (arg)
-  "Move to the end of the next syntax-and-space, ARG times."
+  "Move to the beginning of the next syntax-and-space, ARG times."
   (interactive "^p")
   (cond
    ((< arg 0)
@@ -3275,7 +3275,8 @@ When IS-FORWARD is non-nil, point is after the mark."
     (goto-char (car bounds)))))
 
 (defun meep--region-mark-ch-pair-from-char (ch)
-  "Return a cons cell of CH converted to a string."
+  "Return the delimiter pair `(OPEN . CLOSE)' for CH.
+CLOSE is CH's symmetrical partner, or OPEN itself when it has none."
   (declare (important-return-value t))
   (let ((ch-str (make-string 1 ch)))
     (cons ch-str (or (meep--symmetrical-char-other-any ch-str) ch-str))))
@@ -5765,7 +5766,7 @@ see `meep-clipboard-killring-yank-pop-stack', which cycles the paste."
 
 ;;;###autoload
 (defun meep-register-jump-to (arg)
-  "Jump to a register or execute a macro stored in a register, ARG times."
+  "Jump to a register, or run a macro stored in a register ARG times."
   (interactive "p")
   (let* ((reg (register-read-with-preview "Use register: "))
          (val (get-register reg)))
