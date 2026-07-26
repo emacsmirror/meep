@@ -1863,7 +1863,11 @@ Return non-nil when point was moved."
       (when (<= start pos-orig)
         (save-excursion
           (goto-char start)
-          (forward-sexp)
+          (condition-case _
+              (forward-sexp)
+            ;; An unterminated string runs to the buffer end, as an un-terminated comment does.
+            (scan-error
+             (goto-char (point-max))))
           (when (<= pos-orig (point))
             (cons start (point))))))))
 

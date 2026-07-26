@@ -12837,6 +12837,45 @@ Verifies: point is at the line inner beginning, not its end."
       (should (equal text-initial (buffer-string)))
       (should (equal '(1 . 2) (meep-test-point-line-column))))))
 
+(ert-deftest movement-bounds-of-string-unterminated ()
+  "Jump to the bounds of a string that has no closing quote.
+
+The bounds used to be scanned with a bare `forward-sexp', so the missing closer
+raised a scan error out of the command instead of moving.
+
+Workflow: from inside the unterminated string, jump to the end of the string.
+Verifies: point is at the buffer end, the command completes without signaling."
+  (let ((text-initial "code \"abc"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: code "abc
+      ;;                ^
+      (goto-char 8)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-to-bounds-of-thing-end)
+        "S")
+      (should (equal text-initial (buffer-string)))
+      (should (equal (point-max) (point))))))
+
+(ert-deftest movement-bounds-of-string-terminated ()
+  "Jump to the bounds of a string that has a closing quote.
+
+Workflow: from inside the string, jump to the end of the string.
+Verifies: point is after the closing quote, not at the buffer end."
+  (let ((text-initial "code \"abc\" tail"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: code "abc" tail
+      ;;                ^
+      (goto-char 8)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-to-bounds-of-thing-end)
+        "S")
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(1 . 10) (meep-test-point-line-column))))))
+
 (ert-deftest movement-matching-bracket-outer ()
   "Jump to matching bracket (outer).
 
