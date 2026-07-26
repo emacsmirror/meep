@@ -2930,7 +2930,9 @@ Verifies: with no active region, content is inserted at (pos-bol)."
       ;; Yank as lines: should insert at start of "bar" line.
       (simulate-input-for-meep
         '(:state normal :command meep-clipboard-register-yank-lines))
-      (should (equal text-expected (buffer-string))))))
+      (should (equal text-expected (buffer-string)))
+      ;; A yank reports nothing.
+      (should (equal nil (meep-test-messages))))))
 
 (ert-deftest clipboard-register-yank-lines-with-region ()
   "Register yank-lines with active region replaces the region.

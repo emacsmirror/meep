@@ -10058,7 +10058,7 @@ When LINE-WISE is non-nil and there is no region, insert at the line start."
     (goto-char (pos-bol))))
 
   (let ((pos-init (point)))
-    (insert-register reg t)
+    (register-val-insert (get-register reg))
     (meep--set-marker pos-init)))
 
 
