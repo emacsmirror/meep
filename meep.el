@@ -2410,7 +2410,7 @@ IS-TILL when non-nil, stop just before the character."
   (let* ((case-fold-search nil)
          (ch-str
           (cond
-           ((eq ch 13)
+           ((eq ch ?\r) ; RET.
             "\n")
            (t
             (char-to-string ch))))
@@ -3391,7 +3391,7 @@ finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
   (interactive "cMark inner char:\np")
   ;; NOTE: we could add useful features with other characters.
   (cond
-   ((eq ch 13) ; RET.
+   ((eq ch ?\r) ; RET.
     (meep-region-mark-bounds-of-char-contextual-inner arg))
    (t
     (meep--char-is-ok-or-error "Mark inner" ch)
@@ -3407,7 +3407,7 @@ finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
   (interactive "cMark outer char:\np")
   ;; NOTE: we could add useful features with other characters.
   (cond
-   ((eq ch 13) ; RET.
+   ((eq ch ?\r) ; RET.
     (meep-region-mark-bounds-of-char-contextual-outer arg))
    (t
     (meep--char-is-ok-or-error "Mark outer" ch)
