@@ -7468,8 +7468,10 @@ that pair instead of editing it.  The delimiter is resolved by
         (meep--surround-region-activate-impl count (list pair)))
        ((eq action 'replace)
         (meep--surround-replace-impl pair count line-wise))
+       ((eq action 'add)
+        (meep--surround-add-impl (car pair) (cdr pair) count line-wise))
        (t
-        (meep--surround-add-impl (car pair) (cdr pair) count line-wise))))))
+        (meep--assert-unreachable))))))
 
 (defun meep--surround-event-command (action line-wise)
   "Return the named event command applying ACTION.
@@ -7495,12 +7497,14 @@ key via `meep--surround-action-from-event'."
    ((eq action 'region-activate)
     ;; Single-region, so no line-wise variant.
     #'meep-surround-region-activate-event)
-   (t
+   ((eq action 'delete)
     (cond
      (line-wise
       #'meep-surround-delete-lines-event)
      (t
-      #'meep-surround-delete-event)))))
+      #'meep-surround-delete-event)))
+   (t
+    (meep--assert-unreachable))))
 
 (defun meep--surround-each-alias (config fn)
   "Call FN with (KEY SYMBOL) for each `meep-surround-alist' alias CONFIG defines.
