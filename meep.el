@@ -350,6 +350,29 @@ starts here the state is taken from just past it, see
           (setq state (syntax-ppss)))))
     state))
 
+;; Comment syntax classes, derived from Emacs's own `string-to-syntax' so the
+;; class numbers are never spelled out (see `modify-syntax-entry').  Each is a
+;; fixed enum value in Emacs, invariant across syntax tables, modes & buffers -
+;; only which characters carry a class is table-dependent, not the class number.
+;; The class of a comment-start, comment-end & generic-comment-fence character.
+(defconst meep--syntax-class-comment-start (syntax-class (string-to-syntax "<")))
+(defconst meep--syntax-class-comment-end (syntax-class (string-to-syntax ">")))
+(defconst meep--syntax-class-comment-generic (syntax-class (string-to-syntax "!")))
+
+;; Mask selecting the class from a raw syntax code, its flags sitting above it.
+(defconst meep--syntax-class-mask #xffff)
+
+;; Comment-sequence flag bits, derived like the classes above (whitespace is
+;; class 0, so a lone flag over it is the flag bit alone).  Flags `1' & `2' mark
+;; the two chars of a comment opener, `3' & `4' its closer, `b' & `c' the
+;; newline that ends comment styles B & C (see `modify-syntax-entry').
+(defconst meep--syntax-flag-comment-start-1st (car (string-to-syntax "- 1")))
+(defconst meep--syntax-flag-comment-start-2nd (car (string-to-syntax "- 2")))
+(defconst meep--syntax-flag-comment-end-1st (car (string-to-syntax "- 3")))
+(defconst meep--syntax-flag-comment-end-2nd (car (string-to-syntax "- 4")))
+(defconst meep--syntax-flag-comment-style-b (car (string-to-syntax "- b")))
+(defconst meep--syntax-flag-comment-style-c (car (string-to-syntax "- c")))
+
 (defun meep--syntax-comment-delim-pair-p (pos flag-first flag-second)
   "Return non-nil when the chars at POS & POS+1 form a two-char comment delimiter.
 FLAG-FIRST & FLAG-SECOND are the syntax flag bits each character must
@@ -365,14 +388,14 @@ have (the `/*' & `*/' of a C block comment)."
 (defun meep--syntax-comment-opener-pair-p (pos)
   "Return non-nil when the chars at POS & POS+1 open a two-char comment."
   (declare (important-return-value t))
-  ;; Syntax flags `1' & `2'.
-  (meep--syntax-comment-delim-pair-p pos (ash 1 16) (ash 1 17)))
+  (meep--syntax-comment-delim-pair-p
+   pos meep--syntax-flag-comment-start-1st meep--syntax-flag-comment-start-2nd))
 
 (defun meep--syntax-comment-closer-pair-p (pos)
   "Return non-nil when the chars at POS & POS+1 close a two-char comment."
   (declare (important-return-value t))
-  ;; Syntax flags `3' & `4'.
-  (meep--syntax-comment-delim-pair-p pos (ash 1 18) (ash 1 19)))
+  (meep--syntax-comment-delim-pair-p
+   pos meep--syntax-flag-comment-end-1st meep--syntax-flag-comment-end-2nd))
 
 (defun meep--syntax-comment-closed-by-newline-p (state)
   "Return non-nil when the comment STATE parsed is ended by a newline.
@@ -397,9 +420,9 @@ anything."
            (t
             syn))))
     (and (integerp code)
-         (eq (logand code 65535) 12)
-         (let ((flag-b (not (zerop (logand code (ash 1 21)))))
-               (flag-c (not (zerop (logand code (ash 1 23)))))
+         (eq (logand code meep--syntax-class-mask) meep--syntax-class-comment-end)
+         (let ((flag-b (not (zerop (logand code meep--syntax-flag-comment-style-b))))
+               (flag-c (not (zerop (logand code meep--syntax-flag-comment-style-c))))
                (style (ppss-comment-style state)))
            (cond
             ;; Styles `b' & `c' each need the newline to name them.
@@ -422,7 +445,9 @@ anything."
    ((meep--syntax-comment-opener-pair-p beg)
     (+ beg 2))
    ;; Comment-start or generic-fence class: a single-char opener.
-   ((memq (syntax-class (syntax-after beg)) '(11 14))
+   ((memq
+     (syntax-class (syntax-after beg))
+     (list meep--syntax-class-comment-start meep--syntax-class-comment-generic))
     (1+ beg))))
 
 (defun meep--comment-inner-end-from-syntax (beg end)
@@ -439,9 +464,9 @@ BEG bounds the search so the closer can never precede the comment."
    ((and (< beg end)
          (let ((class (syntax-class (syntax-after (1- end)))))
            (cond
-            ((eq class 14)
+            ((eq class meep--syntax-class-comment-generic)
              t)
-            ((eq class 12)
+            ((eq class meep--syntax-class-comment-end)
              ;; A printing character whose comment-end class comes from a
              ;; `syntax-table' text property while the mode's own table
              ;; classes it otherwise is the comment's *content*, not its
@@ -454,7 +479,8 @@ BEG bounds the search so the closer can never precede the comment."
              ;; comment).
              (let ((ch (char-after (1- end))))
                (or (memq ch '(?\n ?\r ?\f ?\s ?\t))
-                   (eq (syntax-class (aref (syntax-table) ch)) 12)))))))
+                   (eq
+                    (syntax-class (aref (syntax-table) ch)) meep--syntax-class-comment-end)))))))
     (1- end))))
 
 (defun meep--comment-inner-bounds-from-syntax (beg end)
@@ -2191,7 +2217,8 @@ they passed in.  Nil means the delimiters cross irreconcilably."
             ;; Both run extensions apply to a single-char opener only.
             (when (eq beg-delim (1+ beg))
               (while (and (< (point) end)
-                          (eq (syntax-class (syntax-after (point))) 11)
+                          (eq
+                           (syntax-class (syntax-after (point))) meep--syntax-class-comment-start)
                           (not (eq (char-after) (char-before))))
                 (forward-char 1))
               (when meep-move-comment-skip-repeated
