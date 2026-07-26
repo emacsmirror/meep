@@ -10257,7 +10257,7 @@ re-feeds for the normal dispatcher doesn't leak into the keypad's next
                    ((symbolp v)
                     (puthash k (cons v (gethash k map-fwd)) map-fwd)
                     (puthash v (cons k (gethash v map-rev)) map-rev))
-                   ((and (vectorp v) (eq 1 (length v)))
+                   ((and (vectorp v) (length= v 1))
                     (let ((i (aref v 0)))
                       (when (integerp i)
                         (puthash k (cons i (gethash k map-fwd)) map-fwd)
