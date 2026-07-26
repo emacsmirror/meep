@@ -321,10 +321,10 @@ Return t when point was moved to the comment start."
                 (while (< pos-test end)
                   (let ((state-test (syntax-ppss pos-test)))
                     (cond
-                     ((nth 4 state-test)
+                     ((ppss-comment-depth state-test)
                       ;; Very likely, just check the initial position
                       ;; is in the bounds of the parsed syntax.
-                      (when-let* ((beg-test (nth 8 state-test)))
+                      (when-let* ((beg-test (ppss-comment-or-string-start state-test)))
                         (when (<= pos-init beg-test)
                           (setq pos-found pos-test)))
                       (setq pos-test end))
@@ -344,7 +344,7 @@ starts here the state is taken from just past it, see
 `meep--syntax-skip-to-comment-start'."
   (declare (important-return-value t))
   (let ((state (syntax-ppss)))
-    (unless (nth 4 state)
+    (unless (ppss-comment-depth state)
       (save-excursion
         (when (meep--syntax-skip-to-comment-start)
           (setq state (syntax-ppss)))))
@@ -400,7 +400,7 @@ anything."
          (eq (logand code 65535) 12)
          (let ((flag-b (not (zerop (logand code (ash 1 21)))))
                (flag-c (not (zerop (logand code (ash 1 23)))))
-               (style (nth 7 state)))
+               (style (ppss-comment-style state)))
            (cond
             ;; Styles `b' & `c' each need the newline to name them.
             ((eq style 1)
@@ -483,14 +483,14 @@ been fully scanned, see `meep--syntax-skip-to-comment-start'."
     ;; `syntax-ppss' & `parse-partial-sexp' move point.
     (save-excursion
       (let ((state (syntax-ppss pos)))
-        (when-let* ((beg (and (nth 4 state) (nth 8 state))))
+        (when-let* ((beg (and (ppss-comment-depth state) (ppss-comment-or-string-start state))))
           ;; Scan to the comment's end with a `syntax-table' stop which halts
           ;; exactly after the ender.  While it would seem correct to use
           ;; `forward-comment' from BEG, in practice it can overshoot -
           ;; `c-ts-mode' (Emacs 32) includes the newline after `*/'.
           (let ((state-end (parse-partial-sexp pos (point-max) nil nil state 'syntax-table)))
             ;; Still in the comment at `point-max': unterminated.
-            (unless (nth 4 state-end)
+            (unless (ppss-comment-depth state-end)
               (setq result (meep--comment-inner-bounds-from-syntax beg (point))))))))
     result))
 
@@ -1233,8 +1233,8 @@ Return t when stepping out of string or comment bounds."
   (let ((state (syntax-ppss))
         (changed nil))
     (cond
-     ((nth 3 state) ; String.
-      (when-let* ((beg (nth 8 state)))
+     ((ppss-string-terminator state) ; String.
+      (when-let* ((beg (ppss-comment-or-string-start state)))
         (cond
          ((eq dir -1)
           (goto-char beg)
@@ -1250,8 +1250,8 @@ Return t when stepping out of string or comment bounds."
             (when pos-next
               (goto-char pos-next)
               (setq changed t)))))))
-     ((nth 4 state) ; Comment.
-      (when-let* ((beg (nth 8 state)))
+     ((ppss-comment-depth state) ; Comment.
+      (when-let* ((beg (ppss-comment-or-string-start state)))
         (cond
          ((eq dir -1)
           (goto-char beg)
@@ -1692,7 +1692,7 @@ Return non-nil when point was moved."
           (arg 1)
           (pos-orig (point))
           ;; Jump to the start of the string to prevent failure to jump out of it.
-          (pos-outer (nth 8 (syntax-ppss))))
+          (pos-outer (ppss-comment-or-string-start (syntax-ppss))))
       (cond
        ((meep--is-point-before-bracket-open nil)
         (let ((pos
@@ -1752,7 +1752,7 @@ Return non-nil when point was moved."
           (arg 1)
           (pos-orig (point))
           ;; Jump to the start of the string to prevent failure to jump out of it.
-          (pos-outer (nth 8 (syntax-ppss))))
+          (pos-outer (ppss-comment-or-string-start (syntax-ppss))))
       (cond
        ((meep--is-point-after-bracket-open nil)
         (let ((pos
@@ -1796,7 +1796,7 @@ Return non-nil when point was moved."
   "Return the outer bounds for the comment at point or nil when not found."
   (declare (important-return-value t))
   (let ((state (meep--syntax-ppss-skip-comment-start)))
-    (unless (nth 4 state)
+    (unless (ppss-comment-depth state)
       ;; Don't step back onto the previous line as it causes
       ;; syntax with single line comments to consider the blank
       ;; line after a comment to be a comment.
@@ -1804,12 +1804,12 @@ Return non-nil when point was moved."
         (save-excursion
           (forward-char -1)
           (let ((state-test (syntax-ppss)))
-            (when (nth 4 state-test)
+            (when (ppss-comment-depth state-test)
               (setq state state-test))))))
 
-    (when (nth 4 state)
+    (when (ppss-comment-depth state)
       (let ((pos-orig (point))
-            (beg (nth 8 state)))
+            (beg (ppss-comment-or-string-start state)))
         (when (and beg (<= beg pos-orig))
           (save-excursion
             (goto-char beg)
@@ -1843,7 +1843,8 @@ Return non-nil when point was moved."
             ;; serve.
             (while (and (< pos-orig (point))
                         (memq (char-before) '(?\n ?\r ?\f))
-                        (or (eq (char-before) ?\r) (null (nth 4 (syntax-ppss (point))))))
+                        (or (eq (char-before) ?\r)
+                            (null (ppss-comment-depth (syntax-ppss (point))))))
               (forward-char -1))
             ;; It's possible a comment range is *before* the point.
             ;; Typically when the point is on the next line.
@@ -1857,7 +1858,7 @@ Return non-nil when point was moved."
 STATE is a `syntax-ppss' result; nil is returned when it is not in a string
 \(a comment's `nth 8' is excluded)."
   (declare (important-return-value t))
-  (and (null (nth 4 state)) (nth 8 state)))
+  (and (null (ppss-comment-depth state)) (ppss-comment-or-string-start state)))
 
 (defun meep--bounds-at-point-for-string-outer ()
   "Return the outer bounds for the string at point or nil when not found."
@@ -2209,7 +2210,7 @@ they passed in.  Nil means the delimiters cross irreconcilably."
            ;; sources describe the mode's *block* closer, so without this they
            ;; take the `*/' ending the text of `// x = 1; /* legacy */' for
            ;; the comment's own & amputate it from the content.
-           ((save-excursion (nth 4 (syntax-ppss end)))
+           ((save-excursion (ppss-comment-depth (syntax-ppss end)))
             end)
            (t
             (or (meep--comment-inner-end-resolve beg end) end)))))
@@ -2946,9 +2947,9 @@ is the nearest.  When AT-POS is non-nil and POS is outside a string or comment
 innermost candidate (cursor-on-open).  Callers match the open character and
 resolve the matching close themselves (e.g. with `scan-sexps')."
   (declare (important-return-value t))
-  (let ((opens (reverse (nth 9 ppss))))
+  (let ((opens (reverse (ppss-open-parens ppss))))
     (cond
-     ((and at-pos (not (nth 8 ppss)))
+     ((and at-pos (not (ppss-comment-or-string-start ppss)))
       (cons pos opens))
      (t
       opens))))
@@ -3570,7 +3571,9 @@ carried point into a line comment's body, point is dropped to the comment start.
          (comment-beg
           (and (< dir 0)
                (let ((state (syntax-ppss pos)))
-                 (and (nth 4 state) (not (nth 3 state)) (nth 8 state))))))
+                 (and (ppss-comment-depth state)
+                      (not (ppss-string-terminator state))
+                      (ppss-comment-or-string-start state))))))
     (cond
      (comment-beg
       (goto-char (max comment-beg limit)))
@@ -3630,8 +3633,11 @@ that bracket (one per matching CONFIG entry, tried as fallbacks)."
              ;; *on* an open is not yet on the stack, so fall back to the char at
              ;; point (unless point is in a string or comment).
              (open-beg
-              (or (seq-find (lambda (pos) (memq (char-after pos) opens)) (reverse (nth 9 ppss)))
-                  (and (not (nth 8 ppss)) (memq (char-after) opens) (point)))))
+              (or (seq-find
+                   (lambda (pos) (memq (char-after pos) opens)) (reverse (ppss-open-parens ppss)))
+                  (and (not (ppss-comment-or-string-start ppss))
+                       (memq (char-after) opens)
+                       (point)))))
         (when open-beg
           ;; `scan-sexps' jumps to just past the matching close (nil/error when
           ;; unbalanced).  No containment check is needed: the stack case has
@@ -3677,7 +3683,7 @@ bracket, string or comment is skipped."
           (let* ((mbeg (match-beginning 0))
                  (mend (match-end 0))
                  (state (save-excursion (syntax-ppss mbeg)))
-                 (open (nth 1 state)))
+                 (open (ppss-innermost-start state)))
             (cond
              ;; Nested inside a deeper bracket: jump past the whole bracketed
              ;; sub-expression so its interior separators are never considered.
@@ -3689,7 +3695,8 @@ bracket, string or comment is skipped."
              ;; A real separator: at the list level (not in a string/comment),
              ;; and - for whitespace - not the leading or trailing run, which is
              ;; edge trivia rather than an item boundary.
-             ((and (not (nth 8 state)) (not (and by-whitespace (or (eq mbeg beg) (eq mend end)))))
+             ((and (not (ppss-comment-or-string-start state))
+                   (not (and by-whitespace (or (eq mbeg beg) (eq mend end)))))
               (push (cons mbeg mend) result)))))))
     (nreverse result)))
 
@@ -3840,10 +3847,12 @@ as blank-space"
 ;; ---------------------------------------------------------------------------
 ;; Implementation: Text Object Motions
 
-(defun meep--search-syntax-forward (step ppss-index)
-  "Move to the start of the STEP'th next region matching `syntax-ppss'.
+(defun meep--search-syntax-forward (step in-region-p)
+  "Move to the start of the STEP'th next string/comment region via `syntax-ppss'.
 STEP is the signed count of regions to step over (positive forward,
-negative backward).  PPSS-INDEX is 3 (string) or 4 (comment).  Returns
+negative backward).  IN-REGION-P is the ppss field accessor selecting the
+kind: `ppss-comment-depth' for comments or `ppss-string-terminator' for
+strings.  Returns
 the signed count of STEP that could not be advanced; mirrors `forward-line'.
 On partial success point is left at the last region found.
 Uses Emacs's `comment-search-{forward,backward}' for comments and a
@@ -3865,7 +3874,7 @@ string-syntax regexp (`\\\\s\"') for strings, with `syntax-ppss' validation."
          ;; validation (skipping closing quotes, escapes, etc.).
          (primitive
           (cond
-           ((eq ppss-index 4)
+           ((eq in-region-p #'ppss-comment-depth)
             (cond
              ((> sign 0)
               (lambda () (comment-search-forward (point-max) t)))
@@ -3878,7 +3887,8 @@ string-syntax regexp (`\\\\s\"') for strings, with `syntax-ppss' validation."
                 (let ((beg nil))
                   (while (and (null beg) (re-search-forward "\\s\"" nil t))
                     (let ((s (syntax-ppss (point))))
-                      (when (and (nth ppss-index s) (eql (nth 8 s) (1- (point))))
+                      (when (and (funcall in-region-p s)
+                                 (eql (ppss-comment-or-string-start s) (1- (point))))
                         (setq beg (1- (point))))))
                   beg)))
              (t
@@ -3886,7 +3896,8 @@ string-syntax regexp (`\\\\s\"') for strings, with `syntax-ppss' validation."
                 (let ((beg nil))
                   (while (and (null beg) (re-search-backward "\\s\"" nil t))
                     (let ((s (syntax-ppss (1+ (point)))))
-                      (when (and (nth ppss-index s) (eql (nth 8 s) (point)))
+                      (when (and (funcall in-region-p s)
+                                 (eql (ppss-comment-or-string-start s) (point)))
                         (setq beg (point)))))
                   beg))))))))
     (while (and more (not (zerop remaining)))
@@ -3897,11 +3908,11 @@ string-syntax regexp (`\\\\s\"') for strings, with `syntax-ppss' validation."
             ;; the opener) is treated as inside, avoiding re-discovery.
             (cur-beg
              (let ((state (syntax-ppss)))
-               (or (and (nth ppss-index state) (nth 8 state))
+               (or (and (funcall in-region-p state) (ppss-comment-or-string-start state))
                    (and (> sign 0)
                         (not (eobp))
                         (let ((s (syntax-ppss (1+ (point)))))
-                          (and (nth ppss-index s) (nth 8 s)))))))
+                          (and (funcall in-region-p s) (ppss-comment-or-string-start s)))))))
             (beg nil)
             (cont t))
         (while (and (null beg) cont)
@@ -4073,7 +4084,11 @@ INNER) when STEP is non-zero and AT-START is non-nil."
   "`:bounds-step-fn' (INNER STEP AT-START) for the `comment' text object; scan STEP comments."
   (declare (important-return-value t))
   (meep--scan-walk-leading
-   inner step at-start (lambda (s) (meep--search-syntax-forward s 4)) #'meep--bounds-of-comment))
+   inner
+   step
+   at-start
+   (lambda (s) (meep--search-syntax-forward s #'ppss-comment-depth))
+   #'meep--bounds-of-comment))
 
 (defun meep--bounds-step-comment-block (inner step at-start)
   "`:bounds-step-fn' (INNER STEP AT-START) for the `comment-block' text object; scan STEP blocks."
@@ -4082,14 +4097,18 @@ INNER) when STEP is non-zero and AT-START is non-nil."
    inner
    step
    at-start
-   (lambda (s) (meep--search-syntax-forward s 4))
+   (lambda (s) (meep--search-syntax-forward s #'ppss-comment-depth))
    #'meep--bounds-of-comment-block))
 
 (defun meep--bounds-step-string (inner step at-start)
   "`:bounds-step-fn' (INNER STEP AT-START) for the `string' text object; scan STEP strings."
   (declare (important-return-value t))
   (meep--scan-walk-leading
-   inner step at-start (lambda (s) (meep--search-syntax-forward s 3)) #'meep--bounds-of-string))
+   inner
+   step
+   at-start
+   (lambda (s) (meep--search-syntax-forward s #'ppss-string-terminator))
+   #'meep--bounds-of-string))
 
 (defun meep--bounds-step-line (inner step at-start)
   "`:bounds-step-fn' (INNER STEP AT-START) for the `line' text object; scan STEP lines."
@@ -7971,8 +7990,8 @@ line with `{' yet `//' is a comment delimiter there too, so a body line
 reading `// b' opens nothing - the `//' is what the comment says."
   (declare (important-return-value t))
   (let ((state (syntax-ppss pos)))
-    (and (nth 4 state)
-         (when-let* ((beg (nth 8 state)))
+    (and (ppss-comment-depth state)
+         (when-let* ((beg (ppss-comment-or-string-start state)))
            (< beg pos)))))
 
 (defun meep--join-skip-comment-opener (limit)
@@ -8021,7 +8040,7 @@ is skipped inside an already open comment, see
 Don't skip past LIMIT (the end of the current line)."
   (let ((comment-start-consumed nil)
         (state (meep--syntax-ppss-skip-comment-start)))
-    (when (nth 4 state) ; Comment.
+    (when (ppss-comment-depth state) ; Comment.
       (setq comment-start-consumed (meep--join-skip-comment-opener limit)))
 
     (when (< (point) limit)
@@ -8045,7 +8064,9 @@ Don't skip past LIMIT (the end of the current line)."
   (when-let* ((range-a
                (save-excursion
                  (let ((state (syntax-ppss eol-ws)))
-                   (when-let* ((beg (and (nth 4 state) (nth 8 state))))
+                   (when-let* ((beg
+                                (and (ppss-comment-depth state)
+                                     (ppss-comment-or-string-start state))))
                      (goto-char beg)
                      ;; An unfinished comment at EOF still spans its
                      ;; current body and can be joined as such.
@@ -8086,13 +8107,13 @@ Don't skip past LIMIT (the end of the current line)."
        (goto-char bol-ws-next)
        (let* ((eol (pos-eol))
               (state (syntax-ppss eol)))
-         (and (nth 4 state)
-              (eq (nth 8 state) bol-ws-next)
+         (and (ppss-comment-depth state)
+              (eq (ppss-comment-or-string-start state) bol-ws-next)
               (cond
                ((eq eol (point-max))
                 (meep--syntax-comment-closed-by-newline-p state))
                (t
-                (null (nth 4 (syntax-ppss (1+ eol))))))))))))
+                (null (ppss-comment-depth (syntax-ppss (1+ eol))))))))))))
 
 (defun meep--join-range (bol eol use-comment-strip)
   "Join newlines between BOL and EOL.
