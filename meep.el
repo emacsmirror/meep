@@ -864,6 +864,8 @@ on point and do not use this, see `meep--surround-operate-region'."
 When SKIP-SINGLE isn't nil, initial single motion isn't counted as a step for N.
 SKIP-SPACE is a cons cell for additional space skipping before and after the motion.
 When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
+  ;; NOTE: the bare `syntax-ppss' calls run `syntax-propertize' so `syntax-after'
+  ;; sees the `syntax-table' property, they're not no-ops.
   (let ((syn nil)
         (skip-space-beg (car skip-space))
         (skip-space-end (cdr skip-space))
