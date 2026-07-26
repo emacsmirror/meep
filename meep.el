@@ -894,7 +894,9 @@ on point and do not use this, see `meep--surround-operate-region'."
 (defun meep--move-same-syntax-impl (n skip-single skip-space or-thing)
   "Move forward over N syntax-spans, a negative argument skips backwards.
 When SKIP-SINGLE isn't nil, initial single motion isn't counted as a step for N.
-SKIP-SPACE is a cons cell for additional space skipping before and after the motion.
+SKIP-SPACE is a `(BEG . END)' cons enabling space skipping on that side of the
+motion, nil for neither.  The side the motion starts from is a count taken from
+N, the side it travels towards is absorbed into each step.
 When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
   ;; NOTE: the bare `syntax-ppss' calls run `syntax-propertize' so `syntax-after'
   ;; sees the `syntax-table' property, they're not no-ops.
@@ -973,7 +975,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
     (meep-move-same-syntax-next (- arg)))
    (t
     (meep--with-mark-on-motion-maybe-set
-      (meep--move-same-syntax-impl (- arg) t (cons nil nil) nil)))))
+      (meep--move-same-syntax-impl (- arg) t nil nil)))))
 
 ;;;###autoload
 (defun meep-move-same-syntax-next (arg)
@@ -984,7 +986,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
     (meep-move-same-syntax-prev (- arg)))
    (t
     (meep--with-mark-on-motion-maybe-set
-      (meep--move-same-syntax-impl arg t (cons nil nil) nil)))))
+      (meep--move-same-syntax-impl arg t nil nil)))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -1001,7 +1003,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
     (meep-move-same-syntax-or-symbol-next (- arg)))
    (t
     (meep--with-mark-on-motion-maybe-set
-      (meep--move-same-syntax-impl (- arg) t (cons nil nil) 'symbol)))))
+      (meep--move-same-syntax-impl (- arg) t nil 'symbol)))))
 
 ;;;###autoload
 (defun meep-move-same-syntax-or-symbol-next (arg)
@@ -1012,7 +1014,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
     (meep-move-same-syntax-or-symbol-prev (- arg)))
    (t
     (meep--with-mark-on-motion-maybe-set
-      (meep--move-same-syntax-impl arg t (cons nil nil) 'symbol)))))
+      (meep--move-same-syntax-impl arg t nil 'symbol)))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -1031,7 +1033,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
     (meep-move-same-syntax-and-space-next (- arg)))
    (t
     (meep--with-mark-on-motion-maybe-set
-      (meep--move-same-syntax-impl (- arg) nil (cons 0 1) nil)))))
+      (meep--move-same-syntax-impl (- arg) nil (cons t 1) nil)))))
 
 ;;;###autoload
 (defun meep-move-same-syntax-and-space-next (arg)
@@ -1042,7 +1044,7 @@ When OR-THING is non-nil, skip over the bounds of the `thing-at-point'."
     (meep-move-same-syntax-and-space-prev (- arg)))
    (t
     (meep--with-mark-on-motion-maybe-set
-      (meep--move-same-syntax-impl arg nil (cons 1 0) nil)))))
+      (meep--move-same-syntax-impl arg nil (cons 1 t) nil)))))
 
 ;;;###autoload
 (defun meep-move-same-syntax-and-space-next-end (arg)
@@ -6062,31 +6064,28 @@ Repeat the search ARG times."
 (defun meep-delete-same-syntax-next (arg)
   "Delete characters with the same syntax class forwards, ARG times."
   (interactive "*p")
-  (meep--delete-from-motion-fn (lambda () (meep--move-same-syntax-impl arg t (cons nil nil) nil))))
+  (meep--delete-from-motion-fn (lambda () (meep--move-same-syntax-impl arg t nil nil))))
 
 ;; NOTE: this is mainly useful for binding in insert mode.
 ;;;###autoload
 (defun meep-delete-same-syntax-prev (arg)
   "Delete characters with the same syntax class backwards, ARG times."
   (interactive "*p")
-  (meep--delete-from-motion-fn
-   (lambda () (meep--move-same-syntax-impl (- arg) t (cons nil nil) nil))))
+  (meep--delete-from-motion-fn (lambda () (meep--move-same-syntax-impl (- arg) t nil nil))))
 
 ;; NOTE: this is mainly useful for binding in insert mode.
 ;;;###autoload
 (defun meep-delete-same-syntax-or-symbol-next (arg)
   "Delete characters with the same syntax class or symbols forwards, ARG times."
   (interactive "*p")
-  (meep--delete-from-motion-fn
-   (lambda () (meep--move-same-syntax-impl arg t (cons nil nil) 'symbol))))
+  (meep--delete-from-motion-fn (lambda () (meep--move-same-syntax-impl arg t nil 'symbol))))
 
 ;; NOTE: this is mainly useful for binding in insert mode.
 ;;;###autoload
 (defun meep-delete-same-syntax-or-symbol-prev (arg)
   "Delete characters with the same syntax class or symbols backwards, ARG times."
   (interactive "*p")
-  (meep--delete-from-motion-fn
-   (lambda () (meep--move-same-syntax-impl (- arg) t (cons nil nil) 'symbol))))
+  (meep--delete-from-motion-fn (lambda () (meep--move-same-syntax-impl (- arg) t nil 'symbol))))
 
 
 ;; ---------------------------------------------------------------------------
