@@ -3580,7 +3580,7 @@ carried point into a line comment's body, point is dropped to the comment start.
          (min (point) limit))
         (t
          (max (point) limit))))))
-    (/= (point) pos)))
+    (not (eq (point) pos))))
 
 (defun meep--list-item-trim-edge (from limit dir)
   "Scan from FROM toward LIMIT, returning the first real-token position.
@@ -3687,7 +3687,7 @@ bracket, string or comment is skipped."
              ;; A real separator: at the list level (not in a string/comment),
              ;; and - for whitespace - not the leading or trailing run, which is
              ;; edge trivia rather than an item boundary.
-             ((and (not (nth 8 state)) (not (and by-whitespace (or (= mbeg beg) (= mend end)))))
+             ((and (not (nth 8 state)) (not (and by-whitespace (or (eq mbeg beg) (eq mend end)))))
               (push (cons mbeg mend) result)))))))
     (nreverse result)))
 
@@ -3720,7 +3720,7 @@ SEPS yields a single trimmed cell spanning the whole inner range."
       ;; Drop the final cell when a trailing separator leaves only blank-space
       ;; before the close (a phantom empty list item).  A separator-less list
       ;; still yields its single (possibly empty) cell.
-      (unless (and seps (= (car final-bounds) (cdr final-bounds)))
+      (unless (and seps (eq (car final-bounds) (cdr final-bounds)))
         (push (list (car final-bounds) (cdr final-bounds) prev nil) cells)))
     (nreverse cells)))
 
