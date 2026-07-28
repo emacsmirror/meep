@@ -6307,7 +6307,10 @@ Verifies: handles empty buffer gracefully, informative message displayed."
 (ert-deftest selection-syntax-contract-no-region ()
   "Contract when no region is active.
 
-Verifies: command signals error when no region exists."
+Nothing checked for a region, so this raised a raw `mark-inactive' error from a
+key bound in normal state, where the expand sibling is fine.
+
+Verifies: a message is given, the state and point are left alone."
   (let ((text-initial "ab cd ef"))
     (with-meep-test text-initial
       (text-mode)
@@ -6317,15 +6320,13 @@ Verifies: command signals error when no region exists."
       ;; No region active, no mark set.
       (should-not (region-active-p))
       (let ((point-before (meep-test-point-line-column)))
-        ;; Contract should signal an error.
-        (should-error-with-message
-            (simulate-input-for-meep
-              '(:state normal :command meep-region-syntax-contract))
-          'error
-          "The mark is not set now, so there is no region")
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-syntax-contract))
+        (should (equal '("No region to contract") (meep-test-messages)))
         ;; Should remain in normal state, point unchanged.
         (should (equal 'normal (bray-state)))
-        (should (equal point-before (meep-test-point-line-column)))))))
+        (should (equal point-before (meep-test-point-line-column)))
+        (should-not (region-active-p))))))
 
 ;; mark-bounds-of-char additional delimiter types
 

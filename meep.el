@@ -5537,106 +5537,111 @@ When only blank space was skipped, skip all blank space."
     found))
 
 (defun meep--region-syntax-contract-impl (n)
-  "Contract matching syntax table N times."
+  "Contract matching syntax table N times.
+Message and do nothing when there is no active region."
   (when meep--region-syntax-asym
     (let ((local-last-command (meep--last-command)))
       (unless (memq local-last-command '(meep-region-syntax-expand meep-region-syntax-contract))
         (setq meep--region-syntax-asym nil))))
   (let ((syn-as-str-fn (lambda (syn) (char-to-string (syntax-class-to-char (syntax-class syn)))))
         (found nil))
-    (while (prog1 (< 0 n)
-             (meep--decf n))
-      (let* ((beg (region-beginning))
-             (end (region-end))
-             (is-forward (eq end (point)))
-             (beg-ok
-              (and (or (null meep--region-syntax-asym) (null is-forward)) (/= beg (point-min))))
-             (end-ok (and (or (null meep--region-syntax-asym) is-forward) (/= end (point-max))))
+    (cond
+     ((region-active-p)
+      (while (prog1 (< 0 n)
+               (meep--decf n))
+        (let* ((beg (region-beginning))
+               (end (region-end))
+               (is-forward (eq end (point)))
+               (beg-ok
+                (and (or (null meep--region-syntax-asym) (null is-forward)) (/= beg (point-min))))
+               (end-ok (and (or (null meep--region-syntax-asym) is-forward) (/= end (point-max))))
 
-             ;; NOTE: an empty region at either buffer bound has no syntax to read.
-             (beg-syn (syntax-after beg))
-             (end-syn (and (< (point-min) end) (syntax-after (1- end))))
+               ;; NOTE: an empty region at either buffer bound has no syntax to read.
+               (beg-syn (syntax-after beg))
+               (end-syn (and (< (point-min) end) (syntax-after (1- end))))
 
-             (beg-syn-str (and beg-syn (funcall syn-as-str-fn beg-syn)))
-             (end-syn-str (and end-syn (funcall syn-as-str-fn end-syn)))
+               (beg-syn-str (and beg-syn (funcall syn-as-str-fn beg-syn)))
+               (end-syn-str (and end-syn (funcall syn-as-str-fn end-syn)))
 
-             (do-beg nil)
-             (do-end nil)
+               (do-beg nil)
+               (do-end nil)
 
-             (do-symmetry nil))
-
-        (cond
-         ((or (null beg-syn) (null end-syn))
-          ;; Only on the first step, otherwise silently skip.
-          (unless found
-            (message "No syntax around the point (empty buffer?)"))
-          ;; Break.
-          (setq n 0))
-         ((and (null beg-ok) (null end-ok))) ; Do nothing.
-         ((null beg-ok)
-          (setq do-end t))
-         ((null end-ok)
-          (setq do-beg t))
-
-         ((string-equal beg-syn-str end-syn-str)
-          (setq do-beg t)
-          (setq do-end t))
-         ;; It's handy for including/excluding surrounding brackets.
-         ((and (member beg-syn-str '("(" ")")) (member end-syn-str '("(" ")")))
-          (setq do-symmetry t)
-          (setq do-beg t)
-          (setq do-end t))
-         ((eq beg (point))
-          (setq do-beg t))
-         ((eq end (point))
-          (setq do-end t))
-         (t
-          (meep--assert-unreachable)))
-
-        (let ((beg-next beg)
-              (end-next end))
-
-          (when do-beg
-            (save-excursion
-              (goto-char beg)
-              (meep--region-syntax-or-symbol-forward beg-syn-str)
-              (setq beg-next (point))))
-          (when do-end
-            (save-excursion
-              (goto-char end)
-              (meep--region-syntax-or-symbol-backward end-syn-str)
-              (setq end-next (point))))
-
-          ;; Avoid expanding an unbalanced number of brackets as it makes it
-          ;; difficult to copy blocks of code.
-          ;; NOTE: instead of limiting to 1, we could make them even,
-          ;; in practice it might be more useful to only expand one bracket at a time though.
-          (when do-symmetry
-            (setq beg-next (min beg-next (1+ beg)))
-            (setq end-next (max end-next (1- end))))
+               (do-symmetry nil))
 
           (cond
-           ((<= end-next beg-next)
-            ;; Contract to nothing.
-            (deactivate-mark t)
-            (setq found t)
+           ((or (null beg-syn) (null end-syn))
+            ;; Only on the first step, otherwise silently skip.
+            (unless found
+              (message "No syntax around the point (empty buffer?)"))
             ;; Break.
             (setq n 0))
+           ((and (null beg-ok) (null end-ok))) ; Do nothing.
+           ((null beg-ok)
+            (setq do-end t))
+           ((null end-ok)
+            (setq do-beg t))
 
+           ((string-equal beg-syn-str end-syn-str)
+            (setq do-beg t)
+            (setq do-end t))
+           ;; It's handy for including/excluding surrounding brackets.
+           ((and (member beg-syn-str '("(" ")")) (member end-syn-str '("(" ")")))
+            (setq do-symmetry t)
+            (setq do-beg t)
+            (setq do-end t))
            ((eq beg (point))
-            (goto-char beg-next)
-            (meep--set-marker-and-activate end-next)
-            (setq found t))
-
+            (setq do-beg t))
+           ((eq end (point))
+            (setq do-end t))
            (t
-            (goto-char end-next)
-            (meep--set-marker-and-activate beg-next)
-            (setq found t))))
+            (meep--assert-unreachable)))
 
-        ;; Don't attempt symmetry in future.
-        (unless meep--region-syntax-asym
-          (unless (and do-beg do-end)
-            (setq meep--region-syntax-asym t)))))
+          (let ((beg-next beg)
+                (end-next end))
+
+            (when do-beg
+              (save-excursion
+                (goto-char beg)
+                (meep--region-syntax-or-symbol-forward beg-syn-str)
+                (setq beg-next (point))))
+            (when do-end
+              (save-excursion
+                (goto-char end)
+                (meep--region-syntax-or-symbol-backward end-syn-str)
+                (setq end-next (point))))
+
+            ;; Avoid expanding an unbalanced number of brackets as it makes it
+            ;; difficult to copy blocks of code.
+            ;; NOTE: instead of limiting to 1, we could make them even,
+            ;; in practice it might be more useful to only expand one bracket at a time though.
+            (when do-symmetry
+              (setq beg-next (min beg-next (1+ beg)))
+              (setq end-next (max end-next (1- end))))
+
+            (cond
+             ((<= end-next beg-next)
+              ;; Contract to nothing.
+              (deactivate-mark t)
+              (setq found t)
+              ;; Break.
+              (setq n 0))
+
+             ((eq beg (point))
+              (goto-char beg-next)
+              (meep--set-marker-and-activate end-next)
+              (setq found t))
+
+             (t
+              (goto-char end-next)
+              (meep--set-marker-and-activate beg-next)
+              (setq found t))))
+
+          ;; Don't attempt symmetry in future.
+          (unless meep--region-syntax-asym
+            (unless (and do-beg do-end)
+              (setq meep--region-syntax-asym t))))))
+     (t
+      (message "No region to contract")))
     found))
 
 ;;;###autoload
@@ -5655,7 +5660,9 @@ including blank-space."
 
 ;;;###autoload
 (defun meep-region-syntax-contract (arg)
-  "Contract matching syntax table ARG times."
+  "Contract matching syntax table ARG times.
+Message and do nothing when there is no active region.
+A negative ARG expands, which does not need a region."
   (interactive "p")
   (cond
    ((< arg 0)
