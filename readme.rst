@@ -42,6 +42,8 @@ Other Pages
   for reference and an example key-map.
 - `Hacking <https://ideasman42.codeberg.page/emacs-meep/hacking.html>`__:
   notes for working on the code.
+- `Community <https://ideasman42.codeberg.page/emacs-meep/community.html>`__:
+  for joining the community.
 - `Further Work <https://codeberg.org/ideasman42/emacs-meep/issues/1>`__:
   potential changes and improvements.
 

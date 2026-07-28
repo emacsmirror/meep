@@ -33,6 +33,7 @@ _DOC_PAGES = (
     "comparisons",
     "reference",
     "hacking",
+    "community",
 )
 
 # Hand-written pages, copied verbatim from `rst/<name>.rst` into the build
@@ -43,6 +44,7 @@ _COPY_PAGES = (
     "overview",
     "comparisons",
     "hacking",
+    "community",
 )
 
 # Hand-written static assets (CSS) copied into `build/static/`, which
