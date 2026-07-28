@@ -1570,11 +1570,15 @@ Only used between successive
          (keep-searching t)
          (depth 0))
     (save-excursion
-      (cond
-       ((meep--is-point-after-bracket-open bracket-chars)
-        (forward-char -1))
-       ((meep--is-point-before-bracket-close bracket-chars)
-        (forward-char 1)))
+      ;; Step out of an enclosing string/comment first. `backward-up-list' reports "At top level"
+      ;; when it fails to escape a string and counts brackets in comment text as nesting,
+      ;; both give the depth of the text under the point instead of the code around it.
+      (unless (meep--goto-comment-or-string-bounds -1)
+        (cond
+         ((meep--is-point-after-bracket-open bracket-chars)
+          (forward-char -1))
+         ((meep--is-point-before-bracket-close bracket-chars)
+          (forward-char 1))))
       (while (and keep-searching
                   (condition-case _
                       (progn
@@ -1656,11 +1660,13 @@ Move forward when ARG is positive, otherwise backwards."
         (bracket-chars (meep--jump-brackets-from-mode))
         (found nil))
     (save-excursion
-      (cond
-       ((meep--is-point-after-bracket-open bracket-chars)
-        (forward-char -1))
-       ((meep--is-point-before-bracket-close bracket-chars)
-        (forward-char 1)))
+      ;; Step out of an enclosing string/comment first, `backward-up-list' can't escape one.
+      (unless (meep--goto-comment-or-string-bounds -1)
+        (cond
+         ((meep--is-point-after-bracket-open bracket-chars)
+          (forward-char -1))
+         ((meep--is-point-before-bracket-close bracket-chars)
+          (forward-char 1))))
 
       ;; TODO: only get opening brackets.
       (let ((keep-looking t))

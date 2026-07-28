@@ -8006,6 +8006,30 @@ Verifies: point stops at the outermost form instead of staying put."
       (should (equal text-initial (buffer-string)))
       (should (equal point-expected (meep-test-point-line-column))))))
 
+(ert-deftest movement-by-sexp-over-next-from-string ()
+  "Step over S-expressions starting from inside a string.
+
+The depth read as zero from inside a string, so the depth was pinned there for
+the whole sequence and nested forms were stepped over instead of entered.
+
+Workflow: from inside a string, step over four times.
+Verifies: point lands where it does starting from the string's opening quote."
+  (let ((text-initial "(a (b \"s\") (c (d)) e)")
+        (point-expected '(1 . 16)))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: (a (b "s") (c (d)) e)
+      ;;                ^
+      (goto-char 8)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-by-sexp-over-next)
+        '(:state normal :command meep-move-by-sexp-over-next)
+        '(:state normal :command meep-move-by-sexp-over-next)
+        '(:state normal :command meep-move-by-sexp-over-next))
+      (should (equal text-initial (buffer-string)))
+      (should (equal point-expected (meep-test-point-line-column))))))
+
 (ert-deftest movement-same-syntax-and-space-next-count ()
   "Move over syntax-and-space with a count.
 
@@ -12767,6 +12791,26 @@ char-replacing edit that changes the bracket structure."
     (should (equal ?c (char-after)))
     (should (equal 1 (meep--sexp-depth-calc)))))
 
+(ert-deftest sexp-depth-calc-ignores-brackets-in-a-comment ()
+  "Depth inside a comment is the depth of the code around it.
+
+Brackets written in the comment text were walked as though they nested, so the
+depth read one level deeper than the code the comment sits in.
+
+Verifies: meep--sexp-depth-calc reports the enclosing code depth from inside a
+comment, and the same depth as the line below it."
+  (with-meep-test "(defun f (a b)\n  (let ((x 1))\n    ;; comment (paren)\n    (list a b x)))"
+    (emacs-lisp-mode)
+    (bray-mode 1)
+    ;; Point inside '(paren)' in the comment, enclosed by 'defun' and 'let'.
+    (goto-char 48)
+    (should (equal ?a (char-after)))
+    (should (equal 2 (meep--sexp-depth-calc)))
+    ;; Point on the code below, at the same nesting.
+    (goto-char 59)
+    (should (equal ?l (char-after)))
+    (should (equal 2 (meep--sexp-depth-calc)))))
+
 (ert-deftest movement-sexp-out-next ()
   "Move out of current s-expression forward.
 
@@ -12841,6 +12885,36 @@ Verifies: point does not move and nothing is reported."
       (should (equal text-initial (buffer-string)))
       (should (equal '(1 . 5) (meep-test-point-line-column)))
       (should (equal nil (meep-test-messages))))))
+
+(ert-deftest movement-sexp-out-from-string ()
+  "Move out of the current S-expression from inside a string.
+
+Stepping out of a string isn't supported, so both commands did nothing at all
+while the cursor was in one.
+
+Workflow: from inside a string, move out of the S-expression each way.
+Verifies: point lands where it does from the string's opening quote."
+  (let ((text-initial "(a (b \"s (t) u\" c) d)"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: (a (b "s (t) u" c) d)
+      ;;                 ^
+      (goto-char 9)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-by-sexp-out-next))
+      ;; Cursor: (a (b "s (t) u" c) d)
+      ;;                          ^
+      (should (equal '(1 . 17) (meep-test-point-line-column)))
+      (should (equal ?\) (char-after)))
+      (goto-char 9)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-by-sexp-out-prev))
+      ;; Cursor: (a (b "s (t) u" c) d)
+      ;;             ^
+      (should (equal '(1 . 4) (meep-test-point-line-column)))
+      (should (equal ?b (char-after)))
+      (should (equal text-initial (buffer-string))))))
 
 (ert-deftest movement-line-non-space-beginning ()
   "Move to first non-whitespace character on line.
