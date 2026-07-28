@@ -1555,7 +1555,9 @@ Only used between successive
 (defvar-local meep--sexp-depth-calc-cache nil)
 
 (defun meep--sexp-depth-calc ()
-  "Return the S-expression depth."
+  "Return the S-expression depth.
+Only brackets from `meep--jump-brackets-from-mode' are counted.
+Inside a string or comment, the depth is that of the enclosing code."
   (declare (important-return-value t))
   (let* ((bracket-chars (meep--jump-brackets-from-mode))
          (tick (buffer-chars-modified-tick))
