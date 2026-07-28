@@ -2696,7 +2696,7 @@ Verifies: a message is given, the buffer and region are left alone."
       (goto-char (point-min))
       (call-interactively 'meep-region-enable)
       (call-interactively 'meep-region-syntax-contract)
-      (should (equal '("No syntax around the point (empty buffer?)") (meep-test-messages)))
+      (should (equal '("Empty region, nothing to contract") (meep-test-messages)))
       (should (equal text-initial (buffer-string)))
       (should (equal (cons (point-min) (point-min)) (cons (region-beginning) (region-end)))))))
 
@@ -5641,6 +5641,71 @@ Verifies: expansion handles buffer boundary."
       (should (equal '(1 . 3) (meep-test-mark-line-column)))
       (should (equal "abc" (meep-test-region-as-string))))))
 
+(ert-deftest selection-syntax-expand-at-buffer-start-repeated ()
+  "Expand repeatedly with the region beginning at the buffer start.
+
+Reaching a buffer bound made the step one-sided, which latched the asymmetric
+mode.  The side taken is then read back from the point, which sits at the bound,
+so expanding stopped entirely.
+
+Workflow: from the first word, expand until the whole buffer is covered.
+Verifies: the region keeps growing past the point the bound was reached."
+  (let ((text-initial "ab cd ef"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor: ab cd ef
+      ;;          ^
+      (goto-char 2)
+      ;; A single call so these chain as consecutive input.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-syntax-expand)
+        '(:state visual :command meep-region-syntax-expand)
+        '(:state visual :command meep-region-syntax-expand)
+        '(:state visual :command meep-region-syntax-expand)
+        '(:state visual :command meep-region-syntax-expand)
+        '(:state visual :command meep-region-syntax-expand))
+      (should (equal text-initial (meep-test-region-as-string))))))
+
+(ert-deftest selection-syntax-expand-at-buffer-start-without-a-symbol ()
+  "Expand from the buffer start with no symbol at the point.
+
+Only one side of the point has syntax at a buffer bound, a case nothing handled,
+so this reported an empty buffer and did nothing.
+
+Workflow: from the buffer start with a bracket at the point, expand.
+Verifies: the bracket is selected and nothing is reported."
+  (let ((text-initial "(abc def)"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: (abc def)
+      ;;         ^
+      (goto-char (point-min))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-syntax-expand))
+      (should (equal "(" (meep-test-region-as-string)))
+      (should (equal nil (meep-test-messages))))))
+
+(ert-deftest selection-syntax-expand-at-buffer-end-without-a-symbol ()
+  "Expand from the buffer end with no symbol at the point.
+
+The mirror of `selection-syntax-expand-at-buffer-start-without-a-symbol'.
+
+Workflow: from the buffer end with a bracket before the point, expand.
+Verifies: the bracket is selected and nothing is reported."
+  (let ((text-initial "abc (def)"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: abc (def)
+      ;;                  ^
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-syntax-expand))
+      (should (equal ")" (meep-test-region-as-string)))
+      (should (equal nil (meep-test-messages))))))
+
 (ert-deftest selection-syntax-expand-at-buffer-end ()
   "Expand region at buffer end.
 
@@ -5731,6 +5796,66 @@ Verifies: expand then contract returns to previous selection."
         (should (equal first-point (meep-test-point-line-column)))
         (should (equal first-mark (meep-test-mark-line-column)))
         (should (equal first-expand (meep-test-region-as-string)))))))
+
+(ert-deftest selection-syntax-contract-from-buffer-start ()
+  "Contract a region that reaches the buffer start.
+
+The buffer-bound check was copied from expanding, where a bound stops that side
+growing.  Contracting is limited by the region, not the buffer, so once the
+beginning reached `point-min' it stayed there and the region never shrank back.
+
+Workflow: expand until the region reaches the buffer start, then contract twice.
+Verifies: both sides of the region contract."
+  (let ((text-initial "foo (bar baz) qux"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: foo (bar baz) qux
+      ;;              ^
+      (goto-char 6)
+      ;; NOTE: separate calls, the expansion these reach differs from the same
+      ;; commands chained as one input sequence.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-syntax-expand))
+      (dotimes (_ 5)
+        (simulate-input-for-meep
+          '(:state visual :command meep-region-syntax-expand)))
+      (should (equal "foo (bar baz) " (meep-test-region-as-string)))
+      (should (equal (point-min) (region-beginning)))
+      ;; The beginning is at the buffer start, it must still move.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-syntax-contract))
+      (should (equal " (bar baz) " (meep-test-region-as-string)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-syntax-contract))
+      (should (equal "(bar baz)" (meep-test-region-as-string))))))
+
+(ert-deftest selection-syntax-contract-whole-buffer ()
+  "Contract a region covering the whole buffer.
+
+Both ends were held by a buffer bound, so a region covering the buffer could
+not be contracted at all, in either direction.
+
+Workflow: expand until the region covers the buffer, then contract.
+Verifies: both sides of the region contract."
+  (let ((text-initial "aaa bbb"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      ;; Cursor: aaa bbb
+      ;;              ^
+      (goto-char 6)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-syntax-expand)
+        '(:state visual :command meep-region-syntax-expand)
+        '(:state visual :command meep-region-syntax-expand))
+      (should (equal text-initial (meep-test-region-as-string)))
+      (should (equal (point-min) (region-beginning)))
+      (should (equal (point-max) (region-end)))
+      ;; Both ends are at a bound, they must still move.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-syntax-contract))
+      (should (equal " " (meep-test-region-as-string))))))
 
 (ert-deftest selection-syntax-contract-at-minimum ()
   "Contract when already at minimum expansion level.

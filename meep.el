@@ -5439,8 +5439,11 @@ When only blank space was skipped, skip all blank space."
               (meep--set-marker-and-activate beg-next))))
 
           ;; Don't attempt symmetry in future.
+          ;; NOTE: only when both sides could move, as the side taken is read back
+          ;; from the point. A buffer bound forcing the choice would lock the region
+          ;; to the side at that bound, which can never move again.
           (unless meep--region-syntax-asym
-            (unless (and do-beg do-end)
+            (when (and beg-ok end-ok (or (null do-beg) (null do-end)))
               (setq meep--region-syntax-asym t)))))
        (t
         (let ((syn nil)
@@ -5498,7 +5501,14 @@ When only blank space was skipped, skip all blank space."
                           (setq do-beg t))
                          (t
                           (setq syn end-syn)
-                          (setq do-end t)))))))))))))
+                          (setq do-end t))))))))
+                 ;; At a buffer bound only one side has syntax to expand over.
+                 (beg-syn
+                  (setq syn beg-syn)
+                  (setq do-beg t))
+                 (end-syn
+                  (setq syn end-syn)
+                  (setq do-end t)))))))
           (cond
            ((and (null syn) (null do-beg) (null do-end))
             ;; Only on the first step, otherwise silently skip.
@@ -5552,9 +5562,10 @@ Message and do nothing when there is no active region."
         (let* ((beg (region-beginning))
                (end (region-end))
                (is-forward (eq end (point)))
-               (beg-ok
-                (and (or (null meep--region-syntax-asym) (null is-forward)) (/= beg (point-min))))
-               (end-ok (and (or (null meep--region-syntax-asym) is-forward) (/= end (point-max))))
+               ;; NOTE: unlike expanding, no buffer bound limits contracting, the region
+               ;; itself does. Reaching a bound must not pin that side of the region.
+               (beg-ok (or (null meep--region-syntax-asym) (null is-forward)))
+               (end-ok (or (null meep--region-syntax-asym) is-forward))
 
                ;; NOTE: an empty region at either buffer bound has no syntax to read.
                (beg-syn (syntax-after beg))
@@ -5569,13 +5580,14 @@ Message and do nothing when there is no active region."
                (do-symmetry nil))
 
           (cond
+           ;; NOTE: only an empty region reads as having no syntax, a region with
+           ;; any content has a character to read on both sides.
            ((or (null beg-syn) (null end-syn))
             ;; Only on the first step, otherwise silently skip.
             (unless found
-              (message "No syntax around the point (empty buffer?)"))
+              (message "Empty region, nothing to contract"))
             ;; Break.
             (setq n 0))
-           ((and (null beg-ok) (null end-ok))) ; Do nothing.
            ((null beg-ok)
             (setq do-end t))
            ((null end-ok)
