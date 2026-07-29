@@ -5131,22 +5131,22 @@ use to maintain line-based selection."
            (end (region-end))
 
            ;; Local functions.
-           (is-line-empty-fn
+           (is-line-blank-fn
             (lambda ()
               (save-excursion
                 (beginning-of-line)
                 (looking-at-p "[[:blank:]]*$"))))
 
-           ;; Scan by STEP lines (+1/-1) over the run of non-empty lines from
-           ;; point, returning the start of the last non-empty line reached.
+           ;; Scan by STEP lines (+1/-1) over the run of non-blank lines from
+           ;; point, returning the start of the last non-blank line reached.
            ;; `forward-line' yields a non-zero remainder at the buffer bound
            ;; without signaling, so the scan always terminates: an unterminated
            ;; final line (forward) or `point-min' (backward) cannot spin it.
-           (scan-non-empty-fn
+           (scan-non-blank-fn
             (lambda (step)
               (let ((x (point))
                     (cont t))
-                (while (and cont (null (funcall is-line-empty-fn)))
+                (while (and cont (null (funcall is-line-blank-fn)))
                   (setq x (point))
                   (setq cont (zerop (forward-line step))))
                 x))))
@@ -5169,40 +5169,48 @@ use to maintain line-based selection."
             ;; No need for an initial next-line as this is already on the next line.
 
             ;; Step past a leading blank line so the scan below extends the
-            ;; following run of non-empty lines.
-            (when (funcall is-line-empty-fn)
+            ;; following run of non-blank lines.
+            (when (funcall is-line-blank-fn)
               (forward-line 1))
 
-            (goto-char (funcall scan-non-empty-fn 1))
+            (goto-char (funcall scan-non-blank-fn 1))
             (goto-char (pos-eol))
 
-            ;; Ensure we always step over the last newline.
-            ;; This is (among other reasons)
-            ;; so it's possible to select a line and cut it.
-            ;; It also has some minor added benefits.
+            ;; End on a line beginning, so it's possible to select a line and
+            ;; cut it. It also has some minor added benefits.
             ;; - The cursor doesn't scroll off the RHS of the screen
             ;;   for long lines.
             ;; - Moving the cursor up-down can stick to column zero.
             ;;
-            ;; Except at end-of-buffer, where there is no newline to step over.
-            (unless (or (eobp) (funcall is-line-empty-fn))
-              (forward-char 1)))
+            ;; A blank line is excluded, stepping back to its beginning instead
+            ;; of over its newline, matching an empty line. `pos-eol' can't be
+            ;; used for this, on a blank line that is mid-line.
+            ;;
+            ;; At end-of-buffer there is no line beginning to step to, so the
+            ;; last line is taken whether it is blank or not, the same as any
+            ;; other final line without a newline.
+            (unless (eobp)
+              (cond
+               ((funcall is-line-blank-fn)
+                (goto-char (pos-bol)))
+               (t
+                (forward-char 1)))))
 
            (t
             ;; Step to the line above the selection.
             (forward-line -1)
 
             ;; Step past a leading blank line so the scan below extends the
-            ;; preceding run of non-empty lines.
-            (when (funcall is-line-empty-fn)
+            ;; preceding run of non-blank lines.
+            (when (funcall is-line-blank-fn)
               (forward-line -1))
 
-            (goto-char (funcall scan-non-empty-fn -1))
+            (goto-char (funcall scan-non-blank-fn -1))
             (goto-char (pos-bol))
 
-            ;; Don't start on the empty line.
-            (when (funcall is-line-empty-fn)
-              (forward-char 1)))))
+            ;; Don't start on the blank line.
+            (when (funcall is-line-blank-fn)
+              (forward-line 1)))))
          (t
           ;; Extend the selection.
           (cond

@@ -7787,6 +7787,151 @@ ever terminating (infinite loop / hard hang)."
       (should (equal '(1 . 0) (meep-test-mark-line-column)))
       (should (equal "ABC\nDEF\nGHI" (meep-test-region-as-string))))))
 
+(ert-deftest selection-expand-to-line-bounds-extend-onto-blank-lines ()
+  "Extend a whole-line selection forward onto a run of blank lines.
+
+Regression: the scan stops on a blank line, which was stepped over by a
+character rather than by a line.  A blank line is not an empty one, so the
+selection ended mid-line and stopped being line-wise.
+
+Workflow: select line 1, extend over two blank (whitespace) lines.
+Verifies: the selection ends at a line beginning, as it does for empty lines."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "aaa\n"
+          "   \n"
+          "   \n"
+          "bbb\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-expand-to-line-bounds))
+      (should (equal "aaa\n" (meep-test-region-as-string)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-expand-to-line-bounds))
+      (should (equal 'visual (bray-state)))
+      (should (equal '(3 . 0) (meep-test-point-line-column)))
+      (should (equal "aaa\n   \n" (meep-test-region-as-string))))))
+
+(ert-deftest selection-expand-to-line-bounds-extend-onto-a-blank-last-line ()
+  "Extend a whole-line selection onto a blank final line with no newline.
+
+A blank line is excluded from the selection, but at the buffer end there is no
+line beginning to stop at, so the last line is taken whether it is blank or not.
+Pinned because excluding the blank line here instead is a tempting reading of
+the rule, and it makes the command do nothing.
+
+Workflow: select line 1, extend onto a trailing whitespace-only line.
+Verifies: the last line is selected, as a non-blank one already is."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "aaa\n"
+          "   "))) ; Blank, no trailing newline.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-expand-to-line-bounds))
+      (should (equal "aaa\n" (meep-test-region-as-string)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-expand-to-line-bounds))
+      (should (equal '(2 . 3) (meep-test-point-line-column)))
+      (should (equal text-initial (meep-test-region-as-string))))))
+
+(ert-deftest selection-expand-to-line-bounds-extend-onto-empty-lines ()
+  "Extend a whole-line selection forward onto a run of empty lines.
+
+The control for `selection-expand-to-line-bounds-extend-onto-blank-lines'.
+Empty lines were always handled, the blank line fix must not move them, which
+a line-oriented step over the run would quietly do.
+
+Workflow: select line 1, extend over two empty lines.
+Verifies: the selection stops at the second empty line."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "aaa\n"
+          "\n"
+          "\n"
+          "bbb\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-expand-to-line-bounds))
+      (should (equal "aaa\n" (meep-test-region-as-string)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-expand-to-line-bounds))
+      (should (equal '(3 . 0) (meep-test-point-line-column)))
+      (should (equal "aaa\n\n" (meep-test-region-as-string))))))
+
+(ert-deftest selection-expand-to-line-bounds-extend-backward-onto-empty-lines ()
+  "Extend a whole-line selection backward onto a run of empty lines.
+
+The control for `selection-expand-to-line-bounds-extend-backward-onto-blank-lines'.
+
+Workflow: select line 4, reverse, extend back over two empty lines.
+Verifies: the selection starts at the second empty line."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "aaa\n"
+          "\n"
+          "\n"
+          "bbb\n"
+          "ccc\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the whole of line 4, then reverse so point is at its top.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-region-expand-to-line-bounds)
+        '(:state visual :command meep-region-activate-and-reverse))
+      (should (equal "bbb\n" (meep-test-region-as-string)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-expand-to-line-bounds))
+      (should (equal '(3 . 0) (meep-test-point-line-column)))
+      (should (equal "\nbbb\n" (meep-test-region-as-string))))))
+
+(ert-deftest selection-expand-to-line-bounds-extend-backward-onto-blank-lines ()
+  "Extend a whole-line selection backward onto a run of blank lines.
+
+The mirror of `selection-expand-to-line-bounds-extend-onto-blank-lines', where
+the selection began mid-line instead, one character into the blank line.
+
+Workflow: select line 4, reverse, extend back over two blank (whitespace) lines.
+Verifies: the selection starts at a line beginning."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "aaa\n"
+          "   \n"
+          "   \n"
+          "bbb\n"
+          "ccc\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the whole of line 4, then reverse so point is at its top.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-region-expand-to-line-bounds)
+        '(:state visual :command meep-region-activate-and-reverse))
+      (should (equal "bbb\n" (meep-test-region-as-string)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-expand-to-line-bounds))
+      (should (equal 'visual (bray-state)))
+      (should (equal '(3 . 0) (meep-test-point-line-column)))
+      (should (equal "   \nbbb\n" (meep-test-region-as-string))))))
+
 (ert-deftest selection-expand-to-line-bounds-extend-backward-at-buffer-start ()
   "Extend a whole-line selection backward when already at the first line.
 
