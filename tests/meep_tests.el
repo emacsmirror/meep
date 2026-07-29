@@ -7851,6 +7851,38 @@ signaling `beginning-of-buffer' mid-loop instead of terminating."
       (should (equal '(3 . 0) (meep-test-mark-line-column)))
       (should (equal "ABC\nDEF\n" (meep-test-region-as-string))))))
 
+(ert-deftest selection-expand-to-line-bounds-extend-backward-no-trailing-newline ()
+  "Extend a whole-line selection backward from an unterminated final line.
+
+Regression: `end-next' was `point-max' plus one for a line with no newline, a
+position that cannot exist, so the \"already at line bounds\" test never matched
+and the branch that extends the selection was unreachable.  The command did
+nothing at all from that line, in either direction."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "ABC\n"
+          "DEF\n"
+          "GHI"))) ; No trailing newline.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the whole of line 3, then reverse so point is at its top.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-region-expand-to-line-bounds)
+        '(:state visual :command meep-region-activate-and-reverse))
+      (should (equal 'visual (bray-state)))
+      (should (equal "GHI" (meep-test-region-as-string)))
+      ;; Extend again: with the bug this never moves.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-expand-to-line-bounds))
+      (should (equal 'visual (bray-state)))
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      (should (equal '(3 . 3) (meep-test-mark-line-column)))
+      (should (equal text-initial (meep-test-region-as-string))))))
+
 ;; Contract after movement
 
 (ert-deftest selection-syntax-contract-after-movement ()

@@ -5160,7 +5160,7 @@ use to maintain line-based selection."
 
           ;; +1 to copy the whole line.
           (goto-char (max beg (1- end)))
-          (setq end-next (1+ (pos-eol))))
+          (setq end-next (min (1+ (pos-eol)) (point-max))))
 
         ;; Extend if the selection already meets line bounds.
         (cond
