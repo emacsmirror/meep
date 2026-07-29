@@ -5117,15 +5117,14 @@ use to maintain line-based selection."
   (cond
    ((region-active-p)
 
+    ;; Requesting line bounds requests line selection, whatever the region was.
+    (setq meep-state-region-elem 'line-wise)
+
     (when (eq (car-safe transient-mark-mode) 'only)
       ;; Move from shift-select to "permanent" select.
       ;; Needed when expanding to line bounds after a "search" for example,
       ;; so the next motion doesn't drop the selection.
-      (setq transient-mark-mode t)
-      ;; Behave as if setting for the first time.
-      ;; Since transient selection may be set
-      ;; when the user isn't explicitly requesting selection.
-      (setq meep-state-region-elem 'line-wise))
+      (setq transient-mark-mode t))
 
     (let* ((is-forward (eq (point) (region-end)))
            (beg (region-beginning))

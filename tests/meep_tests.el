@@ -7883,6 +7883,45 @@ nothing at all from that line, in either direction."
       (should (equal '(3 . 3) (meep-test-mark-line-column)))
       (should (equal text-initial (meep-test-region-as-string))))))
 
+(ert-deftest selection-expand-to-line-bounds-marks-an-existing-region-line-wise ()
+  "Expanding an existing selection to line bounds selects lines.
+
+Regression: only a selection made by the command itself counted as line-wise,
+one the user had already started did not, so the whole point of expanding it to
+line bounds was lost by whatever came next.
+
+Workflow: select a character, expand to line bounds, cut, then paste mid-line.
+Verifies: the cut line pastes as a line, not into the middle of another."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "aaa\n"
+          "bbb\n"
+          "ccc\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "bbb\n"
+          "aaa\n"
+          "ccc\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select a single character, then expand that to whole lines.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-expand-to-line-bounds))
+      (should (equal "aaa\n" (meep-test-region-as-string)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-clipboard-killring-cut))
+      ;; Move into the middle of a line, a char-wise paste would land there.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank))
+      (should (equal text-expected (buffer-string))))))
+
 ;; Contract after movement
 
 (ert-deftest selection-syntax-contract-after-movement ()
