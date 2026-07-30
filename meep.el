@@ -5855,6 +5855,10 @@ When HAD-REGION is non-nil, mark the region."
     (cond
      ((or had-region meep-isearch-activate-mark)
       (activate-mark)
+      ;; NOTE: clear `deactivate-mark' (paranoid), matching `meep--set-marker-and-activate'.
+      ;; Nothing here is known to set it, however advice wrapping these commands may run
+      ;; other Lisp (`scroll-on-jump' re-displays & runs timers) which would drop the selection.
+      (setq deactivate-mark nil)
       (setq transient-mark-mode (cons 'only t)))
      (t
       (setq deactivate-mark t)))))
