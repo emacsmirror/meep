@@ -10497,6 +10497,13 @@ re-feeds for the normal dispatcher doesn't leak into the keypad's next
                             (t
                              "<interpreted function ...>"))))
 
+                ;; Needed because `repeat' (`C-x z') re-runs `last-repeatable-command',
+                ;; taken from `real-this-command' which neither
+                ;; `call-interactively' nor `execute-kbd-macro' write.
+                ;; Without this `C-x z' re-opens the keypad instead of repeating
+                ;; the command it ran, `repeat.el' assigns it too.
+                (setq real-this-command bind)
+
                 ;; For some reason using `execute-kbd-macro' doesn't activate the command in
                 ;; quite the same way, for example, C-x C-f doesn't show the same file finder,
                 ;; fortunately it's possible to call `bind' so it's not an issue here.

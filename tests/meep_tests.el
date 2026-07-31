@@ -16018,6 +16018,77 @@ an out-of-range error."
       (should (equal '(1 . 0) (meep-test-mark-line-column)))
       (should (equal "hello" (meep-test-region-as-string))))))
 
+;; ---------------------------------------------------------------------------
+;; Keypad
+
+;; NOTE: both keypad tests end their input with `l' so that a `C-x z' which
+;; wrongly repeats `meep-keypad' has a key to consume.  Without it the keypad
+;; blocks in `read-event' with the keyboard macro exhausted, hanging the test
+;; run instead of failing it.  `l' is buffer-neutral either way, the keypad
+;; expands it to `C-l' (`recenter-top-bottom'), otherwise normal state runs
+;; `meep-move-char-next'.
+
+(ert-deftest keypad-repeat-command-symbol ()
+  "Repeat a symbol command the keypad dispatched.
+
+Workflow: open a line via the keypad, then repeat it with `C-x z'.
+Verifies: `C-x z' opens a second line instead of re-entering the keypad."
+  (let ((text-initial "hello")
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "\n"
+          "\n"
+          "hello")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        ;; Keypad `o' -> `C-o' -> `open-line'.
+        '(:state normal :command meep-keypad)
+        "o"
+        ;; Repeat, then the trailing key noted above.
+        "\C-xz"
+        "l")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest keypad-repeat-command-interpreted-function ()
+  "Repeat an interpreted function the keypad dispatched.
+
+The keypad runs interpreted functions through `execute-kbd-macro' instead of
+`call-interactively', a separate code-path that must also stay repeatable.
+
+Workflow: insert via a function bound to `C-t', then repeat it with `C-x z'.
+Verifies: `C-x z' inserts a second time instead of re-entering the keypad."
+  (let* ((fn
+          ;; NOTE: `eval' keeps this interpreted, a byte-compiled function
+          ;; fails `interpreted-function-p' and takes the other code-path.
+          (eval '(lambda ()
+                   (interactive)
+                   (insert "X"))
+                t))
+         (key (kbd "C-t"))
+         (binding-init (global-key-binding key))
+         ;; NOTE: the text after point gives the trailing `l' somewhere to move,
+         ;; `meep-move-char-next' signals `end-of-buffer' at `point-max'.
+         (text-initial "hello")
+         (text-expected "XXhello"))
+    (unwind-protect
+        (progn
+          (global-set-key key fn)
+          (with-meep-test text-initial
+            (text-mode)
+            (bray-mode 1)
+            (simulate-input-for-meep
+              ;; Keypad `t' -> `C-t' -> FN.
+              '(:state normal :command meep-keypad)
+              "t"
+              ;; Repeat, then the trailing key noted above.
+              "\C-xz"
+              "l")
+            (should (equal text-expected (buffer-string)))))
+      (global-set-key key binding-init))))
+
 (provide 'meep_tests)
 ;; Local Variables:
 ;; fill-column: 99
