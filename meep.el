@@ -49,6 +49,7 @@
 
 ;; Must be forward declared for byte-compilation.
 (defvar which-key-this-command-keys-function)
+(defvar which-key-show-early-on-C-h)
 
 ;; ---------------------------------------------------------------------------
 ;; Custom Variables
@@ -4339,7 +4340,7 @@ otherwise a nil result echoes a not-found message naming KIND."
   ;; NOTE: ARG & INNER are passed in rather than read from the enclosing command's
   ;; locals by name, which only worked while every caller happened to name its
   ;; parameters `arg' & `inner'.  This follows `meep--transpose-with-adjusted-motion'
-  ;; & `meep--keypad-which-key-c-h-maybe', which also take the caller's variable.
+  ;; & `meep--keypad-prefix-help-maybe', which also take the caller's variable.
   (let ((bounds-fn (intern (format "meep--bounds-of-%s" kind)))
         ;; Un-interned so the binding can't shadow anything at the call site.
         (bounds-var (make-symbol "bounds")))
@@ -10249,7 +10250,7 @@ KEYSEQ-FN is a function returning the current key sequence in the form
 `kbd' returns (a string or vector).  The bindings are harmless when
 `which-key' isn't loaded.
 
-The bindings span both `read-event' and any `which-key-C-h-dispatch' the
+The bindings span both `read-event' and any `prefix-help-command' the
 keypad invokes, so which-key's idle timer sees the right prefix while
 its own `read-key' is blocking."
   (declare (indent 1))
@@ -10257,30 +10258,39 @@ its own `read-key' is blocking."
          (which-key-this-command-keys-function ,keyseq-fn))
      ,@body))
 
-(defmacro meep--keypad-which-key-c-h-maybe (ch prefix-arg-var)
-  "Forward CH to `which-key-C-h-dispatch' if it is `help-char' and which-key is showing.
-Returns non-nil when the event was consumed (any binding in
-`which-key-C-h-map': paging, digit-arg, undo, toggle-docstrings,
-show-standard-help, abort).
+(defmacro meep--keypad-prefix-help-maybe (ch prefix-arg-var)
+  "Run `prefix-help-command' if CH is `help-char' and which-key handles it.
+Returns non-nil when the event was consumed.
 
 PREFIX-ARG-VAR is a symbol naming the caller's local that tracks the
-prefix arg for the eventual command.  It is bound through dispatch as
-`current-prefix-arg' so reload-style commands preserve it via
-`(setq prefix-arg current-prefix-arg)', then read back from `prefix-arg'
-which `which-key-digit-argument' sets to the typed digit.
-`unread-command-events' is shadowed so the prefix sequence which-key
-re-feeds for the normal dispatcher doesn't leak into the keypad's next
-`read-event'."
+prefix arg.  It is bound through dispatch as `current-prefix-arg' and
+read back from `prefix-arg', which `which-key-digit-argument' sets.
+`unread-command-events' is shadowed so the sequence which-key re-feeds
+for the normal dispatcher doesn't leak into the next `read-event'."
   (unless (symbolp prefix-arg-var)
     (error "PREFIX-ARG-VAR must be a symbol, got: %S" prefix-arg-var))
-  `(when (and (eq ,ch help-char)
-              (bound-and-true-p which-key-use-C-h-commands)
-              (fboundp 'which-key--popup-showing-p)
-              (which-key--popup-showing-p))
+  ;; NOTE: test `prefix-help-command' - what `read_key_sequence' takes the
+  ;; command from - instead of the private `which-key--popup-showing-p'.
+  ;; `which-key-mode' assigns `which-key-C-h-dispatch' to it only when C-h
+  ;; paging is wanted, so one test replaces the three this used to take.
+  ;;
+  ;; Only which-key can be dispatched to.  Staying in this loop means
+  ;; `this-command-keys' holds the keys typed ("x f"), not what they stand for
+  ;; ("C-x C-f"), and every other implementation reads it directly; which-key
+  ;; alone goes through `which-key-this-command-keys-function' (bound by
+  ;; `meep--keypad-with-maybe-which-key').  Leave the rest to the keypad's own
+  ;; unknown-key handling.
+  ;;
+  ;; Force `which-key-show-early-on-C-h' so a popup that isn't up yet is shown,
+  ;; otherwise the dispatcher reaches `describe-prefix-bindings' (via
+  ;; `which-key-show-standard-help') and the wrong prefix again.  No effect
+  ;; while the popup is showing, that branch never reads it.
+  `(when (and (eq ,ch help-char) (eq prefix-help-command 'which-key-C-h-dispatch))
      (let ((unread-command-events nil)
            (prefix-arg nil)
-           (current-prefix-arg ,prefix-arg-var))
-       (which-key-C-h-dispatch)
+           (current-prefix-arg ,prefix-arg-var)
+           (which-key-show-early-on-C-h t))
+       (call-interactively prefix-help-command)
        ;; Skip when dispatch left it nil (e.g. `which-key-show-standard-help')
        ;; - preserves an earlier `C-h <N>' digit.
        (when prefix-arg
@@ -10429,8 +10439,8 @@ re-feeds for the normal dispatcher doesn't leak into the keypad's next
 
               (cond
                ;; `read-event' skips the normal prefix-key dispatcher, so
-               ;; forward `C-h' to which-key here.
-               ((meep--keypad-which-key-c-h-maybe ch captured-prefix-arg)
+               ;; forward `C-h' to `prefix-help-command' here.
+               ((meep--keypad-prefix-help-maybe ch captured-prefix-arg)
                 (setq handled-elsewhere t))
                ;; Special case: keypad -> m replaces the initial: `C-' with `M-'.
                ;; Without this, `M-' shortcuts aren't possible.
