@@ -4189,6 +4189,206 @@ Verifies: rectangle shape inferred from secondary selection."
       (should (equal point-expected (meep-test-point-line-column)))
       (should (equal mark-expected (meep-test-mark-line-column))))))
 
+(ert-deftest region-swap-rectangle-explicit-corner-upper-right ()
+  "Swap two rectangles held by their upper-right corner.
+
+Workflow: select a rectangle with the mark on the upper-right (so the point is
+on the lower-left), make secondary, select the same shape below, swap.
+Verifies: both keep the corner they were held by.  Neither the point nor the
+mark is on a bound here, so `region-end' reports a corner the point isn't on."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "klmnopqrst\n"
+          "ABCDEFGHIJ\n"
+          "KLMNOPQRST\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "abCDEFGHIj\n"
+          "klMNOPQRSt\n"
+          "ABcdefghiJ\n"
+          "KLmnopqrsT\n"))
+        (point-expected '(4 . 2))
+        (mark-expected '(3 . 9)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the rectangle, mark on line 1 column 9.
+      ;; Cursor line 1: abcdefghij
+      ;;                         ^
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      ;; Down to line 2 and back to column 2, holding the upper-right corner.
+      ;; Cursor line 2: klmnopqrst
+      ;;                  ^
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next)
+        [?\C-u ?7]
+        '(:state visual :command meep-move-char-prev)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Select the same shape on lines 3-4.
+      ;; Cursor line 3: ABCDEFGHIJ
+      ;;                         ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-beginning)
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next)
+        [?\C-u ?7]
+        '(:state visual :command meep-move-char-prev)
+        '(:state visual :command meep-region-swap))
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      (should (equal mark-expected (meep-test-mark-line-column))))))
+
+(ert-deftest region-swap-rectangle-zero-width ()
+  "Swap a rectangle spanning no columns against one that does.
+
+A rectangle toggled on without horizontal motion has no width, so the swap
+moves text one way and nothing the other.
+Verifies: the right hand corner follows the swapped in width, collapsing onto
+the left hand column for the side that receives nothing."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcd\n"
+          "efgh\n"
+          "....\n"
+          "ijkl\n"
+          "mnop\n")))
+    ;; Each case as `(SECONDARY-END-COLUMN REGION-END-COLUMN TEXT-EXPECTED
+    ;; POINT-EXPECTED SECONDARY-BEG-EXPECTED SECONDARY-END-EXPECTED)', both
+    ;; rectangles begin on column 1.
+    (dolist (case
+             (list
+              (list
+               1 3
+               ;; format-next-line: off
+               (concat
+                "ajkbcd\n"
+                "enofgh\n"
+                "....\n"
+                "il\n"
+                "mp\n")
+               (cons 5 1) (cons 1 1) (cons 2 3))
+              (list
+               3 1
+               ;; format-next-line: off
+               (concat
+                "ad\n"
+                "eh\n"
+                "....\n"
+                "ibcjkl\n"
+                "mfgnop\n")
+               (cons 5 3) (cons 1 1) (cons 2 1))))
+      (pcase-let ((`(,secondary-col-end
+                     ,region-col-end
+                     ,text-expected
+                     ,point-expected
+                     ,secondary-beg-expected
+                     ,secondary-end-expected)
+                   case))
+        (with-meep-test text-initial
+          (text-mode)
+          (bray-mode 1)
+          ;; Secondary: lines 1-2, from column 1.
+          (goto-char (point-min))
+          (move-to-column 1)
+          (set-mark (point))
+          (rectangle-mark-mode 1)
+          (forward-line 1)
+          (move-to-column secondary-col-end)
+          (simulate-input-for-meep
+            '(:state visual :command meep-region-to-secondary-selection))
+          (deactivate-mark t)
+          ;; Region: lines 4-5, from column 1.
+          (goto-char (point-min))
+          (forward-line 3)
+          (move-to-column 1)
+          (set-mark (point))
+          (rectangle-mark-mode 1)
+          (forward-line 1)
+          (move-to-column region-col-end)
+          (simulate-input-for-meep
+            '(:state visual :command meep-region-swap))
+          (should (equal text-expected (buffer-string)))
+          (should (equal point-expected (meep-test-point-line-column)))
+          (should
+           (equal
+            secondary-beg-expected
+            (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+          (should
+           (equal
+            secondary-end-expected
+            (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay)))))))))
+
+(ert-deftest region-swap-rectangle-secondary-corner-upper-right ()
+  "Swap where the secondary selection is held by its upper-right corner.
+
+The secondary is made from a rectangle whose mark is on the upper-right, so the
+overlay starts on the right hand column instead of the left.  The swapped in
+text is wider, moving that column.
+Verifies: the secondary keeps its full width, the corner on the right hand
+column is placed while the left hand one tracks the replacement."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "ab....\n"
+          "ab....\n"
+          "......\n"
+          "wxyz..\n"
+          "wxyz..\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "wxyz....\n"
+          "wxyz....\n"
+          "......\n"
+          "ab..\n"
+          "ab..\n"))
+        ;; The right hand column moved from 2 to 4, the left hand one held.
+        (secondary-beg-expected '(1 . 4))
+        (secondary-end-expected '(2 . 0)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Secondary: lines 1-2 columns 0-2, mark on the upper-right.
+      (goto-char (point-min))
+      (move-to-column 2)
+      (set-mark (point))
+      (rectangle-mark-mode 1)
+      (forward-line 1)
+      (move-to-column 0)
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-to-secondary-selection))
+      (deactivate-mark t)
+      ;; Region: lines 4-5 columns 0-4.
+      (goto-char (point-min))
+      (forward-line 3)
+      (set-mark (point))
+      (rectangle-mark-mode 1)
+      (forward-line 1)
+      (move-to-column 4)
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-swap))
+      (should (equal text-expected (buffer-string)))
+      (should
+       (equal
+        secondary-beg-expected
+        (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal
+        secondary-end-expected
+        (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay)))))))
+
 (ert-deftest region-swap-rectangle-explicit-over-short-line ()
   "Swap two rectangles whose last line is too short to reach their widest column.
 
@@ -4212,13 +4412,7 @@ from `region-beginning' & `region-end' which both clamp to the short line."
           "ABcdefghiJ\n"
           "KL\n"))
         (point-expected '(4 . 2))
-        ;; NOTE: the mark returns to column 2, not the column 9 it was set at.
-        ;; The clamped lower-right corner lands on the point so the swap takes
-        ;; the region as forward and only moves the point, leaving the mark to
-        ;; its marker which the replacement on that line pulls back to the
-        ;; column the replaced span starts at.  Restoring the corner the mark
-        ;; was on is a separate problem to keeping the width, unchanged here.
-        (mark-expected '(3 . 2)))
+        (mark-expected '(3 . 9)))
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)

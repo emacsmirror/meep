@@ -4929,12 +4929,14 @@ to line boundaries."
   "Swap the region with the secondary for rectangular regions."
   (let* ((region-beg nil)
          (region-end nil)
-         (region-end-next nil)
 
          ;; Caller will have checked: `secondary-selection-exist-p'.
          (secondary-beg (overlay-start mouse-secondary-overlay))
          (secondary-end (overlay-end mouse-secondary-overlay))
-         (secondary-end-next nil)
+         ;; The bounds are the point & mark ordered by position, so the right
+         ;; hand column is on whichever of them has the larger column.
+         (is-secondary-end-at-col-end
+          (<= 0 (meep--columns-from-point-range secondary-beg secondary-end)))
 
          ;; Set later.
          (line-ranges-a nil)
@@ -4942,7 +4944,11 @@ to line boundaries."
          (line-ranges-b (meep--rectangle-range-list-from-rectangle secondary-beg secondary-end))
          (len-b (length line-ranges-b))
 
-         (is-forward nil)
+         ;; Which corner of the rectangle the point is on, the mark is on the
+         ;; opposite corner.  Both nil for an implied region, taken from the top
+         ;; left as the branch below does.
+         (is-point-at-line-end nil)
+         (is-point-at-col-end nil)
          (is-swap nil))
 
     (cond
@@ -4950,13 +4956,11 @@ to line boundaries."
       (setq region-beg (meep--region-point-mark-beg))
       (setq region-end (meep--region-point-mark-end))
 
-      ;; NOTE: `region-end' the function, *not* the variable set above - they
-      ;; differ for a rectangle held by its upper-right corner, where the point
-      ;; is the later position while the lower-right corner is not.  Which
-      ;; corner the region is restored to is a separate problem, keep reading
-      ;; the corner so this fix doesn't change it.
-      (when (eq (point) (region-end))
-        (setq is-forward t)))
+      ;; NOTE: taken from the point & mark for the same reason.  `region-end'
+      ;; reports the lower-right corner, which needn't be where the point is -
+      ;; a rectangle can be held by its upper-right corner just as well.
+      (setq is-point-at-line-end (<= (mark t) (point)))
+      (setq is-point-at-col-end (<= 0 (meep--columns-from-point-range (mark t) (point)))))
 
      (t
       ;; Calculate a region based on the secondary region.
@@ -5019,44 +5023,77 @@ to line boundaries."
     (setq line-ranges-b (meep--range-list-as-marker-list line-ranges-b))
 
     ;; Now swap multiple ordered regions.
+    ;; NOTE: iterate over copies, the lists are read again below to restore the
+    ;; region & the secondary selection.
     (save-excursion
-      (while line-ranges-a
-        (let* ((range-a (pop line-ranges-a))
-               (range-b (pop line-ranges-b))
-               (text-a (buffer-substring-no-properties (car range-a) (cdr range-a)))
-               (text-b (buffer-substring-no-properties (car range-b) (cdr range-b))))
+      (let ((ranges-a line-ranges-a)
+            (ranges-b line-ranges-b))
+        (while ranges-a
+          (let* ((range-a (pop ranges-a))
+                 (range-b (pop ranges-b))
+                 (text-a (buffer-substring-no-properties (car range-a) (cdr range-a)))
+                 (text-b (buffer-substring-no-properties (car range-b) (cdr range-b))))
 
-          ;; Unlikely, but may as well skip redundant swaps.
-          (unless (string-equal text-a text-b)
-            (meep--replace-in-region text-b (car range-a) (cdr range-a))
-            (meep--replace-in-region text-a (car range-b) (cdr range-b)))
+            ;; Unlikely, but may as well skip redundant swaps.
+            (unless (string-equal text-a text-b)
+              (meep--replace-in-region text-b (car range-a) (cdr range-a))
+              (meep--replace-in-region text-a (car range-b) (cdr range-b)))))))
 
-          ;; Reached the end, ensure the mark and secondary selection are updated.
-          (unless line-ranges-a
+    ;; Restore `line-ranges-a' as the region & `line-ranges-b' as the secondary
+    ;; selection, the buffer ordering is only needed while swapping.
+    (when is-swap
+      (meep--swap-vars line-ranges-a line-ranges-b))
 
-            (cond
-             (is-swap
-              (setq secondary-end-next (marker-position (cdr range-a)))
-              (setq region-end-next (marker-position (cdr range-b))))
-             (t
-              (setq secondary-end-next (marker-position (cdr range-b)))
-              (setq region-end-next (marker-position (cdr range-a))))))
+    ;; Restore the region & the secondary selection.
+    ;;
+    ;; NOTE: only the corner on the rectangles right hand column needs placing.
+    ;; The left hand corner sits at the beginning of a replaced span where its
+    ;; marker follows the replacement, the right hand corner sits at the end
+    ;; where it doesn't - the text swapped in needn't be the same width.
+    ;;
+    ;; NOTE: read the spans only once every line has been replaced, replacing a
+    ;; line shifts the markers on the lines after it.
+    (let* ((region-ranges line-ranges-a)
+           (secondary-ranges line-ranges-b)
 
-          ;; Queue markers to be cleared.
-          (set-marker (car range-a) nil)
-          (set-marker (cdr range-a) nil)
-          (set-marker (car range-b) nil)
-          (set-marker (cdr range-b) nil))))
+           ;; Local function.
+           ;; The end of the rectangles span on its last line when IS-LAST,
+           ;; otherwise on its first line.
+           (span-end-fn
+            (lambda (ranges is-last)
+              (marker-position
+               (cdr
+                (car
+                 (cond
+                  (is-last
+                   (last ranges))
+                  (t
+                   ranges)))))))
 
-    ;; Only move the end for both region and secondary selection.
-    (cond
-     (is-forward
-      (goto-char region-end-next))
-     (t
-      (meep--set-marker region-end-next)))
+           ;; The right hand column is on the point's line when the point holds
+           ;; it, on the mark's line otherwise.
+           (region-pos
+            (funcall span-end-fn region-ranges (eq is-point-at-col-end is-point-at-line-end)))
+           (secondary-pos (funcall span-end-fn secondary-ranges is-secondary-end-at-col-end)))
 
-    (move-overlay
-     mouse-secondary-overlay (overlay-start mouse-secondary-overlay) secondary-end-next)))
+      (cond
+       (is-point-at-col-end
+        (goto-char region-pos))
+       (t
+        (meep--set-marker region-pos)))
+
+      (cond
+       (is-secondary-end-at-col-end
+        (move-overlay
+         mouse-secondary-overlay (overlay-start mouse-secondary-overlay) secondary-pos))
+       (t
+        (move-overlay
+         mouse-secondary-overlay secondary-pos (overlay-end mouse-secondary-overlay)))))
+
+    (dolist (ranges (list line-ranges-a line-ranges-b))
+      (dolist (range ranges)
+        (set-marker (car range) nil)
+        (set-marker (cdr range) nil)))))
 
 ;;;###autoload
 (defun meep-region-swap ()
