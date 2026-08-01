@@ -781,6 +781,47 @@ on point and do not use this, see `meep--surround-operate-region'."
          (let ((p (point)))
            (cons (min m p) (max m p))))))
 
+;; NOTE: `region-beginning' & `region-end' are advised by `rectangle-mark-mode'
+;; to return the rectangles upper-left & lower-right corners, and
+;; `rectangle--region-end' places the lower-right with `move-to-column', which
+;; clamps to the end of a short line.  A column only one of the two lines is
+;; long enough to reach is lost that way, the point & mark keep it between
+;; them.  For every other region type the result is the same, `region-beginning'
+;; is documented as the smaller of the point & mark.
+;;
+;; Pass the pair, never one alone.  The point & mark sit on opposite corners so
+;; either of them may hold the left hand column, which makes neither a corner
+;; by itself; between them they carry both, which consumers re-derive by taking
+;; the min & max of the two columns.
+;;
+;; Use these wherever the columns matter - `apply-on-rectangle' and anything
+;; deriving a column from the result.  Not for a flat span over a rectangle,
+;; which wants the corners instead: see `meep--clipboard-only-yank-impl', where
+;; starting from the mark would leave selected text behind.
+
+(defun meep--region-point-mark-beg ()
+  "Return the position of the beginning of the region from the point & mark.
+Signals when no mark is set, matching `region-beginning'."
+  (declare (important-return-value t))
+  (let ((pos-mark (mark)))
+    (cond
+     (pos-mark
+      (min (point) pos-mark))
+     (t
+      ;; Let `region-beginning' signal, rather than repeat its error here.
+      (region-beginning)))))
+
+(defun meep--region-point-mark-end ()
+  "Return the position of the end of the region from the point & mark.
+Signals when no mark is set, matching `region-end'."
+  (declare (important-return-value t))
+  (let ((pos-mark (mark)))
+    (cond
+     (pos-mark
+      (max (point) pos-mark))
+     (t
+      (region-end)))))
+
 ;;;###autoload
 (defun meep-move-symbol-prev (arg)
   "Move point to the beginning of the previous symbol, ARG times."
@@ -4906,9 +4947,14 @@ to line boundaries."
 
     (cond
      ((region-active-p)
-      (setq region-beg (region-beginning))
-      (setq region-end (region-end))
+      (setq region-beg (meep--region-point-mark-beg))
+      (setq region-end (meep--region-point-mark-end))
 
+      ;; NOTE: `region-end' the function, *not* the variable set above - they
+      ;; differ for a rectangle held by its upper-right corner, where the point
+      ;; is the later position while the lower-right corner is not.  Which
+      ;; corner the region is restored to is a separate problem, keep reading
+      ;; the corner so this fix doesn't change it.
       (when (eq (point) (region-end))
         (setq is-forward t)))
 
@@ -5054,7 +5100,9 @@ only the secondary region needs to be set."
 
     ;; Inline: `secondary-selection-from-region'
     (delete-overlay mouse-secondary-overlay)
-    (move-overlay mouse-secondary-overlay (region-beginning) (region-end))
+
+    (move-overlay
+     mouse-secondary-overlay (meep--region-point-mark-beg) (meep--region-point-mark-end))
 
     ;; If other properties are ever used, this would need to append the property.
     (overlay-put
@@ -6299,8 +6347,8 @@ Leave the char-ring unmodified afterwards."
                 line-offset)))))
     (cond
      ((bound-and-true-p rectangle-mark-mode)
-      (let* ((beg (region-beginning))
-             (end (region-end))
+      (let* ((beg (meep--region-point-mark-beg))
+             (end (meep--region-point-mark-end))
              (is-forward (eq (point) end))
              (pos-max-orig (point-max)))
         (apply-on-rectangle
@@ -6399,8 +6447,8 @@ Insert ARG times."
       (apply-on-rectangle
        ;; Make the values global.
        `(lambda (col-beg col-end) (funcall ,insert-in-range-from-columns-fn col-beg col-end ,arg))
-       (region-beginning)
-       (region-end)))
+       (meep--region-point-mark-beg)
+       (meep--region-point-mark-end)))
      (t
       (cond
        ((region-active-p)
@@ -6991,7 +7039,10 @@ A negative ARG folds to its magnitude; zero clamps to one repetition."
             (rect (bound-and-true-p rectangle-mark-mode)))
         (cond
          (rect
-          (apply-on-rectangle surround-in-range-from-columns-fn (region-beginning) (region-end)))
+          (apply-on-rectangle
+           surround-in-range-from-columns-fn
+           (meep--region-point-mark-beg)
+           (meep--region-point-mark-end)))
          ;; Surround each line's content, contracted past blank-space so
          ;; indentation and trailing blanks stay outside the delimiters.  A partial
          ;; first / last line wraps only its selected columns, not text outside the
@@ -7338,7 +7389,7 @@ holds no pair are skipped."
              (when targets
                ;; Prepend, then reverse once below; appending per row is O(rows^2).
                (setq all-targets (nconc targets all-targets)))))))
-     (region-beginning) (region-end))
+     (meep--region-point-mark-beg) (meep--region-point-mark-end))
     (setq all-targets (nreverse all-targets))
     (meep--surround-operate-apply all-targets new-pair)))
 
@@ -9421,14 +9472,14 @@ When DO-CUT is non-nil, cut instead of copying."
   "Copy the region to the system clipboard."
   (interactive)
   (meep--clipboard-only-cut-or-copy-impl
-   (region-beginning) (region-end) (meep--state-region-type) nil))
+   (meep--region-point-mark-beg) (meep--region-point-mark-end) (meep--state-region-type) nil))
 
 ;;;###autoload
 (defun meep-clipboard-only-cut ()
   "Cut the region to the system clipboard."
   (interactive "*")
   (meep--clipboard-only-cut-or-copy-impl
-   (region-beginning) (region-end) (meep--state-region-type) t))
+   (meep--region-point-mark-beg) (meep--region-point-mark-end) (meep--state-region-type) t))
 
 ;;;###autoload
 (defun meep-clipboard-only-cut-line ()

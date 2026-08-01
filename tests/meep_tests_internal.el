@@ -1357,6 +1357,31 @@ an `unwind-protect' cleanup precisely so a failing body cannot leave it behind."
       ;; The temporary newline is gone, the buffer is byte-for-byte unchanged.
       (should (equal text-expected (buffer-string))))))
 
+(ert-deftest region-point-mark-bounds-match-region-functions ()
+  "The point & mark bounds agree with `region-beginning' & `region-end'.
+
+Only `rectangle-mark-mode' makes them differ, and it is not enabled here.
+Verifies: an unset mark signals rather than being read as a position, matching
+the functions these stand in for."
+  (with-temp-buffer
+    (insert "abcdef")
+    (goto-char 3)
+    ;; No mark, `(mark)' is nil where a position is needed.
+    (should-error (meep--region-point-mark-beg))
+    (should-error (meep--region-point-mark-end))
+    (set-mark 5)
+    (dolist (is-active (list t nil))
+      (cond
+       (is-active
+        (activate-mark))
+       (t
+        (deactivate-mark t)))
+      (dolist (even-if-inactive (list t nil))
+        (let ((mark-even-if-inactive even-if-inactive))
+          (should (eq (region-beginning) (meep--region-point-mark-beg)))
+          (should (eq (region-end) (meep--region-point-mark-end))))))))
+
+
 (provide 'meep_tests_internal)
 ;; Local Variables:
 ;; fill-column: 99

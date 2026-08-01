@@ -829,6 +829,101 @@ Verifies: basic text insertion works correctly."
       (should (equal 'normal (bray-state)))
       (should (equal text-expected (buffer-string))))))
 
+(ert-deftest primitive-replace-char-region-rectangle-corners ()
+  "Replace a rectangle held by each of its four corners.
+
+Verifies: the point & mark stay on the corners they held.  A rectangle held by
+its lower-left corner used to swap them, `region-end' reports the lower-right
+corner which the point is not on for that hold."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "klmnopqrst\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "a########j\n"
+          "k########t\n")))
+    ;; Each hold as `(MARK-LINE MARK-COLUMN POINT-LINE POINT-COLUMN)'.
+    (dolist (case '((2 9 1 1) (2 1 1 9) (1 9 2 1) (1 1 2 9)))
+      (pcase-let ((`(,mark-line ,mark-col ,point-line ,point-col) case))
+        (with-meep-test text-initial
+          (text-mode)
+          (bray-mode 1)
+          (goto-char (point-min))
+          (forward-line (1- mark-line))
+          (move-to-column mark-col)
+          (set-mark (point))
+          (rectangle-mark-mode 1)
+          (goto-char (point-min))
+          (forward-line (1- point-line))
+          (move-to-column point-col)
+          (simulate-input-for-meep
+            '(:state visual :command meep-char-replace)
+            "#")
+          (should (equal text-expected (buffer-string)))
+          (should (equal (cons point-line point-col) (meep-test-point-line-column)))
+          (should (equal (cons mark-line mark-col) (meep-test-mark-line-column))))))))
+
+(ert-deftest primitive-replace-char-region-rectangle-over-short-line ()
+  "Replace a rectangle whose last line is too short to reach its widest column.
+
+Verifies: the columns are taken from the point & mark, `region-beginning' &
+`region-end' both clamp to the short line which would replace nothing at all."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "kl\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "ab#######j\n"
+          "kl\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the rectangle, mark on line 1 column 9.
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      ;; The point clamps to the end of the short line, the mark keeps column 9.
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-char-replace)
+        "#")
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest primitive-insert-char-region-rectangle-over-short-line ()
+  "Insert over a rectangle whose last line is too short to reach its widest column.
+
+Verifies: the columns are taken from the point & mark, `region-beginning' &
+`region-end' both clamp to the short line which would insert nothing at all."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "kl\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "ab#j\n"
+          "kl\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-char-insert)
+        "#")
+      (should (equal text-expected (buffer-string))))))
+
 (ert-deftest primitive-replace-char-end-of-line ()
   "Replace char with point at end of line (no region) is a clean error.
 
@@ -2802,6 +2897,104 @@ between the corners is left alone."
       ;; Only the rectangle toggle reports, the cut itself is silent.
       (should (equal '("Mark set (rectangle mode)") (meep-test-messages))))))
 
+(ert-deftest clipboard-only-cut-rectangle-over-short-line ()
+  "Cut a rectangle whose last line is too short to reach its widest column.
+
+Workflow: select a rectangle from a wide line down onto a short line (the point
+clamps to the short lines end while the mark keeps the wide column), then cut.
+Verifies: the columns are taken from the point & mark, `region-beginning' &
+`region-end' both clamp to the short line which would cut nothing at all."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "kl"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "abj\n"
+          "kl"))
+        (captured nil))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (let ((interprogram-cut-function (lambda (text) (setq captured text))))
+        ;; Select the rectangle, mark on line 1 column 9.
+        ;; Cursor line 1: abcdefghij
+        ;;                         ^
+        (simulate-input-for-meep
+          [?\C-u ?9]
+          '(:state normal :command meep-move-char-next)
+          '(:state normal :command meep-region-toggle-rectangle))
+        ;; The point clamps to the end of the short line, the mark keeps column 9.
+        (simulate-input-for-meep
+          '(:state visual :command meep-move-line-next)
+          '(:state visual :command meep-clipboard-only-cut)))
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string)))
+      ;; The short line contributes an empty row, padded to the rectangles
+      ;; width by `extract-rectangle'.
+      (should (equal (concat "cdefghi\n" (make-string 7 ?\s)) captured)))))
+
+(ert-deftest clipboard-only-copy-rectangle-over-short-line ()
+  "Copy a rectangle whose last line is too short to reach its widest column.
+
+Copy shares its implementation with cut but reads the bounds separately.
+Verifies: the columns are taken from the point & mark, `region-beginning' &
+`region-end' both clamp to the short line which would copy nothing at all."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "kl"))
+        (captured nil))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (let ((interprogram-cut-function (lambda (text) (setq captured text))))
+        ;; Select the rectangle, mark on line 1 column 9.
+        (simulate-input-for-meep
+          [?\C-u ?9]
+          '(:state normal :command meep-move-char-next)
+          '(:state normal :command meep-region-toggle-rectangle))
+        ;; The point clamps to the end of the short line, the mark keeps column 9.
+        (simulate-input-for-meep
+          '(:state visual :command meep-move-line-next)
+          '(:state visual :command meep-clipboard-only-copy)))
+      (should (equal 'normal (bray-state)))
+      ;; Copying leaves the buffer alone.
+      (should (equal text-initial (buffer-string)))
+      (should (equal (concat "cdefghi\n" (make-string 7 ?\s)) captured)))))
+
+(ert-deftest surround-add-rectangle-over-short-line ()
+  "Surround a rectangle whose last line is too short to reach its widest column.
+
+Verifies: the wide line is surrounded, `region-beginning' & `region-end' both
+clamp to the short line which would surround nothing at all."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "kl"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "ab(cdefghi)j\n"
+          "kl")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next))
+      ;; `t(' is the surround-add verb followed by the delimiter.
+      (simulate-input-for-meep
+        "t(")
+      (should (equal text-expected (buffer-string))))))
+
 (ert-deftest clipboard-only-copy-rectangle ()
   "Copy a rectangle to the system clipboard.
 
@@ -3991,6 +4184,69 @@ Verifies: rectangle shape inferred from secondary selection."
       ;; Swap with implied rectangle.
       (simulate-input-for-meep
         '(:state normal :command meep-region-swap))
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      (should (equal mark-expected (meep-test-mark-line-column))))))
+
+(ert-deftest region-swap-rectangle-explicit-over-short-line ()
+  "Swap two rectangles whose last line is too short to reach their widest column.
+
+Workflow: select a rectangle from a wide line down onto a short line (the point
+clamps to the short lines end while the mark keeps the wide column), make
+secondary, select the same shape below, swap.
+Verifies: the rectangles keep their width, taken from the point & mark and not
+from `region-beginning' & `region-end' which both clamp to the short line."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "kl\n"
+          "ABCDEFGHIJ\n"
+          "KL\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "abCDEFGHIj\n"
+          "kl\n"
+          "ABcdefghiJ\n"
+          "KL\n"))
+        (point-expected '(4 . 2))
+        ;; NOTE: the mark returns to column 2, not the column 9 it was set at.
+        ;; The clamped lower-right corner lands on the point so the swap takes
+        ;; the region as forward and only moves the point, leaving the mark to
+        ;; its marker which the replacement on that line pulls back to the
+        ;; column the replaced span starts at.  Restoring the corner the mark
+        ;; was on is a separate problem to keeping the width, unchanged here.
+        (mark-expected '(3 . 2)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the rectangle, mark on line 1 column 9.
+      ;; Cursor line 1: abcdefghij
+      ;;                         ^
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      ;; The point clamps to the end of the short line, the mark keeps column 9.
+      ;; Cursor line 2: kl
+      ;;                  ^
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Select the same shape on lines 3-4.
+      ;; Cursor line 3: ABCDEFGHIJ
+      ;;                         ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-beginning)
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-region-swap))
       (should (equal text-expected (buffer-string)))
       (should (equal 'normal (bray-state)))
       (should (equal point-expected (meep-test-point-line-column)))
@@ -15564,6 +15820,35 @@ jumping point to the content start and setting the mark; point is now restored."
       (should (member "No surrounding pair found" (meep-test-messages)))
       (should (region-active-p))
       (should (equal text-initial (buffer-string))))))
+
+(ert-deftest surround-delete-rectangle-over-short-line ()
+  "Rectangle delete over a line too short to reach the rectangles widest column.
+
+The mark is at the end of the first line, the point at the end of the second,
+so only the first row has a column span holding a pair.
+Verifies: the columns are taken from the point & mark, `region-beginning' &
+`region-end' both clamp to the short line which would delete nothing at all."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "xxx(a)\n"
+          "(b)"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "xxxa\n"
+          "(b)")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (end-of-line)
+      (set-mark (point))
+      (rectangle-mark-mode 1)
+      (goto-char (point-max))
+      (simulate-input-for-meep
+        "tt")
+      (should (equal text-expected (buffer-string))))))
 
 (ert-deftest surround-replace-rectangle ()
   "Rectangle replace swaps the pair in each row's column span."
