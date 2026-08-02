@@ -3782,6 +3782,93 @@ restored rather than rebuilt."
       (should (secondary-selection-exist-p))
       (should (equal '(:region-type line-wise) (overlay-get mouse-secondary-overlay 'meep))))))
 
+(ert-deftest region-swap-imply-region-option ()
+  "Swap with no region, with `meep-region-swap-imply-region' on and off.
+
+On, a region of the secondarys length is inferred at the point and the two
+exchange.  Off, the region is empty, so the text moves to the point instead.
+Verifies: both settings of the option, which selects between them."
+  (let ((text-initial ".[ABC]__......"))
+    ;; Each case as `(IMPLY-REGION TEXT-EXPECTED)'.
+    (dolist (case (list (list t "......__[ABC].") (list nil ".__[ABC]......")))
+      (pcase-let ((`(,imply-region ,text-expected) case))
+        (with-meep-test text-initial
+          (text-mode)
+          (bray-mode 1)
+          ;; Select [ABC] as the secondary selection.
+          ;; Cursor: .[ABC]__......
+          ;;          ^
+          (simulate-input-for-meep
+            '(:state normal :command meep-move-char-next)
+            '(:state normal :command meep-region-toggle))
+          (simulate-input-for-meep
+            [?\C-u ?5]
+            '(:state visual :command meep-move-char-next)
+            '(:state visual :command meep-region-to-secondary-selection))
+          ;; Move past the underscores, leaving no region.
+          (simulate-input-for-meep
+            [?\C-u ?2]
+            '(:state normal :command meep-move-char-next))
+          (let ((meep-region-swap-imply-region imply-region))
+            (simulate-input-for-meep
+              '(:state normal :command meep-region-swap)))
+          (should (equal text-expected (buffer-string))))))))
+
+(ert-deftest region-swap-imply-region-option-rectangle ()
+  "Swap a rectangular secondary with no region, the option on and off.
+
+On, a rectangle of the same shape is inferred at the point and the two
+exchange.  Off, no region is inferred, so the span between the secondarys
+corners moves to the point as text.
+Verifies: the option is read before choosing the rectangle path, not only
+inside the contiguous one."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "ab....\n"
+          "ef....\n"
+          "......\n"
+          "......\n")))
+    ;; Each case as `(IMPLY-REGION TEXT-EXPECTED)'.
+    (dolist (case
+             (list
+              (list
+               t
+               ;; format-next-line: off
+               (concat
+                "......\n"
+                "......\n"
+                "ab....\n"
+                "ef....\n"))
+              (list
+               nil
+               ;; format-next-line: off
+               (concat
+                "....\n"
+                "ab....\n"
+                "ef......\n"
+                "......\n"))))
+      (pcase-let ((`(,imply-region ,text-expected) case))
+        (with-meep-test text-initial
+          (text-mode)
+          (bray-mode 1)
+          ;; A two line rectangle over columns 0-2 as the secondary selection.
+          (simulate-input-for-meep
+            '(:state normal :command meep-region-toggle-rectangle))
+          (simulate-input-for-meep
+            '(:state visual :command meep-move-line-next)
+            [?\C-u ?2]
+            '(:state visual :command meep-move-char-next)
+            '(:state visual :command meep-region-to-secondary-selection))
+          ;; Move to line 3 column 0, leaving no region.
+          (simulate-input-for-meep
+            '(:state normal :command meep-move-line-next)
+            '(:state normal :command meep-move-line-beginning))
+          (let ((meep-region-swap-imply-region imply-region))
+            (simulate-input-for-meep
+              '(:state normal :command meep-region-swap)))
+          (should (equal text-expected (buffer-string))))))))
+
 (ert-deftest region-swap-line-explicit ()
   "Swap two explicitly selected whole lines.
 
