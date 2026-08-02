@@ -1162,6 +1162,40 @@ instead of a clear message."
       (undo)
       (should (equal text-initial (buffer-string))))))
 
+(ert-deftest primitive-change-region-rectangle-real-insert-over-short-line ()
+  "Real insert over a rectangle whose last line is too short to reach its widest column.
+
+Verifies: the columns are taken from the point & mark, `region-beginning' &
+`region-end' both clamp to the short line, which inserts without replacing
+anything so the rectangles content survives."
+  (let ((meep-repeat-fu-replay t)
+        (text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "kl\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "ab#j\n"
+          "kl#\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the rectangle, mark on line 1 column 9.
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      ;; The point clamps to the end of the short line, the mark keeps column 9.
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-insert-change)
+        "#"
+        '(:state insert :command bray-state-stack-pop))
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
 ;; Clipboard Tests
 ;;
 ;; These tests verify meep's `kill-ring' clipboard operations including:
@@ -3129,6 +3163,39 @@ Verifies: user-error is raised, buffer unchanged."
         'user-error
         "No clipboard integration available in this terminal")
       (should (equal text-initial (buffer-string))))))
+
+(ert-deftest clipboard-only-yank-rectangle-over-short-line ()
+  "Yank over a rectangle whose last line is too short to reach its widest column.
+
+The system clipboard is plain text and cannot carry the rect-wise hint, so the
+region is replaced linearly, spanning the rectangles corners.
+Verifies: `region-beginning' & `region-end' are read here on purpose - the span
+starts at the rectangles left hand column, where the point & mark would start at
+whichever column the mark happens to hold and leave selected text behind."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "kl\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "abZ\n"))
+        (interprogram-paste-function (lambda () "Z")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the rectangle, mark on line 1 column 9.
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      ;; The point clamps to the end of the short line, the mark keeps column 9.
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next))
+      (simulate-input-for-meep
+        '(:state visual :command meep-clipboard-only-yank))
+      (should (equal text-expected (buffer-string))))))
 
 (ert-deftest clipboard-yank-empty-kill-ring ()
   "Yank when `kill-ring' is empty shows message.

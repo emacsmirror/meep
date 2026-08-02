@@ -9208,11 +9208,13 @@ Callers must ensure `repeat-fu-mode' is active."
                (unless (eq buffer-undo-list t)
                  buffer-undo-list)))
 
-          ;; Use a marker so `end' tracks through `delete-rectangle'
-          ;; (the integer position can shift onto the wrong line
-          ;; when characters are removed from lines above).
-          (when edit-last-line
-            (setq end (copy-marker end)))
+          ;; Use markers so BEG & END track through `delete-rectangle'.  An
+          ;; integer position can shift onto the wrong line when characters
+          ;; are removed from the lines above it, and BEG needn't be on the
+          ;; rectangles left hand column - the point & mark hold opposite
+          ;; corners, so either one may be the column being deleted up to.
+          (setq beg (copy-marker beg))
+          (setq end (copy-marker end))
 
           ;; Delete the rectangle content.
           (meep--with-undo-limits-disabled
@@ -9228,8 +9230,8 @@ Callers must ensure `repeat-fu-mode' is active."
             (t
              beg)))
 
-          (when (markerp end)
-            (set-marker end nil))
+          (set-marker beg nil)
+          (set-marker end nil)
 
           ;; Place marker at the first replay target (the adjacent line).
           (save-excursion
@@ -9266,7 +9268,8 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
    ((bound-and-true-p rectangle-mark-mode)
     (cond
      ((and meep-repeat-fu-replay (bound-and-true-p repeat-fu-mode))
-      (meep--rectangle-edit-enter-real-insert (region-beginning) (region-end)))
+      (meep--rectangle-edit-enter-real-insert
+       (meep--region-point-mark-beg) (meep--region-point-mark-end)))
      (t
       ;; Sort of odd but this is how Emacs supports changing a region.
       (call-interactively #'string-rectangle))))
@@ -9363,7 +9366,8 @@ The region may be implied, see `meep-command-is-mark-set-on-motion-any'."
     ;; Run the actual replacement.
     (cond
      ((and meep-repeat-fu-replay (bound-and-true-p repeat-fu-mode))
-      (meep--rectangle-edit-enter-real-insert (region-beginning) (region-end)))
+      (meep--rectangle-edit-enter-real-insert
+       (meep--region-point-mark-beg) (meep--region-point-mark-end)))
      (t
       (call-interactively #'string-rectangle))))
 
