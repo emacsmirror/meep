@@ -4810,6 +4810,8 @@ to line boundaries."
   (let ((range-a nil)
         (range-b nil)
         (range-region nil)
+        (range-secondary nil)
+        (plist-secondary (overlay-get mouse-secondary-overlay 'meep))
         (is-forward nil))
     (setq range-a
           (cons (overlay-start mouse-secondary-overlay) (overlay-end mouse-secondary-overlay)))
@@ -4890,8 +4892,9 @@ to line boundaries."
            (t
             (cons (point) (point)))))
 
-    ;; Restore this range.
+    ;; Restore these ranges, both are offset by the swap below.
     (setq range-region range-b)
+    (setq range-secondary range-a)
 
     (when (> (car range-a) (car range-b))
       (meep--swap-vars range-a range-b))
@@ -4923,7 +4926,13 @@ to line boundaries."
           (goto-char end))
          (t
           (meep--set-marker end)
-          (goto-char beg)))))))
+          (goto-char beg))))
+
+      ;; Restore the secondary selection where its text now sits, matching the
+      ;; rectangle path.  It was dropped above so the overlay didn't drift over
+      ;; the replacements, the ranges tracked them instead.
+      (move-overlay mouse-secondary-overlay (car range-secondary) (cdr range-secondary))
+      (overlay-put mouse-secondary-overlay 'meep plist-secondary))))
 
 (defun meep--region-swap-rectangle-impl ()
   "Swap the region with the secondary for rectangular regions."

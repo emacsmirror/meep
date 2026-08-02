@@ -3697,6 +3697,91 @@ Verifies: implied region matches secondary's column width."
       (should (equal point-expected (meep-test-point-line-column)))
       (should (equal mark-expected (meep-test-mark-line-column))))))
 
+(ert-deftest region-swap-contiguous-keeps-secondary ()
+  "A contiguous swap leaves the secondary selection behind.
+
+The rectangle path moves the overlay, this one dropped it, so swapping twice
+was only a round trip for a rectangle.
+Verifies: the secondary covers its own span, holding the text swapped into it,
+and a second swap restores the buffer."
+  (let ((text-initial ".[ABC]__[XYZ].")
+        (text-expected ".[XYZ]__[ABC]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC], make it the secondary selection.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Select [XYZ] and swap.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-swap))
+      (should (equal text-expected (buffer-string)))
+      (should (secondary-selection-exist-p))
+      ;; The secondary kept its own span, which now holds the other text.
+      (should
+       (equal
+        "[XYZ]"
+        (buffer-substring-no-properties
+         (overlay-start mouse-secondary-overlay) (overlay-end mouse-secondary-overlay))))
+      ;; Swapping again restores the buffer, the region is still set.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-activate-or-reverse))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-swap))
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest region-swap-line-wise-keeps-secondary-type ()
+  "A line-wise swap leaves the secondary selection with its type intact.
+
+Verifies: the stored `meep' property survives the swap, the secondary is
+restored rather than rebuilt."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "header\n"
+          "[ABC]\n"
+          "middle\n"
+          "[XYZ]\n"
+          "footer\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "header\n"
+          "[XYZ]\n"
+          "middle\n"
+          "[ABC]\n"
+          "footer\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Line 2 as a line-wise secondary selection.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-region-expand-to-line-bounds))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-to-secondary-selection))
+      (should (equal '(:region-type line-wise) (overlay-get mouse-secondary-overlay 'meep)))
+      ;; Line 4 as the region, then swap.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-region-expand-to-line-bounds))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-swap))
+      (should (equal text-expected (buffer-string)))
+      (should (secondary-selection-exist-p))
+      (should (equal '(:region-type line-wise) (overlay-get mouse-secondary-overlay 'meep))))))
+
 (ert-deftest region-swap-line-explicit ()
   "Swap two explicitly selected whole lines.
 
