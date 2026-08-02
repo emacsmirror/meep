@@ -5114,28 +5114,26 @@ only the secondary region needs to be set."
   (unless (secondary-selection-exist-p)
     (user-error "No secondary selection!"))
 
-  (let ((is-rect-wise nil)
-        (is-line-wise nil))
+  (let* ((type (plist-get (overlay-get mouse-secondary-overlay 'meep) :region-type))
+         ;; Which type to swap as: the regions when it is active, otherwise the
+         ;; secondarys, which the region is then inferred from.
+         (type-swap
+          (cond
+           ((region-active-p)
+            ;; NOTE: either side being rectangular routes to the rectangle
+            ;; swap, which rejects a shape mismatch.  Reading only the regions
+            ;; type let a rectangular secondary be swapped as the linear span
+            ;; between its corners - reversible, but silently ignoring its
+            ;; shape - while the mirror case raised a line count mismatch.
+            (when (or (bound-and-true-p rectangle-mark-mode) (eq type 'rect-wise))
+              'rect-wise))
+           (meep-region-swap-imply-region
+            type))))
     (cond
-     ((region-active-p)
-      (when (bound-and-true-p rectangle-mark-mode)
-        (setq is-rect-wise t)))
-     (meep-region-swap-imply-region
-      ;; When there is no active region.
-      (let* ((plist (overlay-get mouse-secondary-overlay 'meep))
-             (type (plist-get plist :region-type)))
-        (cond
-         ((eq type 'rect-wise)
-          ;; This will need to be inferred.
-          (setq is-rect-wise t))
-         ((eq type 'line-wise)
-          (setq is-line-wise t))))))
-
-    (cond
-     (is-rect-wise
+     ((eq type-swap 'rect-wise)
       (meep--region-swap-rectangle-impl))
      (t
-      (meep--region-swap-contiguous-impl is-line-wise)))))
+      (meep--region-swap-contiguous-impl (eq type-swap 'line-wise))))))
 
 ;;;###autoload
 (defun meep-region-to-secondary-selection ()

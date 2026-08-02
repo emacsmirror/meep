@@ -4084,6 +4084,93 @@ Verifies: error signaled for line count mismatch."
         "Rectangle line count mismatch (3 and 2)")
       (should (equal text-initial (buffer-string))))))
 
+(ert-deftest region-swap-error-rectangle-secondary-line-mismatch ()
+  "Swap a rectangular secondary with a shorter char-wise region signals error.
+
+The region being char-wise does not make the secondary any less rectangular,
+so this is the same mismatch as two rectangles of differing height.
+Verifies: the error matches the mirror case rather than swapping the linear
+span between the secondarys corners."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcd..\n"
+          "efgh..\n"
+          "......\n"
+          "ijkl..\n"
+          "mnop..\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; A two line rectangle over columns 0-2 as the secondary selection.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle-rectangle))
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; A char-wise region on line 4 only.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next))
+      (should-error-with-message
+          (simulate-input-for-meep
+            '(:state visual :command meep-region-swap))
+        'user-error
+        "Rectangle line count mismatch (1 and 2)")
+      (should (equal text-initial (buffer-string))))))
+
+(ert-deftest region-swap-rectangle-secondary-char-region ()
+  "Swap a rectangular secondary with a char-wise region of matching height.
+
+Verifies: the secondarys shape is honoured, the columns of the region are
+taken from its two ends as they are for a rectangle."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcd..\n"
+          "efgh..\n"
+          "......\n"
+          "ijkl..\n"
+          "mnop..\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "ijcd..\n"
+          "mngh..\n"
+          "......\n"
+          "abkl..\n"
+          "efop..\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; A two line rectangle over columns 0-2 as the secondary selection.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle-rectangle))
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; A char-wise region spanning the same two lines.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-swap))
+      (should (equal text-expected (buffer-string))))))
+
 (ert-deftest region-swap-error-rectangle-overlapping ()
   "Swap with overlapping rectangles signals error.
 
