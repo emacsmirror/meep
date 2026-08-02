@@ -1,0 +1,38 @@
+#!/bin/sh
+# Reject a commit that leaves tracked Emacs Lisp files unformatted.
+#
+# `make format' rewrites in place and prints "formatted: PATH" for each file it
+# rewrote, so the paths are read straight out of its output.  Its exit code is
+# reserved for errors running the formatter, which reject the commit too -
+# unformatted and unverified are equally not ready to commit.
+#
+# NOTE: the working tree is checked, not the staged content.  Formatting a
+# partially staged file to compare only the staged hunks would mean stashing
+# the rest, which is not worth the risk to an unrelated work in progress.  In
+# practice the two agree, and a file staged in part is still formatted whole.
+#
+# The reformatted files are left in place, there is nothing to gain by
+# reverting work the commit needs anyway.
+#
+# Enable with:
+#   git config core.hooksPath _misc/git_hooks
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# NOTE: the standard error is left alone so the formatters own errors show.
+if ! format_output=$(make format); then
+	echo "pre-commit: \"make format\" failed, commit rejected" >&2
+	exit 1
+fi
+
+files_changed=$(printf '%s\n' "$format_output" | sed -n 's/^formatted: //p')
+
+if [ -z "$files_changed" ]; then
+	exit 0
+fi
+
+echo "pre-commit: \"make format\" reformatted:" >&2
+printf '%s\n' "$files_changed" | sed 's/^/  /' >&2
+echo "Stage them and commit again (or pass --no-verify)." >&2
+
+exit 1
