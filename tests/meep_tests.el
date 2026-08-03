@@ -213,6 +213,7 @@ Also suppresses minibuffer prompts from interactive specs."
       meep-region-syntax-expand
       meep-region-to-secondary-selection
       meep-region-toggle
+      meep-secondary-selection-jump-to
       meep-space-shrink-contextual
       meep-transpose
       meep-region-toggle-rectangle))
@@ -259,7 +260,8 @@ Also suppresses minibuffer prompts from interactive specs."
       meep-region-syntax-contract
       meep-region-syntax-expand
       meep-region-to-secondary-selection
-      meep-region-toggle-rectangle)))
+      meep-region-toggle-rectangle
+      meep-secondary-selection-jump-to)))
   "Alist mapping states to lists of commands whose keys should be looked up.")
 
 (defun meep-test-get-keymaps-for-state (state)
@@ -5930,6 +5932,369 @@ Verifies: message reported, buffer, region & state left alone."
       ;; not be dropped by the commands own completion.
       (should (equal 'visual (bray-state)))
       (should (region-active-p)))))
+
+
+;; ---------------------------------------------------------------------------
+;; Secondary Selection Jump To
+;;
+;; Jumps to the end of the secondary selection which held the mark when it
+;; was made.  Only the point moves, the text & the secondary selection are
+;; left alone.
+
+(ert-deftest secondary-selection-jump-to-mark-at-beginning ()
+  "Jump to a secondary selection made with the mark on its beginning.
+
+Workflow: select [ABC], make secondary, move away, jump.
+Verifies: the point lands on the beginning where the mark was, the secondary
+selection is left alone."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC], make secondary selection.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Move away, then jump back.
+      (simulate-input-for-meep
+        [?\C-u ?7]
+        '(:state normal :command meep-move-char-next))
+      (simulate-input-for-meep
+        '(:state normal :command meep-secondary-selection-jump-to))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should-not (region-active-p))
+      (should (equal '(1 . 1) (meep-test-point-line-column)))
+      ;; The secondary selection is left alone.
+      (should
+       (equal
+        '(1 . 1) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal '(1 . 6) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay))))
+      (should (plist-get (overlay-get mouse-secondary-overlay 'meep) :point-at-end)))))
+
+(ert-deftest secondary-selection-jump-to-mark-at-end ()
+  "Jump to a secondary selection made with the mark on its end.
+
+Workflow: select [ABC] reversed, make secondary, move away, jump.
+Verifies: the point lands on the end where the mark was, not the beginning."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC] then reverse, leaving the point on the beginning.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-activate-and-reverse)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Move away, then jump back.
+      (simulate-input-for-meep
+        [?\C-u ?7]
+        '(:state normal :command meep-move-char-next))
+      (simulate-input-for-meep
+        '(:state normal :command meep-secondary-selection-jump-to))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal '(1 . 6) (meep-test-point-line-column)))
+      (should-not (plist-get (overlay-get mouse-secondary-overlay 'meep) :point-at-end)))))
+
+(ert-deftest secondary-selection-jump-to-without-meta-data ()
+  "Jump to a secondary selection made outside of MEEP.
+
+Workflow: set the overlay directly (as a mouse drag would), jump.
+Verifies: without MEEP's meta-data the mark defaults to the beginning."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; A mouse drag sets the overlay without MEEP's meta-data.
+      ;; Clear the property, another test may have left it set.
+      (move-overlay mouse-secondary-overlay (+ (point-min) 1) (+ (point-min) 6) (current-buffer))
+      (overlay-put mouse-secondary-overlay 'meep nil)
+      ;; Ensure the jump moves the point, it begins on the target otherwise.
+      (simulate-input-for-meep
+        [?\C-u ?8]
+        '(:state normal :command meep-move-char-next))
+      (simulate-input-for-meep
+        '(:state normal :command meep-secondary-selection-jump-to))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(1 . 1) (meep-test-point-line-column))))))
+
+(ert-deftest secondary-selection-jump-to-repeat-opposite-end ()
+  "Repeat the jump to reach the opposite end of the secondary selection.
+
+Workflow: select [ABC], make secondary, move away, jump twice, jump again.
+Verifies: the second jump lands on the end the point was on, the third comes
+back to the mark, the secondary selection is left alone."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC], make secondary selection.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Move away, then jump twice - both jumps run as a single macro so the
+      ;; second sees the first as the `last-command'.
+      (simulate-input-for-meep
+        [?\C-u ?7]
+        '(:state normal :command meep-move-char-next))
+      (simulate-input-for-meep
+        '(:state normal :command meep-secondary-selection-jump-to)
+        '(:state normal :command meep-secondary-selection-jump-to))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should-not (region-active-p))
+      (should (equal '(1 . 6) (meep-test-point-line-column)))
+      ;; The secondary selection is left alone.
+      (should
+       (equal
+        '(1 . 1) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal '(1 . 6) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay))))
+      ;; Jumping from the far end returns to the mark.
+      (simulate-input-for-meep
+        '(:state normal :command meep-secondary-selection-jump-to))
+      (should (equal '(1 . 1) (meep-test-point-line-column))))))
+
+(ert-deftest secondary-selection-jump-to-numeric-argument ()
+  "A numeric argument counts between the ends of the secondary selection.
+
+Workflow: select [ABC], make secondary, move away, jump with 1, 2 then 3.
+Verifies: odd arguments land on the mark, even arguments on the end the point
+was on."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC], make secondary selection.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Move away, each jump below starts away from where it lands.
+      (simulate-input-for-meep
+        [?\C-u ?7]
+        '(:state normal :command meep-move-char-next))
+      (simulate-input-for-meep
+        [?\C-u ?1]
+        '(:state normal :command meep-secondary-selection-jump-to))
+      (should (equal '(1 . 1) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-secondary-selection-jump-to))
+      (should (equal '(1 . 6) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-secondary-selection-jump-to))
+      (should (equal '(1 . 1) (meep-test-point-line-column)))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      ;; The secondary selection is left alone.
+      (should
+       (equal
+        '(1 . 1) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal
+        '(1 . 6) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay)))))))
+
+(ert-deftest secondary-selection-jump-to-on-mark-without-repeat ()
+  "Jump while on the mark without having jumped there stays on the mark.
+
+Workflow: select [ABC], make secondary, move onto the mark, jump.
+Verifies: only a repeat crosses over, arriving on the mark by an ordinary
+motion leaves the jump landing where it always does."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC], make secondary selection.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Step back onto the mark, then jump.
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state normal :command meep-move-char-prev)
+        '(:state normal :command meep-secondary-selection-jump-to))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(1 . 1) (meep-test-point-line-column))))))
+
+(ert-deftest secondary-selection-jump-to-sets-mark-on-motion ()
+  "The jump leaves the mark behind as any other motion does.
+
+Workflow: select [ABC], make secondary, move away, jump.
+Verifies: the mark holds the position jumped from, so the span jumped over
+reads as the implied region."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC], make secondary selection.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Move away, the jump must leave the mark here.
+      (simulate-input-for-meep
+        [?\C-u ?7]
+        '(:state normal :command meep-move-char-next))
+      (should (equal '(1 . 13) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-secondary-selection-jump-to))
+      (should (equal text-initial (buffer-string)))
+      (should-not (region-active-p))
+      (should (equal '(1 . 1) (meep-test-point-line-column)))
+      (should (equal '(1 . 13) (meep-test-mark-line-column))))))
+
+(ert-deftest secondary-selection-jump-to-with-active-region ()
+  "Jump with an active region extends it as any other motion.
+
+Workflow: select [ABC], make secondary, select [XYZ], jump.
+Verifies: the point moves, the mark & the secondary selection are left alone."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC], make secondary selection.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Select [XYZ].
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;                 ^
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-secondary-selection-jump-to))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      (should (region-active-p))
+      (should (equal '(1 . 1) (meep-test-point-line-column)))
+      (should (equal '(1 . 8) (meep-test-mark-line-column)))
+      ;; The secondary selection is left alone.
+      (should
+       (equal
+        '(1 . 1) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal
+        '(1 . 6) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay)))))))
+
+(ert-deftest secondary-selection-jump-to-no-secondary-no-op ()
+  "Jump without a secondary selection reports & does nothing.
+
+Workflow: attempt the jump without a secondary selection.
+Verifies: message reported, the point does not move."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-char-next))
+      (meep-test-messages-clear)
+      (simulate-input-for-meep
+        '(:state normal :command meep-secondary-selection-jump-to))
+      (should (equal '("No secondary selection!") (meep-test-messages)))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal '(1 . 3) (meep-test-point-line-column))))))
+
+(ert-deftest secondary-selection-jump-to-not-accessible-no-op ()
+  "Jump reports when the secondary selection is out of reach.
+
+A secondary selection in another buffer, or narrowed wholly or partly out of
+the accessible portion, must not be jumped to - the position would land in the
+wrong buffer or outside the restriction.
+Verifies: another buffer reads as having no secondary selection, a restriction
+names itself."
+  (with-meep-test (concat "abcdef\n" "ghijkl\n")
+    (text-mode)
+    (bray-mode 1)
+    ;; Secondary on the first line.
+    (simulate-input-for-meep
+      '(:state normal :command meep-region-toggle)
+      '(:state visual :command meep-move-line-end)
+      '(:state visual :command meep-region-to-secondary-selection))
+    ;; Another buffer cannot see it.
+    ;; The buffer is switched to, not merely made current - simulated input runs
+    ;; the command in the selected windows buffer.
+    (let ((buf-this (current-buffer))
+          (buf-other (generate-new-buffer "meep-test-other")))
+      (unwind-protect
+          (progn
+            (switch-to-buffer buf-other)
+            (text-mode)
+            (bray-mode 1)
+            (meep-test-messages-clear)
+            (simulate-input-for-meep
+              '(:state normal :command meep-secondary-selection-jump-to))
+            (should (equal '("No secondary selection!") (meep-test-messages))))
+        (switch-to-buffer buf-this)
+        (kill-buffer buf-other)))
+    ;; Nor can a restriction that excludes it, or cuts through either end -
+    ;; where it exists in the accessible portion without being held by it.
+    (dolist (case
+             (list
+              (cons (pos-bol 2) (point-max))
+              (cons (+ (point-min) 3) (point-max))
+              (cons (point-min) (+ (point-min) 3))))
+      (pcase-let ((`(,beg . ,end) case))
+        (save-restriction
+          (narrow-to-region beg end)
+          (meep-test-messages-clear)
+          (let ((point-init (point)))
+            (simulate-input-for-meep
+              '(:state normal :command meep-secondary-selection-jump-to))
+            (should
+             (equal
+              '("Secondary selection is outside the accessible portion") (meep-test-messages)))
+            ;; The narrowing may move the point, the command must not.
+            (should (eq point-init (point)))))))))
 
 
 ;; ---------------------------------------------------------------------------

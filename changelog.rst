@@ -16,6 +16,9 @@ Change Log
   - Add ``meep-region-activate-or-reverse``.
   - Add ``meep-region-exchange-secondary-selection``, exchanging the region and the
     secondary selection (including the rectangle or line-wise region type).
+  - Add ``meep-secondary-selection-jump-to``, jumping to the end of the
+    secondary selection which held the mark when it was made,
+    repeating the command or an even numeric argument jumps to the opposite end.
   - Support ``which-key`` for the keypad.
   - Integrate rectangle cut/copy/paste with the kill-ring.
   - Line-wise kill-ring regions now use line-wise yank.

@@ -30,7 +30,7 @@
 ;; | Grab        |             |             |             |             |  |             |             |             |             |             |             |
 ;; | GrabSwap    |             |             |             |             |  |             |             |             |             |             |             |
 ;; | GrabExch/s  |             |             |             |             |  |             |             |             |             |             |             |
-;; |             |             |             |             |             |  |             |             |             |             |             |             |
+;; | GrabJump/f  |             |             |             |             |  |             |             |             |             |             |             |
 ;; |             |             |             |             |             |  |             |             |             |             |             |             |
 ;; |            `|             |             |             |             |  |             |             |             |             |             |             |
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
@@ -137,6 +137,7 @@
       '("`" . meep-region-to-secondary-selection)
       '("~" . meep-region-swap)
       (cons (concat my-ex "`") 'meep-region-exchange-secondary-selection)
+      (cons (concat my-find "`") 'meep-secondary-selection-jump-to)
 
       ;; ----
       ;; Left Hand: Row 1.

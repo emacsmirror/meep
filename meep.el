@@ -5292,6 +5292,56 @@ Return non-nil when the exchange took place."
         (rectangle-mark-mode 1))
       t)))
 
+;;;###autoload
+(defun meep-secondary-selection-jump-to (arg)
+  "Jump to the mark of the secondary selection, ARG counts between the ends.
+
+The mark is the end of the secondary selection which held the mark
+when it was made.  A secondary selection made outside of MEEP jumps to
+its beginning.
+
+An even ARG jumps to the opposite end, odd values jump to the mark.
+
+Repeating this command from the position it jumped to moves to the
+opposite end, putting both ends of the selection within reach.
+
+The region and the secondary selection are left alone, with an active region
+the jump extends it as any other motion.
+
+Return non-nil when the jump took place."
+  (interactive "p")
+  (when-let* ((range (meep--secondary-selection-range-or-message)))
+    ;; The jump lands on the mark, the end opposite the point.
+    (let ((pos-dst (car range))
+          (pos-alt (cdr range)))
+
+      ;; As in `meep-region-exchange-secondary-selection', a selection made outside
+      ;; of MEEP has no `meep' property - default the point to the end, leaving the
+      ;; mark on the beginning.  Test for the key since nil is a stored value.
+      (let ((point-at-end-cell
+             (plist-member (overlay-get mouse-secondary-overlay 'meep) :point-at-end)))
+        (when (and point-at-end-cell (null (cadr point-at-end-cell)))
+          (meep--swap-vars pos-dst pos-alt)))
+
+      ;; ARG counts steps between the two ends, so any odd value is the default &
+      ;; any even value the opposite end.  `mod' is used since a negative ARG
+      ;; counts the same way.
+      (when (zerop (mod arg 2))
+        (meep--swap-vars pos-dst pos-alt))
+
+      ;; Repeating the jump steps over to the other end instead of doing nothing.
+      ;; The last command is checked so arriving on the destination by any other
+      ;; means still jumps where the key says it does, only a deliberate repeat
+      ;; crosses over.
+      (when (and (eq (point) pos-dst) (eq (meep--last-command) 'meep-secondary-selection-jump-to))
+        (meep--swap-vars pos-dst pos-alt))
+
+      ;; Leave the mark behind as any other motion does, so the span jumped
+      ;; over reads as the implied region instead of a stale mark.
+      (meep--with-mark-on-motion-maybe-set
+        (goto-char pos-dst))
+      t)))
+
 
 ;; ---------------------------------------------------------------------------
 ;; Selection/Region: Line Selection
