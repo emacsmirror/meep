@@ -4028,11 +4028,11 @@ Verifies: multi-line blocks exchange positions."
       (should (equal point-expected (meep-test-point-line-column)))
       (should (equal mark-expected (meep-test-mark-line-column))))))
 
-(ert-deftest region-swap-error-no-secondary ()
-  "Swap without secondary selection signals error.
+(ert-deftest region-swap-no-secondary-no-op ()
+  "Swap without secondary selection reports & does nothing.
 
 Workflow: select region, attempt swap without secondary.
-Verifies: error signaled, buffer unchanged."
+Verifies: message reported, buffer, region & state left alone."
   (let ((text-initial ".[ABC]__[XYZ]."))
     (with-meep-test text-initial
       (text-mode)
@@ -4049,12 +4049,108 @@ Verifies: error signaled, buffer unchanged."
         [?\C-u ?5]
         '(:state visual :command meep-move-char-next))
       ;; Attempt swap without secondary selection.
-      (should-error-with-message
-          (simulate-input-for-meep
-            '(:state visual :command meep-region-swap))
-        'user-error
-        "No secondary selection!")
+      (meep-test-messages-clear)
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-swap))
+      (should (equal '("No secondary selection!") (meep-test-messages)))
+      (should (equal text-initial (buffer-string)))
+      ;; Reporting returns normally where signaling aborted, the region must
+      ;; not be dropped by the commands own completion.
+      (should (equal 'visual (bray-state)))
+      (should (region-active-p)))))
+
+(ert-deftest region-swap-not-accessible-no-op ()
+  "Swap reports when the secondary selection is out of reach.
+
+A secondary selection in another buffer, or narrowed wholly or partly out of
+the accessible portion, must not be swapped with - the text the narrowing hides
+would be read & replaced.  A restriction cutting through it used to fail part
+way in with `args-out-of-range'.
+Verifies: another buffer reads as having no secondary selection, a restriction
+names itself, and the text is left alone."
+  (let ((text-initial (concat "abcdef\n" "ghijkl\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Secondary on the first line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-line-end)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Another buffer cannot see it.
+      ;; The buffer is switched to, not merely made current - simulated input
+      ;; runs the command in the selected windows buffer.
+      (let ((buf-this (current-buffer))
+            (buf-other (generate-new-buffer "meep-test-other")))
+        (unwind-protect
+            (progn
+              (switch-to-buffer buf-other)
+              (text-mode)
+              (bray-mode 1)
+              (meep-test-messages-clear)
+              (simulate-input-for-meep
+                '(:state normal :command meep-region-swap))
+              (should (equal '("No secondary selection!") (meep-test-messages))))
+          (switch-to-buffer buf-this)
+          (kill-buffer buf-other)))
+      ;; Nor can a restriction that excludes it, or cuts through either end -
+      ;; where it exists in the accessible portion without being held by it.
+      (dolist (case
+               (list
+                (cons (pos-bol 2) (point-max))
+                (cons (+ (point-min) 3) (point-max))
+                (cons (point-min) (+ (point-min) 3))))
+        (pcase-let ((`(,beg . ,end) case))
+          (save-restriction
+            (narrow-to-region beg end)
+            (meep-test-messages-clear)
+            (simulate-input-for-meep
+              '(:state normal :command meep-region-swap))
+            (should
+             (equal
+              '("Secondary selection is outside the accessible portion") (meep-test-messages))))))
       (should (equal text-initial (buffer-string))))))
+
+(ert-deftest region-swap-secondary-at-buffer-end ()
+  "Swap with a secondary selection flush against the end of the buffer.
+
+A selection ending exactly at `point-max' is within the accessible portion,
+the bounds check must not read the boundary as out of reach.
+
+Workflow: select [def] running to the buffer end, make secondary, select
+[abc], swap.
+Verifies: the text is swapped, returns to normal state."
+  ;;   abc def  ->  def abc
+  (let ((text-initial "abc def")
+        (text-expected "def abc")
+        (point-expected '(1 . 3))
+        (mark-expected '(1 . 0)))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [def] running to the end of the buffer, make it secondary.
+      ;; Cursor: abc def
+      ;;             ^
+      (simulate-input-for-meep
+        [?\C-u ?4]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-line-end)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Select [abc] & swap.
+      ;; Cursor: abc def
+      ;;         ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-swap))
+      (should (equal text-expected (buffer-string)))
+      (should (equal 'normal (bray-state)))
+      (should (equal point-expected (meep-test-point-line-column)))
+      (should (equal mark-expected (meep-test-mark-line-column))))))
 
 (ert-deftest region-swap-error-contiguous-overlapping ()
   "Swap with overlapping contiguous regions signals error.

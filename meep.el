@@ -4790,6 +4790,31 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
   The text after and lines below are used to create the implied selection."
   :type 'boolean)
 
+;; NOTE: `secondary-selection-exist-p' is not used to test for the selection, it
+;; looks for the overlay between the point-min & point-max of the current
+;; buffer, which finds one a restriction merely cuts through.  Clamping such a
+;; selection to the accessible portion would act on a span the user never
+;; selected (and change the shape of a rectangle), so it's reported instead.
+;;
+;; Only the bounds are guarded, callers read the overlays properties directly -
+;; a restriction can't invalidate those.
+(defun meep--secondary-selection-range-or-message ()
+  "Return the secondary selection as a cons cell of its bounds.
+Return nil with a message when there is none in the current buffer,
+or when it isn't within the accessible portion."
+  (declare (important-return-value t))
+  (let ((beg (overlay-start mouse-secondary-overlay))
+        (end (overlay-end mouse-secondary-overlay)))
+    (cond
+     ((not (eq (overlay-buffer mouse-secondary-overlay) (current-buffer)))
+      (message "No secondary selection!")
+      nil)
+     ((not (and (<= (point-min) beg) (<= end (point-max))))
+      (message "Secondary selection is outside the accessible portion")
+      nil)
+     (t
+      (cons beg end)))))
+
 (defun meep--range-list-as-marker-list (ranges)
   "Create a list of markers from RANGES, a list of integer ranges."
   (declare (important-return-value t))
@@ -4803,21 +4828,23 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
    ranges))
 
 
-(defun meep--region-swap-contiguous-impl (is-line-wise)
+(defun meep--region-swap-contiguous-impl (range-a is-line-wise)
   "Swap the region with the secondary.
+
+RANGE-A is the bounds of the secondary selection, the caller must take it
+from `meep--secondary-selection-range-or-message'.
+The cons is modified in place, tracking the text as the swap offsets it.
 
 When IS-LINE-WISE is non-nil, the secondary selection represents whole lines.
 This impacts `meep-region-swap-imply-region', causing the implied region to extend
-to line boundaries."
-  (let ((range-a nil)
-        (range-b nil)
+to line boundaries.
+
+Return non-nil when the swap took place."
+  (let ((range-b nil)
         (range-region nil)
         (range-secondary nil)
         (plist-secondary (overlay-get mouse-secondary-overlay 'meep))
         (is-forward nil))
-    (setq range-a
-          (cons (overlay-start mouse-secondary-overlay) (overlay-end mouse-secondary-overlay)))
-
     (setq range-b
           (cond
            ((region-active-p)
@@ -4934,16 +4961,21 @@ to line boundaries."
       ;; rectangle path.  It was dropped above so the overlay didn't drift over
       ;; the replacements, the ranges tracked them instead.
       (move-overlay mouse-secondary-overlay (car range-secondary) (cdr range-secondary))
-      (overlay-put mouse-secondary-overlay 'meep plist-secondary))))
+      (overlay-put mouse-secondary-overlay 'meep plist-secondary))
+    t))
 
-(defun meep--region-swap-rectangle-impl ()
-  "Swap the region with the secondary for rectangular regions."
+(defun meep--region-swap-rectangle-impl (secondary-range)
+  "Swap the region with the secondary for rectangular regions.
+
+SECONDARY-RANGE is the bounds of the secondary selection, the caller must
+take it from `meep--secondary-selection-range-or-message'.
+
+Return non-nil when the swap took place."
   (let* ((region-beg nil)
          (region-end nil)
 
-         ;; Caller will have checked: `secondary-selection-exist-p'.
-         (secondary-beg (overlay-start mouse-secondary-overlay))
-         (secondary-end (overlay-end mouse-secondary-overlay))
+         (secondary-beg (car secondary-range))
+         (secondary-end (cdr secondary-range))
          ;; The bounds are the point & mark ordered by position, so the right
          ;; hand column is on whichever of them has the larger column.
          (is-secondary-end-at-col-end
@@ -5104,38 +5136,44 @@ to line boundaries."
     (dolist (ranges (list line-ranges-a line-ranges-b))
       (dolist (range ranges)
         (set-marker (car range) nil)
-        (set-marker (cdr range) nil)))))
+        (set-marker (cdr range) nil)))
+    t))
 
 ;;;###autoload
 (defun meep-region-swap ()
   "Swap the contents of the primary and secondary region.
 
 When `meep-region-swap-imply-region' is non-nil,
-only the secondary region needs to be set."
-  (interactive "*")
-  (unless (secondary-selection-exist-p)
-    (user-error "No secondary selection!"))
+only the secondary region needs to be set.
 
-  (let* ((type (plist-get (overlay-get mouse-secondary-overlay 'meep) :region-type))
-         ;; Which type to swap as: the regions when it is active, otherwise the
-         ;; secondarys, which the region is then inferred from.
-         (type-swap
-          (cond
-           ((region-active-p)
-            ;; NOTE: either side being rectangular routes to the rectangle
-            ;; swap, which rejects a shape mismatch.  Reading only the regions
-            ;; type let a rectangular secondary be swapped as the linear span
-            ;; between its corners - reversible, but silently ignoring its
-            ;; shape - while the mirror case raised a line count mismatch.
-            (when (or (bound-and-true-p rectangle-mark-mode) (eq type 'rect-wise))
-              'rect-wise))
-           (meep-region-swap-imply-region
-            type))))
-    (cond
-     ((eq type-swap 'rect-wise)
-      (meep--region-swap-rectangle-impl))
-     (t
-      (meep--region-swap-contiguous-impl (eq type-swap 'line-wise))))))
+Return non-nil when the swap took place."
+  (interactive "*")
+  ;; NOTE: take the secondary selection up front, an unusable one is reported
+  ;; before any text is read or replaced.
+  ;;
+  ;; Having nothing to swap with is reported & does nothing, a contradictory
+  ;; request (overlapping or mismatched rectangles) signals instead.
+  (when-let* ((secondary-range (meep--secondary-selection-range-or-message)))
+    (let* ((type (plist-get (overlay-get mouse-secondary-overlay 'meep) :region-type))
+           ;; Which type to swap as: the regions when it is active, otherwise the
+           ;; secondarys, which the region is then inferred from.
+           (type-swap
+            (cond
+             ((region-active-p)
+              ;; NOTE: either side being rectangular routes to the rectangle
+              ;; swap, which rejects a shape mismatch.  Reading only the regions
+              ;; type let a rectangular secondary be swapped as the linear span
+              ;; between its corners - reversible, but silently ignoring its
+              ;; shape - while the mirror case raised a line count mismatch.
+              (when (or (bound-and-true-p rectangle-mark-mode) (eq type 'rect-wise))
+                'rect-wise))
+             (meep-region-swap-imply-region
+              type))))
+      (cond
+       ((eq type-swap 'rect-wise)
+        (meep--region-swap-rectangle-impl secondary-range))
+       (t
+        (meep--region-swap-contiguous-impl secondary-range (eq type-swap 'line-wise)))))))
 
 ;;;###autoload
 (defun meep-region-to-secondary-selection ()
