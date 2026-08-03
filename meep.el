@@ -4616,6 +4616,12 @@ Move to the beginning with a negative ARG."
 ;; ---------------------------------------------------------------------------
 ;; Selection/Region: Primitive
 
+(defun meep--region-shift-select-promote ()
+  "Make a shift-selected region permanent, so the next motion won't drop it.
+Return non-nil when the region was shift-selected."
+  (when (eq (car-safe transient-mark-mode) 'only)
+    (setq transient-mark-mode t)))
+
 ;;;###autoload
 (defun meep-region-enable ()
   "Enable the active region.
@@ -4667,12 +4673,8 @@ The mark is not moved, the region can be restored
 via `meep-region-activate-or-reverse' or `meep-region-activate-and-reverse'."
   (interactive)
   (when (region-active-p)
-    (cond
-     ((eq (car-safe transient-mark-mode) 'only)
-      ;; Move from shift-select to "permanent" select.
-      (setq transient-mark-mode t))
-     (t
-      (deactivate-mark t)))))
+    (unless (meep--region-shift-select-promote)
+      (deactivate-mark t))))
 
 ;;;###autoload
 (defun meep-region-toggle ()
@@ -5213,11 +5215,9 @@ use to maintain line-based selection."
     ;; Requesting line bounds requests line selection, whatever the region was.
     (setq meep-state-region-elem 'line-wise)
 
-    (when (eq (car-safe transient-mark-mode) 'only)
-      ;; Move from shift-select to "permanent" select.
-      ;; Needed when expanding to line bounds after a "search" for example,
-      ;; so the next motion doesn't drop the selection.
-      (setq transient-mark-mode t))
+    ;; Needed when expanding to line bounds after a "search" for example,
+    ;; so the next motion doesn't drop the selection.
+    (meep--region-shift-select-promote)
 
     (let* ((is-forward (eq (point) (region-end)))
            (beg (region-beginning))
