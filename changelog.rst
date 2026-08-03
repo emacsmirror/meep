@@ -14,6 +14,8 @@ Change Log
     with support for nested brackets.
   - Add contextual blank space removal (``meep-space-shrink-contextual``).
   - Add ``meep-region-activate-or-reverse``.
+  - Add ``meep-region-exchange-secondary-selection``, exchanging the region and the
+    secondary selection (including the rectangle or line-wise region type).
   - Support ``which-key`` for the keypad.
   - Integrate rectangle cut/copy/paste with the kill-ring.
   - Line-wise kill-ring regions now use line-wise yank.

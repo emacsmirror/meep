@@ -4815,6 +4815,25 @@ or when it isn't within the accessible portion."
      (t
       (cons beg end)))))
 
+;; NOTE: POINT-AT-END is taken from the mark rather than `region-end', which
+;; reports a corner the point needn't be on.  The bounds are the point & mark
+;; ordered by position so they carry all four of a rectangles numbers between
+;; them; the one thing an ordered pair cannot say is which of the two the point
+;; was on.
+
+(defun meep--secondary-selection-set (beg end region-type point-at-end)
+  "Set the secondary selection to BEG & END, with MEEP's own meta-data.
+REGION-TYPE is `rect-wise', `line-wise' or nil for char-wise.
+POINT-AT-END is non-nil when the point was on END."
+  ;; Inline: `secondary-selection-from-region'
+  ;; Detaching re-homes the overlay, `move-overlay' without a buffer leaves it
+  ;; in the one it's already in - applying these positions to another buffer.
+  (delete-overlay mouse-secondary-overlay)
+  (move-overlay mouse-secondary-overlay beg end)
+  ;; If other properties are ever used, this would need to append the property.
+  (overlay-put
+   mouse-secondary-overlay 'meep (list :region-type region-type :point-at-end point-at-end)))
+
 (defun meep--range-list-as-marker-list (ranges)
   "Create a list of markers from RANGES, a list of integer ranges."
   (declare (important-return-value t))
@@ -5181,23 +5200,11 @@ Return non-nil when the swap took place."
   (interactive)
   (cond
    ((region-active-p)
-
-    ;; Inline: `secondary-selection-from-region'
-    (delete-overlay mouse-secondary-overlay)
-
-    (move-overlay
-     mouse-secondary-overlay (meep--region-point-mark-beg) (meep--region-point-mark-end))
-
-    ;; If other properties are ever used, this would need to append the property.
-    (overlay-put
-     mouse-secondary-overlay 'meep
-     (cond
-      ((bound-and-true-p rectangle-mark-mode)
-       (list :region-type 'rect-wise))
-      ((meep--state-region-line-wise-check)
-       (list :region-type 'line-wise))
-      (t
-       nil)))
+    (meep--secondary-selection-set
+     (meep--region-point-mark-beg)
+     (meep--region-point-mark-end)
+     (meep--state-region-type)
+     (<= (mark t) (point)))
 
     ;; Drop the selection as it's annoying to keep both.
     (deactivate-mark t))
@@ -5205,6 +5212,85 @@ Return non-nil when the swap took place."
     ;; Perhaps we could have a handy alternative?
     ;; (user-error "No active region")
     (delete-overlay mouse-secondary-overlay))))
+
+;;;###autoload
+(defun meep-region-exchange-secondary-selection ()
+  "Exchange the region and the secondary selection.
+
+The bounds, the region type (rectangle or line-wise) and which end holds the
+point are exchanged, the text is not modified.
+
+Without an active region the secondary selection becomes the region
+and the point becomes the secondary selection.
+
+Return non-nil when the exchange took place."
+  (interactive)
+  ;; NOTE: taking an inaccessible secondary selection as the region would leave
+  ;; the mark outside the accessible portion (`set-marker' doesn't clamp to it,
+  ;; `goto-char' does), so the next edit would run over the text the narrowing
+  ;; hides.
+  (when-let* ((dst-range (meep--secondary-selection-range-or-message)))
+    (let* ((dst-beg (car dst-range))
+           (dst-end (cdr dst-range))
+           (dst-plist (overlay-get mouse-secondary-overlay 'meep))
+           (dst-type (plist-get dst-plist :region-type))
+           ;; NOTE: a secondary selection made outside of MEEP (a mouse drag for
+           ;; e.g.) has no `meep' property, default the point to the end which
+           ;; matches the other region commands.  Test for the key since nil is a
+           ;; stored value, set when the region was made in reverse.
+           (dst-point-at-end
+            (let ((point-at-end-cell (plist-member dst-plist :point-at-end)))
+              (cond
+               (point-at-end-cell
+                (cadr point-at-end-cell))
+               (t
+                t)))))
+
+      ;; Take the region as the secondary selection, done before anything is
+      ;; changed - `meep--state-region-type' reads the region too.
+      ;; This overwrites the overlay, every `dst-' value must be read above.
+      (cond
+       ((region-active-p)
+        (meep--secondary-selection-set
+         (meep--region-point-mark-beg)
+         (meep--region-point-mark-end)
+         (meep--state-region-type)
+         (<= (mark t) (point))))
+       (t
+        ;; NOTE: the point is used instead of clearing the secondary selection so
+        ;; running this command again exchanges back.  Clearing would seem the
+        ;; natural inverse of `meep-region-to-secondary-selection' (which drops the
+        ;; region), however it makes the empty secondary selection a dead end,
+        ;; there is nothing left to exchange with and the position is lost.
+        (meep--secondary-selection-set (point) (point) nil t)))
+
+      ;; Take the secondary selection as the region.
+      ;; Disable even when the destination is rectangular too, `rectangle-mark-mode'
+      ;; resets the crutches on either toggle so the incoming rectangle starts clean.
+      (when (bound-and-true-p rectangle-mark-mode)
+        (rectangle-mark-mode -1))
+
+      (setq meep-state-region-elem
+            (when (eq dst-type 'line-wise)
+              'line-wise))
+
+      ;; The restored region must not be dropped by the next motion.
+      (meep--region-shift-select-promote)
+
+      ;; NOTE: the bounds are the point & mark ordered by position, so a rectangle
+      ;; is restored by putting the point back on the bound it was taken from -
+      ;; the columns come along with it.  No corner needs reconstructing.
+      (cond
+       (dst-point-at-end
+        (goto-char dst-end)
+        (meep--set-marker-and-activate dst-beg))
+       (t
+        (goto-char dst-beg)
+        (meep--set-marker-and-activate dst-end)))
+
+      (when (eq dst-type 'rect-wise)
+        (rectangle-mark-mode 1))
+      t)))
 
 
 ;; ---------------------------------------------------------------------------

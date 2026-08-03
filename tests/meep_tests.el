@@ -204,6 +204,7 @@ Also suppresses minibuffer prompts from interactive specs."
       meep-region-activate-and-reverse
       meep-region-activate-and-reverse-motion
       meep-region-activate-or-reverse
+      meep-region-exchange-secondary-selection
       meep-region-expand-to-line-bounds
       meep-region-mark-bounds-of-char-inner
       meep-region-mark-bounds-of-char-outer
@@ -250,6 +251,7 @@ Also suppresses minibuffer prompts from interactive specs."
       meep-region-activate-and-reverse-motion
       meep-region-activate-or-reverse
       meep-region-disable
+      meep-region-exchange-secondary-selection
       meep-region-expand-to-line-bounds
       meep-region-mark-bounds-of-char-inner
       meep-region-mark-bounds-of-char-outer
@@ -3771,7 +3773,9 @@ restored rather than rebuilt."
         '(:state normal :command meep-region-expand-to-line-bounds))
       (simulate-input-for-meep
         '(:state visual :command meep-region-to-secondary-selection))
-      (should (equal '(:region-type line-wise) (overlay-get mouse-secondary-overlay 'meep)))
+      (should
+       (equal
+        '(:region-type line-wise :point-at-end t) (overlay-get mouse-secondary-overlay 'meep)))
       ;; Line 4 as the region, then swap.
       (simulate-input-for-meep
         '(:state normal :command meep-move-line-next)
@@ -3780,7 +3784,9 @@ restored rather than rebuilt."
         '(:state visual :command meep-region-swap))
       (should (equal text-expected (buffer-string)))
       (should (secondary-selection-exist-p))
-      (should (equal '(:region-type line-wise) (overlay-get mouse-secondary-overlay 'meep))))))
+      (should
+       (equal
+        '(:region-type line-wise :point-at-end t) (overlay-get mouse-secondary-overlay 'meep))))))
 
 (ert-deftest region-swap-imply-region-option ()
   "Swap with no region, with `meep-region-swap-imply-region' on and off.
@@ -5052,6 +5058,878 @@ Verifies: second rectangle below first handled correctly."
       (should (equal 'normal (bray-state)))
       (should (equal point-expected (meep-test-point-line-column)))
       (should (equal mark-expected (meep-test-mark-line-column))))))
+
+
+;; ---------------------------------------------------------------------------
+;; Region Exchange Secondary Selection
+;;
+;; Exchanges the region and the secondary selection without touching the text.
+;; The bounds, the region type (rectangle or line-wise) and the end holding the
+;; point are all exchanged.
+;;
+;; Test pattern: the buffer text must never change, the checks are on the
+;; region, the secondary selection overlay and the region type.
+
+(ert-deftest region-exchange-secondary-char-wise ()
+  "Exchange two explicitly selected contiguous regions.
+
+Workflow: select [ABC], make secondary, select [XYZ], exchange.
+Verifies: the region becomes [ABC], the secondary becomes [XYZ], text unchanged."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC], make secondary selection.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Select [XYZ].
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;                 ^
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      ;; The region is [ABC].
+      (should (equal '(1 . 6) (meep-test-point-line-column)))
+      (should (equal '(1 . 1) (meep-test-mark-line-column)))
+      ;; The secondary selection is [XYZ].
+      (should
+       (equal
+        '(1 . 8) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal
+        '(1 . 13) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay)))))))
+
+(ert-deftest region-exchange-secondary-char-wise-round-trip ()
+  "Exchange twice to restore the initial selections.
+
+Workflow: select [ABC], make secondary, select [XYZ], exchange twice.
+Verifies: both selections and the end holding the point are restored."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-exchange-secondary-selection)
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      ;; The region is [XYZ] again, with the point on the end it started on.
+      (should (equal '(1 . 13) (meep-test-point-line-column)))
+      (should (equal '(1 . 8) (meep-test-mark-line-column)))
+      ;; The secondary selection is [ABC] again.
+      (should
+       (equal
+        '(1 . 1) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal
+        '(1 . 6) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay)))))))
+
+(ert-deftest region-exchange-secondary-reversed-round-trip ()
+  "Exchange twice with the point on the beginning of both selections.
+
+Workflow: select [ABC] reversed, make secondary, select [XYZ] reversed,
+exchange twice.
+Verifies: both selections come back with the point on the beginning."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC] then reverse, leaving the point on the beginning.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-activate-and-reverse)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Select [XYZ] then reverse.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;                 ^
+      (simulate-input-for-meep
+        [?\C-u ?7]
+        '(:state normal :command meep-move-char-next))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-activate-and-reverse))
+      ;; Both ends are reversed, exchange over and back.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      ;; The region is [ABC], the point on its beginning as it was stored.
+      (should (equal '(1 . 1) (meep-test-point-line-column)))
+      (should (equal '(1 . 6) (meep-test-mark-line-column)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      ;; The region is [XYZ] again, still reversed.
+      (should (equal '(1 . 8) (meep-test-point-line-column)))
+      (should (equal '(1 . 13) (meep-test-mark-line-column)))
+      ;; The secondary selection is [ABC] again, still reversed.
+      (should
+       (equal
+        '(1 . 1) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal '(1 . 6) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay))))
+      (should-not (plist-get (overlay-get mouse-secondary-overlay 'meep) :point-at-end)))))
+
+(ert-deftest region-exchange-secondary-without-region ()
+  "Exchange without an active region takes the secondary as the region.
+
+Workflow: select [ABC], make secondary, exchange with no region.
+Verifies: the region becomes [ABC], the point becomes the secondary selection."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC], make secondary selection.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; No region is active, the secondary selection becomes the region.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      (should (equal '(1 . 6) (meep-test-point-line-column)))
+      (should (equal '(1 . 1) (meep-test-mark-line-column)))
+      ;; The secondary selection is empty, where the point was.
+      (should
+       (equal
+        '(1 . 6) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal '(1 . 6) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay))))
+      ;; The point alone has no end to hold, it stores the point as being on the
+      ;; end, matching an empty region.
+      (should
+       (equal '(:region-type nil :point-at-end t) (overlay-get mouse-secondary-overlay 'meep))))))
+
+(ert-deftest region-exchange-secondary-line-wise ()
+  "Exchange a line-wise secondary selection with a char-wise region.
+
+Workflow: select line [ABC] line-wise, make secondary, select [XYZ], exchange.
+Verifies: the region becomes line-wise, the secondary records the char-wise type."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "header\n"
+          "[ABC]\n"
+          "middle\n"
+          "[XYZ]\n"
+          "footer\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to line 2, select whole line [ABC], make secondary.
+      ;; Cursor line 2: [ABC]
+      ;;                ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-region-expand-to-line-bounds))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Move to line 4, select [XYZ] char-wise.
+      ;; Cursor line 4: [XYZ]
+      ;;                ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      ;; The region is line 2, line-wise.
+      (should (eq 'line-wise meep-state-region-elem))
+      (should (equal '(3 . 0) (meep-test-point-line-column)))
+      (should (equal '(2 . 0) (meep-test-mark-line-column)))
+      ;; The secondary selection is [XYZ], char-wise.
+      (should
+       (equal
+        '(4 . 0) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal '(4 . 5) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay))))
+      (should-not (plist-get (overlay-get mouse-secondary-overlay 'meep) :region-type)))))
+
+(ert-deftest region-exchange-secondary-line-wise-outgoing ()
+  "Exchange an active line-wise region out to the secondary selection.
+
+Workflow: select [ABC] char-wise, make secondary, select line [XYZ]
+line-wise, exchange twice.
+Verifies: the outgoing line-wise type is stored and restored."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "[ABC]\n"
+          "middle\n"
+          "[XYZ]\n"
+          "footer\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC] char-wise on line 1, make secondary.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Move to line 3, select the whole line.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-region-expand-to-line-bounds))
+      (should (eq 'line-wise meep-state-region-elem))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      ;; The region is [ABC], char-wise.
+      (should-not meep-state-region-elem)
+      (should (equal '(1 . 5) (meep-test-point-line-column)))
+      (should (equal '(1 . 0) (meep-test-mark-line-column)))
+      ;; The secondary selection is line 3, recorded as line-wise.
+      (should
+       (equal 'line-wise (plist-get (overlay-get mouse-secondary-overlay 'meep) :region-type)))
+      (should
+       (equal
+        '(3 . 0) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal '(4 . 0) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay))))
+      ;; Exchange back, the line-wise region returns.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      (should (eq 'line-wise meep-state-region-elem))
+      (should (equal '(4 . 0) (meep-test-point-line-column)))
+      (should (equal '(3 . 0) (meep-test-mark-line-column))))))
+
+(ert-deftest region-exchange-secondary-rectangle ()
+  "Exchange a rectangular secondary selection without an active region.
+
+Workflow: select an [AB] rectangle, make secondary, exchange with no region.
+Verifies: the region is restored as a rectangle."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          ".[AB].\n"
+          ".[AB].\n"
+          "......\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the [AB] rectangle: lines 1-2, columns 1-5.
+      ;; Cursor line 1: .[AB].
+      ;;                 ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      (simulate-input-for-meep
+        [?\C-u ?4]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Making the secondary selection drops the region, which also drops
+      ;; `rectangle-mark-mode'.
+      (should-not (bound-and-true-p rectangle-mark-mode))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      (should (bound-and-true-p rectangle-mark-mode))
+      (should (equal '(2 . 5) (meep-test-point-line-column)))
+      (should (equal '(1 . 1) (meep-test-mark-line-column)))
+      ;; The secondary selection is empty, where the point was.
+      (should
+       (equal
+        '(2 . 5) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal
+        '(2 . 5) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay)))))))
+
+(ert-deftest region-exchange-secondary-rectangle-outgoing ()
+  "Exchange an active rectangle out to the secondary selection.
+
+Workflow: select [ABC] char-wise, make secondary, select a rectangle,
+exchange twice.
+Verifies: the outgoing rectangle type is stored, `rectangle-mark-mode' is
+disabled for the char-wise region and restored on the way back."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "[ABC]....\n"
+          ".........\n"
+          ".........\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC] char-wise on line 1, make secondary.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Select a rectangle: lines 2-3, columns 5-8.
+      ;; The point is already on column 5, the end of [ABC].
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-line-next))
+      (should (bound-and-true-p rectangle-mark-mode))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      ;; The region is [ABC], char-wise.
+      (should-not (bound-and-true-p rectangle-mark-mode))
+      (should (equal '(1 . 5) (meep-test-point-line-column)))
+      (should (equal '(1 . 0) (meep-test-mark-line-column)))
+      ;; The secondary selection is the rectangle, recorded as rect-wise.
+      (should
+       (equal 'rect-wise (plist-get (overlay-get mouse-secondary-overlay 'meep) :region-type)))
+      ;; Exchange back, the rectangle returns.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      (should (bound-and-true-p rectangle-mark-mode))
+      (should (equal '(3 . 8) (meep-test-point-line-column)))
+      (should (equal '(2 . 5) (meep-test-mark-line-column))))))
+
+(ert-deftest region-exchange-secondary-rectangle-corner-lower-left ()
+  "Exchange a rectangle held by its lower-left corner.
+
+Workflow: select a rectangle downwards and to the left, make secondary,
+exchange with no region, exchange twice more.
+Verifies: the point returns to the lower-left corner, not the lower-right,
+the bounds alone place it on the opposite corner."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          ".[AB].\n"
+          ".[AB].\n"
+          "......\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the [AB] rectangle from line 1 column 5 down to line 2 column 1.
+      ;; Cursor line 1: .[AB].
+      ;;                     ^
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state normal :command meep-move-char-next))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle-rectangle))
+      (simulate-input-for-meep
+        [?\C-u ?4]
+        '(:state visual :command meep-move-char-prev)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      (should
+       (equal
+        '(:region-type rect-wise :point-at-end t) (overlay-get mouse-secondary-overlay 'meep)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (bound-and-true-p rectangle-mark-mode))
+      ;; The point is on the lower-left corner it was made on.
+      (should (equal '(2 . 1) (meep-test-point-line-column)))
+      (should (equal '(1 . 5) (meep-test-mark-line-column)))
+      ;; Exchange out and back, the corner survives the active-region path too.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-exchange-secondary-selection)
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (should (bound-and-true-p rectangle-mark-mode))
+      (should (equal '(2 . 1) (meep-test-point-line-column)))
+      (should (equal '(1 . 5) (meep-test-mark-line-column))))))
+
+(ert-deftest region-exchange-secondary-rectangle-corner-upper-right ()
+  "Exchange a rectangle held by its upper-right corner.
+
+Workflow: select a rectangle upwards and to the right, make secondary,
+exchange with no region.
+Verifies: the point returns to the upper-right corner, not the upper-left."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          ".[AB].\n"
+          ".[AB].\n"
+          "......\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the [AB] rectangle from line 2 column 1 up to line 1 column 5.
+      ;; Cursor line 2: .[AB].
+      ;;                 ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-prev))
+      (simulate-input-for-meep
+        [?\C-u ?4]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      (should
+       (equal
+        '(:region-type rect-wise :point-at-end nil) (overlay-get mouse-secondary-overlay 'meep)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (bound-and-true-p rectangle-mark-mode))
+      ;; The point is on the upper-right corner it was made on.
+      (should (equal '(1 . 5) (meep-test-point-line-column)))
+      (should (equal '(2 . 1) (meep-test-mark-line-column))))))
+
+(ert-deftest region-exchange-secondary-rectangle-over-short-line ()
+  "Exchange a rectangle whose last line is too short to reach its widest column.
+
+Workflow: select a rectangle from a wide line down onto a short line (the point
+clamps to the short lines end while the mark keeps the wide column), make
+secondary, exchange with no region.
+Verifies: the rectangle returns at its full width.  The bounds are the point &
+mark, `region-end' would clamp the wide column away on the short line."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "kl\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select the rectangle, mark on line 1 column 9.
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle))
+      ;; The point clamps to the end of the short line, the mark keeps column 9.
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      (should
+       (equal
+        '(:region-type rect-wise :point-at-end t) (overlay-get mouse-secondary-overlay 'meep)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (bound-and-true-p rectangle-mark-mode))
+      ;; The mark keeps column 9, which the clamped corner would have lost.
+      (should (equal '(2 . 2) (meep-test-point-line-column)))
+      (should (equal '(1 . 9) (meep-test-mark-line-column))))))
+
+(ert-deftest region-exchange-secondary-after-swap-widened ()
+  "Exchange a secondary selection whose bounds a swap has widened.
+
+Workflow: make a rectangle secondary held by its upper-right corner, swap it
+with a wider rectangle, then exchange with no region.
+Verifies: the two compose.  The swap places only the corner on the right hand
+column, leaving bounds the exchange still reads as the point & mark."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abAB....\n"
+          "cdCD....\n"
+          "........\n"
+          "efEFGH..\n"
+          "ghIJKL..\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "abEFGH....\n"
+          "cdIJKL....\n"
+          "........\n"
+          "efAB..\n"
+          "ghCD..\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Secondary: lines 1-2 columns 2-4, the mark on the upper-right.
+      (simulate-input-for-meep
+        [?\C-u ?4]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        '(:state visual :command meep-move-line-next))
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-prev)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Region: lines 4-5 columns 2-6, two columns wider.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        '(:state visual :command meep-move-line-next))
+      (simulate-input-for-meep
+        [?\C-u ?4]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-swap))
+      (should (equal text-expected (buffer-string)))
+      ;; The right hand column moved from 4 to 6, the left hand one held.
+      (should
+       (equal
+        '(1 . 6) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal '(2 . 2) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay))))
+      ;; The swap leaves no region, so the exchange takes the secondary alone.
+      (should-not (region-active-p))
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-exchange-secondary-selection))
+      ;; The point returns to the lower-left corner it was made on.
+      (should (equal '(2 . 2) (meep-test-point-line-column)))
+      (should (equal '(1 . 6) (meep-test-mark-line-column))))))
+
+(ert-deftest region-exchange-secondary-empty-region ()
+  "Exchange with an empty active region.
+
+Workflow: select [ABC], make secondary, begin a selection, exchange.
+Verifies: the empty region becomes a secondary selection at the point."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC], make secondary selection.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Begin a selection without extending it, then exchange.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;                 ^
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      ;; The region is [ABC].
+      (should (equal '(1 . 6) (meep-test-point-line-column)))
+      (should (equal '(1 . 1) (meep-test-mark-line-column)))
+      ;; The secondary selection is empty, at the point the region began on.
+      (should
+       (equal
+        '(1 . 8) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal '(1 . 8) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay))))
+      ;; An empty region has no end to hold, it stores the point as being on the
+      ;; end, matching a secondary selection made from the point alone.
+      (should
+       (equal '(:region-type nil :point-at-end t) (overlay-get mouse-secondary-overlay 'meep))))))
+
+(ert-deftest region-exchange-secondary-empty-round-trip ()
+  "Exchange twice with an empty secondary selection.
+
+Workflow: select [ABC], make secondary, begin a selection, exchange twice.
+Verifies: the empty selection round trips back to the region."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-exchange-secondary-selection)
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      ;; The region is empty again, back where it began.
+      (should (region-active-p))
+      (should (equal '(1 . 8) (meep-test-point-line-column)))
+      (should (equal '(1 . 8) (meep-test-mark-line-column)))
+      ;; The secondary selection is [ABC] again.
+      (should
+       (equal
+        '(1 . 1) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal
+        '(1 . 6) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay)))))))
+
+(ert-deftest region-exchange-secondary-empty-without-region-round-trip ()
+  "Exchange twice with an empty secondary selection and no region.
+
+Workflow: begin a selection, make an empty secondary, exchange twice.
+Verifies: the empty secondary selection is not a dead end, the position of
+the point is exchanged both ways."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Begin a selection without extending it, make it the secondary
+      ;; selection (empty), leaving no active region.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Move away so the exchange has a distinct point to store.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;                 ^
+      (simulate-input-for-meep
+        [?\C-u ?7]
+        '(:state normal :command meep-move-char-next))
+      (should (equal '(1 . 8) (meep-test-point-line-column)))
+      ;; Take the empty secondary selection as the region.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-exchange-secondary-selection))
+      (should (equal '(1 . 1) (meep-test-point-line-column)))
+      (should
+       (equal
+        '(1 . 8) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      ;; Exchange back.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      (should (equal '(1 . 8) (meep-test-point-line-column)))
+      (should (equal '(1 . 8) (meep-test-mark-line-column)))
+      (should
+       (equal
+        '(1 . 1) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal
+        '(1 . 1) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay)))))))
+
+(ert-deftest region-exchange-secondary-foreign-overlay ()
+  "Exchange with a secondary selection not made by MEEP.
+
+Workflow: set the secondary selection overlay directly, without the property
+MEEP stores on it (as a mouse drag would leave it), then exchange.
+Verifies: the point is placed on the end of the region."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cover [ABC] without the `meep' property MEEP would have stored.
+      ;; The property is cleared explicitly, `mouse-secondary-overlay' is global
+      ;; so it may hold one from an earlier test.
+      (delete-overlay mouse-secondary-overlay)
+      (move-overlay mouse-secondary-overlay 2 7)
+      (overlay-put mouse-secondary-overlay 'meep nil)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      (should (equal 'visual (bray-state)))
+      ;; The point is on the end of [ABC], not the beginning.
+      (should (equal '(1 . 6) (meep-test-point-line-column)))
+      (should (equal '(1 . 1) (meep-test-mark-line-column))))))
+
+(ert-deftest region-exchange-secondary-overlapping ()
+  "Exchange a region overlapping the secondary selection.
+
+`meep-region-swap' rejects an overlap because it rewrites the text of both;
+the exchange moves bounds only, so an overlap costs it nothing.
+Verifies: the two are exchanged with no error and the text is untouched."
+  (let ((text-initial "abcdefghij"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Secondary over columns 0-5.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Region over columns 3-8, overlapping it.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-prev)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (should (equal text-initial (buffer-string)))
+      ;; The region is where the secondary was.
+      (should (equal '(1 . 5) (meep-test-point-line-column)))
+      (should (equal '(1 . 0) (meep-test-mark-line-column)))
+      ;; The secondary is where the region was.
+      (should
+       (equal
+        '(1 . 3) (meep-test-position-as-line-column (overlay-start mouse-secondary-overlay))))
+      (should
+       (equal
+        '(1 . 8) (meep-test-position-as-line-column (overlay-end mouse-secondary-overlay)))))))
+
+(ert-deftest region-exchange-secondary-transient-region ()
+  "Exchange into a transient region, as ISEARCH leaves behind.
+
+`meep-isearch-activate-mark' activates the mark transiently, so the next motion
+drops it.  The region the exchange restores is a deliberate selection and must
+outlast that motion.
+Workflow: make a secondary selection, search to leave a transient region,
+exchange, then move.
+Verifies: the restored region survives the motion."
+  (let ((text-initial "hello world hello again"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Secondary over the first "hello".
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      ;; Search back onto the second "hello", leaving a transient region.
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state normal :command meep-move-char-prev))
+      (simulate-input-for-meep
+        '(:state normal :command meep-isearch-at-point-next))
+      (should (equal '(1 . 12) (meep-test-mark-line-column)))
+      ;; Exchange, then move.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (simulate-input-for-meep
+        '(:state visual :command meep-move-char-next))
+      (should (equal text-initial (buffer-string)))
+      ;; The region taken from the secondary selection is still held.
+      (should (region-active-p))
+      (should (equal 'visual (bray-state)))
+      (should (equal '(1 . 6) (meep-test-point-line-column)))
+      (should (equal '(1 . 0) (meep-test-mark-line-column))))))
+
+(ert-deftest region-exchange-secondary-not-accessible-no-op ()
+  "Exchange reports when the secondary selection is out of reach.
+
+A secondary selection in another buffer, or narrowed wholly or partly out of
+the accessible portion, must not be exchanged with - the bounds would be
+applied to the wrong buffer or outside the restriction.
+Verifies: another buffer reads as having no secondary selection, a restriction
+names itself."
+  (with-meep-test (concat "abcdef\n" "ghijkl\n")
+    (text-mode)
+    (bray-mode 1)
+    ;; Secondary on the first line.
+    (simulate-input-for-meep
+      '(:state normal :command meep-region-toggle)
+      '(:state visual :command meep-move-line-end)
+      '(:state visual :command meep-region-to-secondary-selection))
+    ;; Another buffer cannot see it.
+    ;; The buffer is switched to, not merely made current - simulated input runs
+    ;; the command in the selected windows buffer.
+    (let ((buf-this (current-buffer))
+          (buf-other (generate-new-buffer "meep-test-other")))
+      (unwind-protect
+          (progn
+            (switch-to-buffer buf-other)
+            (text-mode)
+            (bray-mode 1)
+            (meep-test-messages-clear)
+            (simulate-input-for-meep
+              '(:state normal :command meep-region-exchange-secondary-selection))
+            (should (equal '("No secondary selection!") (meep-test-messages))))
+        (switch-to-buffer buf-this)
+        (kill-buffer buf-other)))
+    ;; Nor can a restriction that excludes it, or cuts through either end -
+    ;; where it exists in the accessible portion without being held by it.
+    (dolist (case
+             (list
+              (cons (pos-bol 2) (point-max))
+              (cons (+ (point-min) 3) (point-max))
+              (cons (point-min) (+ (point-min) 3))))
+      (pcase-let ((`(,beg . ,end) case))
+        (save-restriction
+          (narrow-to-region beg end)
+          (meep-test-messages-clear)
+          (let ((point-init (point))
+                (mark-init (mark t)))
+            (simulate-input-for-meep
+              '(:state normal :command meep-region-exchange-secondary-selection))
+            (should
+             (equal
+              '("Secondary selection is outside the accessible portion") (meep-test-messages)))
+            ;; The narrowing may move the point, the command must not.
+            (should (eq point-init (point)))
+            (should (eq mark-init (mark t)))))))))
+
+(ert-deftest region-exchange-secondary-no-secondary-no-op ()
+  "Exchange without a secondary selection reports & does nothing.
+
+Workflow: select a region, attempt the exchange without a secondary selection.
+Verifies: message reported, buffer, region & state left alone."
+  (let ((text-initial ".[ABC]__[XYZ]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC] but don't make a secondary selection.
+      ;; Cursor: .[ABC]__[XYZ].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next))
+      (meep-test-messages-clear)
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-exchange-secondary-selection))
+      (should (equal '("No secondary selection!") (meep-test-messages)))
+      (should (equal text-initial (buffer-string)))
+      ;; Reporting returns normally where signaling aborted, the region must
+      ;; not be dropped by the commands own completion.
+      (should (equal 'visual (bray-state)))
+      (should (region-active-p)))))
 
 
 ;; ---------------------------------------------------------------------------
