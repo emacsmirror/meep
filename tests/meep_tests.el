@@ -2442,6 +2442,456 @@ Verifies: the failed pop pastes nothing while the plain yank re-pastes aa
       (should (equal '("aa") kill-ring)))))
 
 ;; ---------------------------------------------------------------------------
+;; Kill-Ring Yank Drop (Zero Digit Argument Repeat)
+;;
+;; A '0' repeat of `meep-clipboard-killring-yank-pop-stack' drops the shown
+;; item from the ring outright, the next unpopped item replacing the paste
+;; (dropping the last undoes it).  A zero prefix ARG drops without pasting.
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop ()
+  "A zero repeat drops the shown item and shows the next unpopped one.
+
+Workflow: seed ring (cc bb aa), paste (cc), press '0', commit.
+Verifies: cc is removed from the ring (not merely popped) and the paste is
+replaced by bb, exactly what a '1' step would have shown; the message
+reports the shrunken count."
+  ;;   ()  ->  (bb)
+  (let ((text-initial "()")
+        (text-expected "(bb)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (kill-new "cc")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        "0" ; Drop cc, show bb.
+        '(:state normal :command meep-move-char-next))
+      (should (equal text-expected (buffer-string)))
+      (should (equal '("bb" "aa") kill-ring))
+      ;; Drop the roll-back's "Undo" messages: `with-command-redo' inhibits
+      ;; their display but the capture harness records them anyway.
+      (should (equal '("dropped, yank 1 of 2") (delete "Undo" (meep-test-messages)))))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-then-cycle ()
+  "After a drop the session keeps cycling from the spliced positions.
+
+The drop replaces the cached ring position in the same step it splices;
+later steps must land on the right items or the splice corrupted it.
+
+Workflow: seed ring (dd cc bb aa), paste (dd), '0' (drops dd, shows cc),
+'1' (bb), '-' (cc), commit, then pop.
+Verifies: the steps after the drop walk the surviving items, only the
+finally-shown cc is consumed (the follow-up pop pastes bb) and just dd
+left the ring."
+  ;;   ()  ->  (cc)  ->  (cc)bb
+  (let ((text-initial "()")
+        (text-expected "(cc)")
+        (text-expected-after-pop "(cc)bb"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (kill-new "cc")
+      (kill-new "dd")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack) ; dd
+        "0" ; Drop dd, show cc.
+        "1" ; cc -> bb
+        "-" ; bb -> cc
+        '(:state normal :command meep-move-char-next))
+      (should (equal text-expected (buffer-string)))
+      (should (equal '("cc" "bb" "aa") kill-ring))
+      (simulate-input-for-meep
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected-after-pop (buffer-string))))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-twice ()
+  "Consecutive drops splice one item after another.
+
+Workflow: seed ring (cc bb aa), paste (cc), '0' (bb), '0' (aa), commit.
+Verifies: cc & bb both leave the ring and the paste lands on aa."
+  ;;   ()  ->  (aa)
+  (let ((text-initial "()")
+        (text-expected "(aa)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (kill-new "cc")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack) ; cc
+        "0" ; Drop cc, show bb.
+        "0" ; Drop bb, show aa.
+        '(:state normal :command meep-move-char-next))
+      (should (equal text-expected (buffer-string)))
+      (should (equal '("aa") kill-ring)))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-wraps ()
+  "Dropping the oldest unpopped item wraps the paste to the newest.
+
+Workflow: seed ring (cc bb aa), paste (cc), '1' (bb), '1' (aa), '0'
+\(drops aa, wraps to cc), commit.
+Verifies: aa leaves the ring, cc & bb (stepped past, so unpopped) remain,
+and the paste wraps around to cc."
+  ;;   ()  ->  (cc)
+  (let ((text-initial "()")
+        (text-expected "(cc)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (kill-new "cc")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        "1" ; cc -> bb
+        "1" ; bb -> aa
+        "0" ; Drop aa, wrap to cc.
+        '(:state normal :command meep-move-char-next))
+      (should (equal text-expected (buffer-string)))
+      (should (equal '("cc" "bb") kill-ring)))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-until-empty ()
+  "Repeated drops eat the whole ring, the last one undoing the paste.
+
+Workflow: seed ring (bb aa), paste (bb), '0' (aa), '0' (nothing left).
+Verifies: both items leave the ring, the final drop rolls the paste back
+and the messages report the shrinking count then the empty ring."
+  (let ((text-initial "()"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack) ; bb
+        "0" ; Drop bb, show aa.
+        "0") ; Drop aa, nothing left.
+      (should (equal text-initial (buffer-string)))
+      (should (null kill-ring))
+      ;; Drop the roll-back's "Undo" messages: `with-command-redo' inhibits
+      ;; their display but the capture harness records them anyway.
+      (should
+       (equal
+        '("dropped, yank 1 of 1" "Kill ring is empty") (delete "Undo" (meep-test-messages)))))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-last-undoes-paste ()
+  "Dropping the only item undoes the paste, matching the empty-ring yank.
+
+Workflow: seed ring (aa), paste (aa), press '0'.
+Verifies: the ring is emptied, the paste is rolled back (the buffer is as
+before it) and the empty-ring message is shown."
+  (let ((text-initial "()"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        "0") ; Drop aa, nothing left.
+      (should (equal text-initial (buffer-string)))
+      (should (null kill-ring))
+      ;; Drop the roll-back's "Undo" messages: `with-command-redo' inhibits
+      ;; their display but the capture harness records them anyway.
+      (should (equal '("Kill ring is empty") (delete "Undo" (meep-test-messages)))))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-exhausts-stack ()
+  "Dropping the last unpopped item ends the session, popped items stay.
+
+Unlike `drop-last-undoes-paste' the ring is not empty afterwards: an
+earlier pop's item remains (awaiting the kill-time sweep), so the
+exhausted message is shown rather than the empty-ring one.
+
+Workflow: seed ring (bb aa), pop (bb), commit, pop (aa), press '0'.
+Verifies: aa leaves the ring, the second paste is rolled back and bb (the
+first pop's item) is still on the ring."
+  ;;   ()  ->  (bb)
+  (let ((text-initial "()")
+        (text-expected "(bb)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack) ; bb
+        '(:state normal :command meep-move-char-prev) ; Commit session 1.
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack) ; aa
+        "0") ; Drop aa, nothing unpopped left.
+      (should (equal text-expected (buffer-string)))
+      (should (equal '("bb") kill-ring))
+      ;; Drop the roll-back's "Undo" messages: `with-command-redo' inhibits
+      ;; their display but the capture harness records them anyway.
+      (should (equal '("Kill ring exhausted") (delete "Undo" (meep-test-messages)))))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-re-popped ()
+  "Dropping an ARG re-popped item ends the session, the stack being spent.
+
+A re-pop shows an already-popped item; dropping it leaves nothing
+unpopped to show, so the re-paste is undone like any exhausted drop.
+
+Workflow: seed ring (bb aa), pop (bb), pop (aa), re-pop with `C-u 1'
+\(bb), press '0'.
+Verifies: bb leaves the ring and its re-paste is rolled back."
+  ;;   ()  ->  (bbaa)
+  (let ((text-initial "()")
+        (text-expected "(bbaa)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack) ; bb
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack) ; aa
+        [?\C-u ?1]
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack) ; bb again
+        "0") ; Drop bb: no unpopped left, the re-paste is undone.
+      (should (equal text-expected (buffer-string)))
+      (should (equal '("aa") kill-ring)))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-then-plain-yank ()
+  "After a committed drop the plain yank re-pastes the item shown in its place.
+
+The drop must leave the last-popped bookkeeping on the newly shown item,
+not the spliced-out cons.
+
+Workflow: seed ring (cc bb aa), paste (cc), '0' (bb), commit, plain yank.
+Verifies: the plain yank repeats bb; only cc left the ring."
+  ;;   ()  ->  (bb)bb
+  (let ((text-initial "()")
+        (text-expected "(bb)bb"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (kill-new "cc")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack) ; cc
+        "0" ; Drop cc, show bb.
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank))
+      (should (equal text-expected (buffer-string)))
+      (should (equal '("bb" "aa") kill-ring)))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-single-undo ()
+  "A session containing a drop still collapses into one undo step.
+
+Workflow: seed ring (cc bb aa), paste (cc), '0' (bb), '1' (aa), commit,
+undo once.
+Verifies: one undo reverts the paste with both steps; the ring keeps the
+drop (undo restores the buffer, never the ring)."
+  ;;   ()  ->  (aa)  ->  ()
+  (let ((text-initial "()"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (kill-new "cc")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack) ; cc
+        "0" ; Drop cc, show bb.
+        "1" ; bb -> aa
+        '(:state normal :command meep-move-char-next))
+      (should (equal "(aa)" (buffer-string)))
+      ;; A single undo reverts the paste and the entire cycling session.
+      (undo)
+      (should (equal text-initial (buffer-string)))
+      (should (equal '("bb" "aa") kill-ring)))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-arg-no-paste ()
+  "A zero ARG pastes nothing and drops the current item; repeats chain.
+
+Workflow: seed ring (bb aa), pop with `C-u 0', press '0'.
+Verifies: the first drop removes bb (the newest kill, nothing having been
+popped) without pasting; the repeat has no session to cycle so it drops
+again, removing aa; the buffer is never modified."
+  (let ((text-initial "()"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        [?\C-u ?0]
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        "0") ; Drop again (no session, a fresh zero ARG invocation).
+      (should (equal text-initial (buffer-string)))
+      (should (null kill-ring))
+      (should
+       (equal
+        '("Dropped the current kill, 1 left" "Dropped the current kill, 0 left")
+        (meep-test-messages))))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-arg-after-pop ()
+  "A zero ARG after a committed pop drops the item that pop pasted.
+
+The current item is the one a plain `meep-clipboard-killring-yank' would
+re-paste: the last-popped, not the next unpopped (which was never shown).
+
+Workflow: seed ring (bb aa), pop (bb), commit, pop with `C-u 0', pop.
+Verifies: the drop removes bb from the ring while its pasted text stays,
+and the follow-up pop pastes aa as usual."
+  ;;   ()  ->  (bb)  ->  (bb)aa
+  (let ((text-initial "()")
+        (text-expected "(bb)")
+        (text-expected-after-pop "(bb)aa"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack) ; bb
+        '(:state normal :command meep-move-char-next) ; Commit the session.
+        [?\C-u ?0]
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected (buffer-string)))
+      (should (equal '("aa") kill-ring))
+      (simulate-input-for-meep
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected-after-pop (buffer-string)))
+      (should (equal '("aa") kill-ring)))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-arg-mid-cycle ()
+  "A zero ARG mid-session keeps the shown paste while dropping its kill.
+
+Unlike a '0' repeat (which replaces the paste), the explicit ARG is a
+fresh invocation: it ends the session keeping the shown text, then drops
+that item (the last-popped) from the ring.
+
+Workflow: seed ring (cc bb aa), paste (cc), '1' (bb), pop with `C-u 0',
+then pop.
+Verifies: bb's text stays in the buffer while bb leaves the ring, and the
+follow-up pop pastes cc (unpopped again once the cycling stepped off it)."
+  ;;   ()  ->  (bb)  ->  (bb)cc
+  (let ((text-initial "()")
+        (text-expected "(bb)")
+        (text-expected-after-pop "(bb)cc"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (kill-new "cc")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack) ; cc
+        "1" ; cc -> bb
+        [?\C-u ?0]
+        ;; Drop bb, keeping its text.
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected (buffer-string)))
+      (should (equal '("cc" "aa") kill-ring))
+      ;; Drop the roll-back's "Undo" messages: `with-command-redo' inhibits
+      ;; their display but the capture harness records them anyway.
+      (should
+       (equal
+        '("yank 2 of 3" "Dropped the current kill, 2 left") (delete "Undo" (meep-test-messages))))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected-after-pop (buffer-string)))
+      (should (equal '("cc" "aa") kill-ring)))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-region-restores ()
+  "Dropping the last item under a replaced region restores the selection.
+
+The roll-back restores the buffer text and point but not the mark; the
+session's ending must re-establish the replaced region so nothing appears
+to have happened.
+
+Workflow: select \"foo \", paste over it in visual state (xx, the only
+item), press '0'.
+Verifies: the original text returns and the region is active over it."
+  (let ((text-initial "foo bar"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "xx")
+      ;; Select "foo " with point back at the start, mark at the end.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-symbol-next)
+        '(:state normal :command meep-region-activate-and-reverse-motion)
+        '(:state visual :command meep-clipboard-killring-yank-pop-stack)
+        "0") ; Drop xx, nothing left.
+      (should (equal text-initial (buffer-string)))
+      (should (null kill-ring))
+      (should (region-active-p))
+      (should (equal "foo " (buffer-substring-no-properties (region-beginning) (region-end)))))))
+
+(ert-deftest clipboard-killring-yank-pop-stack-drop-no-undo-fallback ()
+  "With undo disabled a '0' repeat drops the just-pasted item, text stays.
+
+Without a session there is no roll-back: the repeat reaches the command
+as a fresh zero ARG invocation, dropping the last-popped item from the
+ring while the pasted text remains in the buffer.
+
+Workflow: seed ring (yy xx), disable undo, paste (yy), press '0'.
+Verifies: the buffer keeps yy while the ring loses it."
+  (let ((text-initial "()")
+        (text-expected "(yy)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "xx")
+      (kill-new "yy")
+      (buffer-disable-undo)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank-pop-stack)
+        "0")
+      (buffer-enable-undo)
+      (should (equal text-expected (buffer-string)))
+      (should (equal '("xx") kill-ring)))))
+
+(ert-deftest clipboard-killring-yank-cycle-zero-repastes ()
+  "A '0' repeat of the read-only yank re-pastes in place, dropping nothing.
+
+The drop is the pop's alone: the plain yank's cycling is a look-around
+that must never modify the ring.
+
+Workflow: seed ring (bb aa), yank (bb), press '0', commit.
+Verifies: bb is still shown, the ring is untouched and the step message
+counts the whole ring."
+  ;;   ()  ->  (bb)
+  (let ((text-initial "()")
+        (text-expected "(bb)"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (kill-new "aa")
+      (kill-new "bb")
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-clipboard-killring-yank)
+        "0" ; A zero step, bb is re-pasted.
+        '(:state normal :command meep-move-char-next))
+      (should (equal text-expected (buffer-string)))
+      (should (equal '("bb" "aa") kill-ring))
+      ;; Drop the roll-back's "Undo" messages: `with-command-redo' inhibits
+      ;; their display but the capture harness records them anyway.
+      (should (equal '("yank 1 of 2") (delete "Undo" (meep-test-messages)))))))
+
+;; ---------------------------------------------------------------------------
 ;; Implied Region (Mark-on-Motion)
 ;;
 ;; Meep's `mark-on-motion' feature: motion commands set the mark, creating

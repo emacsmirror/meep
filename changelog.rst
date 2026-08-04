@@ -5,6 +5,9 @@ Change Log
 
 - In development
 
+  - A zero repeat of ``meep-clipboard-killring-yank-pop-stack`` drops the
+    shown item from the kill-ring (a zero prefix argument drops without
+    pasting).
   - Rectangle edit: support real insert mode with replay.
     Keystrokes entered on one line are recorded and replayed on remaining lines,
     fused into a single undo step. Falls back to ``string-rectangle`` when ``repeat-fu-mode`` is not active.

@@ -10079,7 +10079,12 @@ positive, back when negative.  Cycling steps only through the unpopped items
 finally-shown item ends up consumed.  The paste and its cycling collapse
 into a single undo step via `with-command-redo' (when undo is disabled or
 that package is not installed, the paste still works, just without the
-cycling session)."
+cycling session).
+
+A zero repeat drops the shown item: removed from the `kill-ring'
+outright (not undoable), the next unpopped item replaces the paste;
+dropping the last one undoes the paste.  A zero ARG pastes nothing,
+dropping the item a plain `meep-clipboard-killring-yank' would re-paste."
   (interactive "*P")
   (unless (meep--clipboard-killring-yank-cycle-continue
            'meep-clipboard-killring-yank-pop-stack arg)
@@ -10097,7 +10102,8 @@ repeated calls yank the same item and the pop sequence is unaffected.
 A numeric repeat cycles the paste as it does for
 `meep-clipboard-killring-yank-pop-stack' (including the single undo step),
 except nothing is consumed: the cycling is a look-around, ending the
-session leaves the stack exactly as it was."
+session leaves the stack exactly as it was and a zero repeat re-pastes in
+place (only the pop's zero drops)."
   (interactive "*P")
   (unless (meep--clipboard-killring-yank-cycle-continue 'meep-clipboard-killring-yank arg)
     (meep--clipboard-killring-yank-start-impl arg nil)))
@@ -10108,9 +10114,10 @@ session leaves the stack exactly as it was."
 ;; undoes the previous yank and the newly selected item is yanked in its
 ;; place.  Items are addressed by absolute front-position in the `kill-ring'
 ;; (the prefix argument is folded up front, see
-;; `meep--clipboard-killring-yank-start-impl'); the ring itself is never
-;; modified and only a consuming yank marks items popped (their conses
-;; collected in `meep--clipboard-killring-yank-popped', see
+;; `meep--clipboard-killring-yank-start-impl'); the ring itself is only
+;; modified by a drop (`meep--clipboard-killring-yank-drop-at') and only
+;; a consuming yank marks items popped (their conses collected in
+;; `meep--clipboard-killring-yank-popped', see
 ;; `meep--clipboard-killring-yank-at'), so the read-only plain yank can
 ;; never make the pop show an item twice.  The session state (the running
 ;; front-position, whether the session pops, whether the shown item was
@@ -10213,10 +10220,71 @@ arguments with `mod')."
         (setq meep--clipboard-killring-yank-popped
               (cons cell (delq cell meep--clipboard-killring-yank-popped)))))))
 
+(defun meep--clipboard-killring-yank-drop-at (pos)
+  "Splice the `kill-ring' item at front-position POS out of the ring.
+Its cons is dropped from `meep--clipboard-killring-yank-popped' too.
+POS must be in range."
+  (declare (important-return-value nil))
+  (let ((cell (nthcdr pos kill-ring)))
+    (cond
+     ((eq cell kill-ring)
+      (setq kill-ring (cdr kill-ring)))
+     (t
+      (setcdr (nthcdr (1- pos) kill-ring) (cdr cell))))
+    (setq meep--clipboard-killring-yank-popped (delq cell meep--clipboard-killring-yank-popped))
+    ;; The pointer may reference the dropped cons, keep it valid for a plain `yank'.
+    (setq kill-ring-yank-pointer kill-ring)))
+
+(defun meep--clipboard-killring-yank-cycle-drop (props)
+  "Run the pop-cycling step that drops the shown item (a zero step).
+The item leaves the ring and the next unpopped one is yanked in its
+place (wrapping); dropping the last ends the session with nothing
+pasted.  PROPS is the step's plist (cache non-nil), see
+`meep--clipboard-killring-yank-cycle-chain'."
+  (declare (important-return-value nil))
+  (let* ((cache (plist-get props :cache))
+         (win-start (plist-get cache :win-start))
+         (pos-prev (plist-get cache :pos)))
+    (meep--clipboard-killring-yank-drop-at pos-prev)
+    ;; The dropped item's pop is never retracted, so the unpopped
+    ;; positions are exactly the survivors; the next older item now sits
+    ;; at the dropped position, hence `>='.
+    (let* ((candidates (meep--clipboard-killring-yank-unpopped-positions))
+           ;; Wrap to the newest (index 0); nil when the dropped item was the last.
+           (step (and candidates (or (seq-position candidates pos-prev #'>=) 0)))
+           (pos (and step (nth step candidates))))
+      (cond
+       ((null pos)
+        ;; Nothing left to pop: the roll-back already restored the
+        ;; pre-paste buffer & region, ending here leaves the paste undone.
+        (set-window-start (selected-window) win-start t)
+        (cond
+         ((null kill-ring)
+          (message "Kill ring is empty"))
+         (t
+          (message "Kill ring exhausted")))
+        (plist-put props :result nil))
+       (t
+        (let ((was-popped (meep--clipboard-killring-yank-at pos t)))
+          (set-window-start (selected-window) win-start t)
+          ;; As the regular cycling message, with the shrunken count.
+          (let ((message-log-max nil))
+            (message "dropped, yank %d of %d" (1+ step) (length candidates)))
+          (plist-put
+           props
+           :cache
+           (list
+            :pos pos
+            :region (plist-get cache :region)
+            :do-pop t
+            :was-popped was-popped
+            :win-start win-start))))))))
+
 (defun meep--clipboard-killring-yank-cycle-chain (n do-pop &optional redo)
   "Run one `with-command-redo' step of the yank cycling session.
 N is the absolute `kill-ring' front-position to paste on the first step
-\(the paste itself), a signed delta on each later step.  A step wraps
+\(the paste itself), a signed delta on each later step (a pop's zero
+drops, see `meep--clipboard-killring-yank-cycle-drop').  A step wraps
 around its candidates: the unpopped items for a pop (so it never re-shows
 one an earlier pop took), the whole ring for a read-only yank.  DO-POP
 \(read on the first step only, cached for later ones) selects a consuming
@@ -10242,8 +10310,8 @@ invocation, which first ends any lingering session (see below)."
          (plist-put props :result nil))
         (t
          ;; The cached front-position stays valid across roll-backs (they
-         ;; restore the buffer, not the ring or the popped set): no step
-         ;; mutates the ring.
+         ;; restore the buffer, not the ring or the popped set); the drop,
+         ;; the one ring-mutating step, re-caches the position itself.
          (let ((do-pop
                 (cond
                  (cache
@@ -10269,92 +10337,108 @@ invocation, which first ends any lingering session (see below)."
            ;; The first step needs no restore, it captured the live state.
            (when cache
              (meep--clipboard-killring-yank-cycle-region-restore region))
-           ;; Retract the pop of the item this step moves away from (unless it
-           ;; was popped before being shown).  Done before choosing the next
-           ;; item so the retracted item rejoins the unpopped candidates,
-           ;; leaving exactly the finally-shown item popped without discarding
-           ;; the items the cycling stepped past.
-           (when (and cache do-pop (null (plist-get cache :was-popped)))
-             (setq meep--clipboard-killring-yank-popped
-                   (delq
-                    (nthcdr (plist-get cache :pos) kill-ring)
-                    meep--clipboard-killring-yank-popped)))
-           ;; A pop cycles only through the unpopped items so a step never
-           ;; re-shows one an earlier pop already consumed; the read-only yank
-           ;; ranges over the whole ring (it consumes nothing).  Both wrap
-           ;; around: cycling is a search where a hard stop at either end is
-           ;; more annoying than useful.
-           (let* ((candidates
-                   (and cache do-pop (meep--clipboard-killring-yank-unpopped-positions)))
-                  ;; The number of items this step cycles among (its wrap
-                  ;; modulus and echoed total): the poppable stack for a pop,
-                  ;; the whole ring for a plain yank.
-                  (count
-                   (cond
-                    ((null cache)
-                     nil)
-                    (do-pop
-                     (length candidates))
-                    (t
-                     (length kill-ring))))
-                  ;; The 0-based step shown in the echo area (1-based); nil on
-                  ;; the first (silent) step and when nothing is left to cycle.
-                  (step
-                   (cond
-                    ((null cache)
-                     nil)
-                    (do-pop
-                     (and candidates
-                          (mod
-                           (+ (or (seq-position candidates (plist-get cache :pos) #'eq) 0) n)
-                           count)))
-                    (t
-                     (mod (+ (plist-get cache :pos) n) count))))
-                  (pos
-                   (cond
-                    ((null cache)
-                     n)
-                    ((null step)
-                     ;; Nothing unpopped left to cycle among, stay put.
-                     (plist-get cache :pos))
-                    (do-pop
-                     (nth step candidates))
-                    (t
-                     step))))
-             (let ((was-popped (meep--clipboard-killring-yank-at pos do-pop)))
-               ;; Restore the window start from before the first paste: the
-               ;; roll-back restores the buffer text, not the display, so a
-               ;; large item that scrolled the window would otherwise leave
-               ;; it scrolled after stepping onto a small one.  NOFORCE, so
-               ;; redisplay still adjusts when point ends up off-screen.
-               (when cache
-                 (set-window-start (selected-window) win-start t))
-               ;; Orient cycling steps in the echo area only (not logged);
-               ;; 1-based, matching a `C-u N' selection.
-               (when (and cache step)
-                 (let ((message-log-max nil))
-                   (message "yank %d of %d" (1+ step) count)))
-               (plist-put
-                props
-                :cache
-                (list
-                 :pos pos
-                 :region region
-                 :do-pop do-pop
-                 :was-popped was-popped
-                 :win-start win-start))))))))
+           (cond
+            ;; A pop's zero step drops the shown item (redo only: the
+            ;; first step's N is an absolute front-position where zero
+            ;; selects the newest item).
+            ((and cache do-pop (eq n 0))
+             (meep--clipboard-killring-yank-cycle-drop props))
+            (t
+             ;; Retract the pop of the item this step moves away from (unless
+             ;; it was popped before being shown).  Done before choosing the
+             ;; next item so the retracted item rejoins the unpopped
+             ;; candidates, leaving exactly the finally-shown item popped
+             ;; without discarding the items the cycling stepped past.
+             (when (and cache do-pop (null (plist-get cache :was-popped)))
+               (setq meep--clipboard-killring-yank-popped
+                     (delq
+                      (nthcdr (plist-get cache :pos) kill-ring)
+                      meep--clipboard-killring-yank-popped)))
+             ;; A pop cycles only through the unpopped items so a step never
+             ;; re-shows one an earlier pop already consumed; the read-only
+             ;; yank ranges over the whole ring (it consumes nothing).  Both
+             ;; wrap around: cycling is a search where a hard stop at either
+             ;; end is more annoying than useful.
+             (let* ((candidates
+                     (and cache do-pop (meep--clipboard-killring-yank-unpopped-positions)))
+                    ;; The number of items this step cycles among (its wrap
+                    ;; modulus and echoed total): the poppable stack for a pop,
+                    ;; the whole ring for a plain yank.
+                    (count
+                     (cond
+                      ((null cache)
+                       nil)
+                      (do-pop
+                       (length candidates))
+                      (t
+                       (length kill-ring))))
+                    ;; The 0-based step shown in the echo area (1-based); nil on
+                    ;; the first (silent) step and when nothing is left to cycle.
+                    (step
+                     (cond
+                      ((null cache)
+                       nil)
+                      (do-pop
+                       (and candidates
+                            (mod
+                             (+ (or (seq-position candidates (plist-get cache :pos) #'eq) 0) n)
+                             count)))
+                      (t
+                       (mod (+ (plist-get cache :pos) n) count))))
+                    (pos
+                     (cond
+                      ((null cache)
+                       n)
+                      ((null step)
+                       ;; Nothing unpopped left to cycle among, stay put.
+                       (plist-get cache :pos))
+                      (do-pop
+                       (nth step candidates))
+                      (t
+                       step))))
+               (let ((was-popped (meep--clipboard-killring-yank-at pos do-pop)))
+                 ;; Restore the window start from before the first paste: the
+                 ;; roll-back restores the buffer text, not the display, so a
+                 ;; large item that scrolled the window would otherwise leave
+                 ;; it scrolled after stepping onto a small one.  NOFORCE, so
+                 ;; redisplay still adjusts when point ends up off-screen.
+                 (when cache
+                   (set-window-start (selected-window) win-start t))
+                 ;; Orient cycling steps in the echo area only (not logged);
+                 ;; 1-based, matching a `C-u N' selection.
+                 (when (and cache step)
+                   (let ((message-log-max nil))
+                     (message "yank %d of %d" (1+ step) count)))
+                 (plist-put
+                  props
+                  :cache
+                  (list
+                   :pos pos
+                   :region region
+                   :do-pop do-pop
+                   :was-popped was-popped
+                   :win-start win-start))))))))))
      props)))
 
 (defun meep--clipboard-killring-yank-start-impl (arg do-pop)
   "Yank the `kill-ring' item selected by the raw prefix ARG.
 This is the body of `meep-clipboard-killring-yank-pop-stack' (DO-POP
 non-nil) and the read-only `meep-clipboard-killring-yank' (DO-POP nil),
-see those commands for the behavior.  Runs as the first step of the
-cycling session `meep--clipboard-killring-yank-cycle-continue' continues."
+see those commands for the behavior; a zero ARG of the pop drops instead
+of pasting.  Runs as the first step of the cycling session
+`meep--clipboard-killring-yank-cycle-continue' continues."
   (declare (important-return-value nil))
   (cond
    ((null kill-ring)
     (message "Kill ring is empty"))
+   ;; A zero ARG drops the current item (what a plain
+   ;; `meep-clipboard-killring-yank' would re-paste) without pasting.
+   ;; Break any live session, its cached position won't survive the splice.
+   ((and do-pop (eq arg 0))
+    (when (featurep 'with-command-redo)
+      (with-command-redo-break 'meep--clipboard-killring-yank-cycle))
+    (meep--clipboard-killring-yank-drop-at (meep--clipboard-killring-yank-last-popped-pos))
+    (message "Dropped the current kill, %d left" (length kill-ring)))
    (t
     ;; Fold the decoded index into an absolute front-position, `mod'
     ;; wrapping an over/under-shooting ARG the way `current-kill' does.
