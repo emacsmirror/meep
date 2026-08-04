@@ -5513,6 +5513,54 @@ Verifies: second rectangle below first handled correctly."
 
 
 ;; ---------------------------------------------------------------------------
+;; Region To Secondary Selection
+
+(ert-deftest region-to-secondary-no-region-clears ()
+  "Clear the secondary selection when there is no region.
+
+Workflow: select [ABC], make secondary, run the command again with no region.
+Verifies: the selection is removed and the clearing is reported."
+  (let ((text-initial ".[ABC]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select [ABC], make secondary selection.
+      ;; Cursor: .[ABC].
+      ;;          ^
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle))
+      (simulate-input-for-meep
+        [?\C-u ?5]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-region-to-secondary-selection))
+      (should (secondary-selection-exist-p))
+      (meep-test-messages-clear)
+      ;; Without a region the command clears it.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-to-secondary-selection))
+      (should (equal nil (secondary-selection-exist-p)))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '("Secondary selection cleared") (meep-test-messages))))))
+
+(ert-deftest region-to-secondary-no-region-no-secondary ()
+  "Report the missing region when there is nothing to clear.
+
+Verifies: the failed precondition is reported instead of passing silently."
+  (let ((text-initial ".[ABC]."))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; The overlay is global, another test may have left one behind.
+      (delete-overlay mouse-secondary-overlay)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-to-secondary-selection))
+      (should (equal nil (secondary-selection-exist-p)))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '("No active region or secondary selection!") (meep-test-messages))))))
+
+
+;; ---------------------------------------------------------------------------
 ;; Region Exchange Secondary Selection
 ;;
 ;; Exchanges the region and the secondary selection without touching the text.

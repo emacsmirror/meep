@@ -5094,7 +5094,9 @@ Return non-nil when the swap took place."
 
 ;;;###autoload
 (defun meep-region-to-secondary-selection ()
-  "Create a secondary selection from the current region."
+  "Create a secondary selection from the current region.
+
+Without an active region the secondary selection is cleared."
   (interactive)
   (cond
    ((region-active-p)
@@ -5106,10 +5108,14 @@ Return non-nil when the swap took place."
 
     ;; Drop the selection as it's annoying to keep both.
     (deactivate-mark t))
+   ;; Clearing acts on the overlay & not the text, so unlike the commands which
+   ;; read `meep--secondary-selection-range-or-message' a selection outside the
+   ;; accessible portion can be cleared, only the buffer needs to match.
+   ((eq (overlay-buffer mouse-secondary-overlay) (current-buffer))
+    (delete-overlay mouse-secondary-overlay)
+    (message "Secondary selection cleared"))
    (t
-    ;; Perhaps we could have a handy alternative?
-    ;; (user-error "No active region")
-    (delete-overlay mouse-secondary-overlay))))
+    (message "No active region or secondary selection!"))))
 
 ;;;###autoload
 (defun meep-region-exchange-secondary-selection ()
