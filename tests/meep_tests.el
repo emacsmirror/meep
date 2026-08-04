@@ -8486,6 +8486,27 @@ Verifies: contraction at minimum deactivates region gracefully."
       (should-not (region-active-p))
       (should (equal 'normal (bray-state))))))
 
+(ert-deftest selection-syntax-expand-contract-return-symmetry ()
+  "Expanding and contracting both report whether the region changed.
+
+The twins drifted, expanding an active region succeeded yet returned nil.
+Verifies: every step which moved the region returns non-nil, in both
+directions and with or without a region to start from."
+  (let ((text-initial "abc def"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      ;; Without a region the expansion creates one.
+      (should (meep-region-syntax-expand 1))
+      (should (region-active-p))
+      ;; With a region it expands further.
+      (should (meep-region-syntax-expand 1))
+      (should (region-active-p))
+      ;; And contracts back.
+      (should (meep-region-syntax-contract 1))
+      (should (equal text-initial (buffer-string))))))
+
 ;; region-mark-bounds-of-char tests
 
 (ert-deftest selection-mark-bounds-of-char-inner-parens ()

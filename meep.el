@@ -5542,7 +5542,8 @@ buffer bounds and the conversion raises an error on it."
   (char-to-string (syntax-class-to-char (syntax-class syn))))
 
 (defun meep--region-syntax-expand-impl (n)
-  "Expand matching syntax table N times."
+  "Expand matching syntax table N times.
+Return non-nil when the region changed."
   (when meep--region-syntax-asym
     (let ((local-last-command (meep--last-command)))
       (unless (memq local-last-command '(meep-region-syntax-expand meep-region-syntax-contract))
@@ -5618,7 +5619,11 @@ buffer bounds and the conversion raises an error on it."
               (meep--set-marker-and-activate end-next))
              (t
               (goto-char end-next)
-              (meep--set-marker-and-activate beg-next))))
+              (meep--set-marker-and-activate beg-next)))
+
+            ;; A step that moved neither side is not a change.
+            (unless (and (eq beg-next beg) (eq end-next end))
+              (setq found t)))
 
           ;; Don't attempt symmetry in future.
           ;; NOTE: only when both sides could move, as the side taken is read back
@@ -5732,7 +5737,8 @@ buffer bounds and the conversion raises an error on it."
 
 (defun meep--region-syntax-contract-impl (n)
   "Contract matching syntax table N times.
-Message and do nothing when there is no active region."
+Message and do nothing when there is no active region.
+Return non-nil when the region changed."
   (when meep--region-syntax-asym
     (let ((local-last-command (meep--last-command)))
       (unless (memq local-last-command '(meep-region-syntax-expand meep-region-syntax-contract))
@@ -5805,15 +5811,17 @@ Message and do nothing when there is no active region."
                 (meep--region-syntax-or-symbol-backward end-syn-str)
                 (setq end-next (point))))
 
-            ;; Avoid expanding an unbalanced number of brackets as it makes it
+            ;; Avoid contracting an unbalanced number of brackets as it makes it
             ;; difficult to copy blocks of code.
             ;; NOTE: instead of limiting to 1, we could make them even,
-            ;; in practice it might be more useful to only expand one bracket at a time though.
+            ;; in practice it might be more useful to only contract one bracket at a time though.
             (when do-symmetry
               (setq beg-next (min beg-next (1+ beg)))
               (setq end-next (max end-next (1- end))))
 
-            (setq found t)
+            ;; A step that moved neither side is not a change.
+            (unless (and (eq beg-next beg) (eq end-next end))
+              (setq found t))
             (cond
              ((<= end-next beg-next)
               ;; Contract to nothing.
