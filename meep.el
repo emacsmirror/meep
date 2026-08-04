@@ -5447,18 +5447,16 @@ When only blank space was skipped, skip all blank space."
   "Skip SYNTAX forward limited by LIM.
 When only blank space was skipped, skip all blank space."
   (let ((pos-orig (point))
-        (is-blank (looking-at-p "[[:blank:]\n]"))
+        (is-blank nil)
         (result (skip-syntax-forward syntax lim)))
     (unless (zerop result)
-      (when is-blank
-        (setq is-blank nil)
-        (let ((pos-new (point)))
-          (save-excursion
-            (goto-char pos-orig)
-            (skip-chars-forward "[:blank:]\n" pos-new)
-            (when (eq (point) pos-new)
-              ;; The entire range was blank.
-              (setq is-blank t))))))
+      (let ((pos-new (point)))
+        (save-excursion
+          (goto-char pos-orig)
+          (skip-chars-forward "[:blank:]\n" pos-new)
+          (when (eq (point) pos-new)
+            ;; The entire range was blank.
+            (setq is-blank t)))))
 
     ;; If all chars were blank, skip any other blanks
     ;; (even if this crosses other kinds of syntax).

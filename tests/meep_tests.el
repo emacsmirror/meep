@@ -8153,6 +8153,37 @@ Verifies: region covers the word under cursor."
       (should (equal '(1 . 5) (meep-test-mark-line-column)))
       (should (equal text-expected-region (meep-test-region-as-string))))))
 
+(ert-deftest selection-syntax-expand-forward-syntax-mismatch ()
+  "Expand when the syntax to expand over doesn't match the following character.
+
+The class is taken from one side, so the other side may not match it at all.
+Skipping nothing is not \"only blank space was skipped\", the blank space beyond
+must be left alone - which is how expanding backward already behaved.
+
+Here the line ending is a comment end (`>') in `emacs-lisp-mode' & the
+indentation is blank space, both are ranked as blank so the class comes from
+the line ending, which the indentation doesn't share.
+
+Workflow: expand with the cursor at the start of an indented line.
+Verifies: the region covers the line ending & not the indentation."
+  (let* ((text-initial
+          ;; format-next-line: off
+          (concat
+           "a\n"
+           "  b\n"))
+         (text-expected-region "\n"))
+    (with-meep-test text-initial
+      (emacs-lisp-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-syntax-expand))
+      (should (equal 'visual (bray-state)))
+      (should (equal '(1 . 1) (meep-test-point-line-column)))
+      (should (equal '(2 . 0) (meep-test-mark-line-column)))
+      (should (equal text-expected-region (meep-test-region-as-string))))))
+
 (ert-deftest selection-syntax-expand-word-then-space ()
   "Expand region from word to include adjacent space.
 
