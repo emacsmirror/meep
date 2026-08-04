@@ -8339,8 +8339,10 @@ Don't skip past LIMIT (the end of the current line)."
                 (null (ppss-comment-depth (syntax-ppss (1+ eol))))))))))))
 
 (defun meep--join-range (bol eol use-comment-strip)
-  "Join newlines between BOL and EOL.
-When USE-COMMENT-STRIP is non-nil, strip comments."
+  "Return the range (EOL-WS . BOL-WS-NEXT) to remove when joining lines at EOL.
+BOL limits the blank space skipped back, USE-COMMENT-STRIP includes a
+continuing comment prefix.  Return nil at the end of the buffer."
+  (declare (important-return-value t))
   ;; NOTE: CRLF is not a supported line ending here & skipping the CR as
   ;; blank-space is not the fix.  Emacs decodes a DOS file on visit so the
   ;; buffer holds LF alone, & `delete-indentation' makes no attempt either -
