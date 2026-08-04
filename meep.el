@@ -5410,7 +5410,18 @@ use to maintain line-based selection."
 ;; When non-nil, don't attempt to extend in both directions.
 ;; This is useful so it's possible to expand into brackets or quotes
 ;; but stop symmetrical extending once the first syntax mismatch is found.
+;;
+;; The latch is held by the commands running back to back & is identified by
+;; `last-command', so a command joining this flow must be listed in
+;; `meep--region-syntax-asym-reset-maybe' or the latch drops mid-flow.
 (defvar-local meep--region-syntax-asym nil)
+
+(defun meep--region-syntax-asym-reset-maybe ()
+  "Clear `meep--region-syntax-asym' unless the last command continues the flow."
+  (when meep--region-syntax-asym
+    (let ((local-last-command (meep--last-command)))
+      (unless (memq local-last-command '(meep-region-syntax-expand meep-region-syntax-contract))
+        (setq meep--region-syntax-asym nil)))))
 
 ;; Special case, if we *only* traversed blank space,
 ;; traverse all remaining blank space, needed
@@ -5539,13 +5550,43 @@ buffer bounds and the conversion raises an error on it."
   (declare (important-return-value t))
   (char-to-string (syntax-class-to-char (syntax-class syn))))
 
+;; Expanding & contracting share this, they only differ in the direction each
+;; side is stepped, so which sides to step is decided in one place.
+(defun meep--region-syntax-step-sides (beg end beg-ok end-ok beg-syn-str end-syn-str)
+  "Return the region sides to step as the list (DO-BEG DO-END DO-SYMMETRY).
+BEG & END are the region bounds, BEG-OK & END-OK the sides free to move,
+BEG-SYN-STR & END-SYN-STR their syntax class.
+DO-SYMMETRY limits the step to a single character."
+  (declare (important-return-value t))
+  (let ((do-beg nil)
+        (do-end nil)
+        (do-symmetry nil))
+    (cond
+     ((null beg-ok)
+      (setq do-end t))
+     ((null end-ok)
+      (setq do-beg t))
+
+     ((string-equal beg-syn-str end-syn-str)
+      (setq do-beg t)
+      (setq do-end t))
+     ;; It's handy for including/excluding surrounding brackets.
+     ((and (member beg-syn-str '("(" ")")) (member end-syn-str '("(" ")")))
+      (setq do-symmetry t)
+      (setq do-beg t)
+      (setq do-end t))
+     ((eq beg (point))
+      (setq do-beg t))
+     ((eq end (point))
+      (setq do-end t))
+     (t
+      (meep--assert-unreachable)))
+    (list do-beg do-end do-symmetry)))
+
 (defun meep--region-syntax-expand-impl (n)
   "Expand matching syntax table N times.
 Return non-nil when the region changed."
-  (when meep--region-syntax-asym
-    (let ((local-last-command (meep--last-command)))
-      (unless (memq local-last-command '(meep-region-syntax-expand meep-region-syntax-contract))
-        (setq meep--region-syntax-asym nil))))
+  (meep--region-syntax-asym-reset-maybe)
   (let ((found nil))
     (while (prog1 (< 0 n)
              (meep--decf n))
@@ -5561,75 +5602,57 @@ Return non-nil when the region changed."
                (end-syn (and end-ok (syntax-after end)))
 
                (beg-syn-str (and beg-ok (meep--region-syntax-class-string beg-syn)))
-               (end-syn-str (and end-ok (meep--region-syntax-class-string end-syn)))
+               (end-syn-str (and end-ok (meep--region-syntax-class-string end-syn))))
 
-               (do-beg nil)
-               (do-end nil)
-               (do-symmetry nil))
+          ;; Both bounds reached, there is nothing to expand over.
+          ;; NOTE: the fallback matches the pattern, `pcase-let' may signal otherwise.
+          (pcase-let ((`(,do-beg ,do-end ,do-symmetry)
+                       (or (and (or beg-ok end-ok)
+                                (meep--region-syntax-step-sides
+                                 beg end beg-ok end-ok beg-syn-str end-syn-str))
+                           '(nil nil nil))))
 
-          (cond
-           ((and (null beg-ok) (null end-ok))) ; Do nothing.
-           ((null beg-ok)
-            (setq do-end t))
-           ((null end-ok)
-            (setq do-beg t))
+            (let ((beg-next beg)
+                  (end-next end))
 
-           ((string-equal beg-syn-str end-syn-str)
-            (setq do-beg t)
-            (setq do-end t))
-           ;; It's handy for including/excluding surrounding brackets.
-           ((and (member beg-syn-str '("(" ")")) (member end-syn-str '("(" ")")))
-            (setq do-symmetry t)
-            (setq do-beg t)
-            (setq do-end t))
-           ((eq beg (point))
-            (setq do-beg t))
-           ((eq end (point))
-            (setq do-end t))
-           (t
-            (meep--assert-unreachable)))
+              (when do-beg
+                (save-excursion
+                  (goto-char beg)
+                  (meep--region-syntax-or-symbol-backward beg-syn-str)
+                  (setq beg-next (point))))
+              (when do-end
+                (save-excursion
+                  (goto-char end)
+                  (meep--region-syntax-or-symbol-forward end-syn-str)
+                  (setq end-next (point))))
 
-          (let ((beg-next beg)
-                (end-next end))
+              ;; Avoid expanding an unbalanced number of brackets as it makes it
+              ;; difficult to copy blocks of code.
+              ;; NOTE: instead of limiting to 1, we could make them even,
+              ;; in practice it might be more useful to only expand one bracket at a time though.
+              (when do-symmetry
+                (setq beg-next (max beg-next (1- beg)))
+                (setq end-next (min end-next (1+ end))))
 
-            (when do-beg
-              (save-excursion
-                (goto-char beg)
-                (meep--region-syntax-or-symbol-backward beg-syn-str)
-                (setq beg-next (point))))
-            (when do-end
-              (save-excursion
-                (goto-char end)
-                (meep--region-syntax-or-symbol-forward end-syn-str)
-                (setq end-next (point))))
+              (cond
+               ((eq beg (point))
+                (goto-char beg-next)
+                (meep--set-marker-and-activate end-next))
+               (t
+                (goto-char end-next)
+                (meep--set-marker-and-activate beg-next)))
 
-            ;; Avoid expanding an unbalanced number of brackets as it makes it
-            ;; difficult to copy blocks of code.
-            ;; NOTE: instead of limiting to 1, we could make them even,
-            ;; in practice it might be more useful to only expand one bracket at a time though.
-            (when do-symmetry
-              (setq beg-next (max beg-next (1- beg)))
-              (setq end-next (min end-next (1+ end))))
+              ;; A step that moved neither side is not a change.
+              (unless (and (eq beg-next beg) (eq end-next end))
+                (setq found t)))
 
-            (cond
-             ((eq beg (point))
-              (goto-char beg-next)
-              (meep--set-marker-and-activate end-next))
-             (t
-              (goto-char end-next)
-              (meep--set-marker-and-activate beg-next)))
-
-            ;; A step that moved neither side is not a change.
-            (unless (and (eq beg-next beg) (eq end-next end))
-              (setq found t)))
-
-          ;; Don't attempt symmetry in future.
-          ;; NOTE: only when both sides could move, as the side taken is read back
-          ;; from the point. A buffer bound forcing the choice would lock the region
-          ;; to the side at that bound, which can never move again.
-          (unless meep--region-syntax-asym
-            (when (and beg-ok end-ok (or (null do-beg) (null do-end)))
-              (setq meep--region-syntax-asym t)))))
+            ;; Don't attempt symmetry in future.
+            ;; NOTE: only when both sides could move, as the side taken is read back
+            ;; from the point. A buffer bound forcing the choice would lock the region
+            ;; to the side at that bound, which can never move again.
+            (unless meep--region-syntax-asym
+              (when (and beg-ok end-ok (or (null do-beg) (null do-end)))
+                (setq meep--region-syntax-asym t))))))
        (t
         (let ((syn nil)
               (do-beg nil)
@@ -5737,10 +5760,7 @@ Return non-nil when the region changed."
   "Contract matching syntax table N times.
 Message and do nothing when there is no active region.
 Return non-nil when the region changed."
-  (when meep--region-syntax-asym
-    (let ((local-last-command (meep--last-command)))
-      (unless (memq local-last-command '(meep-region-syntax-expand meep-region-syntax-contract))
-        (setq meep--region-syntax-asym nil))))
+  (meep--region-syntax-asym-reset-maybe)
   (let ((found nil))
     (cond
      ((region-active-p)
@@ -5761,84 +5781,69 @@ Return non-nil when the region changed."
                (beg-syn-str (and beg-syn (meep--region-syntax-class-string beg-syn)))
                (end-syn-str (and end-syn (meep--region-syntax-class-string end-syn)))
 
-               (do-beg nil)
-               (do-end nil)
+               ;; NOTE: only an empty region reads as having no syntax, a region with
+               ;; any content has a character to read on both sides.
+               (is-empty (or (null beg-syn) (null end-syn))))
 
-               (do-symmetry nil))
-
-          (cond
-           ;; NOTE: only an empty region reads as having no syntax, a region with
-           ;; any content has a character to read on both sides.
-           ((or (null beg-syn) (null end-syn))
+          ;; Stepping no side leaves the region unchanged, which deactivates it below.
+          (when is-empty
             ;; Only on the first step, otherwise silently skip.
             (unless found
               (message "Empty region, nothing to contract"))
             ;; Break.
             (setq n 0))
-           ((null beg-ok)
-            (setq do-end t))
-           ((null end-ok)
-            (setq do-beg t))
 
-           ((string-equal beg-syn-str end-syn-str)
-            (setq do-beg t)
-            (setq do-end t))
-           ;; It's handy for including/excluding surrounding brackets.
-           ((and (member beg-syn-str '("(" ")")) (member end-syn-str '("(" ")")))
-            (setq do-symmetry t)
-            (setq do-beg t)
-            (setq do-end t))
-           ((eq beg (point))
-            (setq do-beg t))
-           ((eq end (point))
-            (setq do-end t))
-           (t
-            (meep--assert-unreachable)))
+          ;; NOTE: the fallback matches the pattern, `pcase-let' may signal otherwise.
+          (pcase-let ((`(,do-beg ,do-end ,do-symmetry)
+                       (or (unless is-empty
+                             (meep--region-syntax-step-sides
+                              beg end beg-ok end-ok beg-syn-str end-syn-str))
+                           '(nil nil nil))))
 
-          (let ((beg-next beg)
-                (end-next end))
+            (let ((beg-next beg)
+                  (end-next end))
 
-            (when do-beg
-              (save-excursion
-                (goto-char beg)
-                (meep--region-syntax-or-symbol-forward beg-syn-str)
-                (setq beg-next (point))))
-            (when do-end
-              (save-excursion
-                (goto-char end)
-                (meep--region-syntax-or-symbol-backward end-syn-str)
-                (setq end-next (point))))
+              (when do-beg
+                (save-excursion
+                  (goto-char beg)
+                  (meep--region-syntax-or-symbol-forward beg-syn-str)
+                  (setq beg-next (point))))
+              (when do-end
+                (save-excursion
+                  (goto-char end)
+                  (meep--region-syntax-or-symbol-backward end-syn-str)
+                  (setq end-next (point))))
 
-            ;; Avoid contracting an unbalanced number of brackets as it makes it
-            ;; difficult to copy blocks of code.
-            ;; NOTE: instead of limiting to 1, we could make them even,
-            ;; in practice it might be more useful to only contract one bracket at a time though.
-            (when do-symmetry
-              (setq beg-next (min beg-next (1+ beg)))
-              (setq end-next (max end-next (1- end))))
+              ;; Avoid contracting an unbalanced number of brackets as it makes it
+              ;; difficult to copy blocks of code.
+              ;; NOTE: instead of limiting to 1, we could make them even,
+              ;; in practice it might be more useful to only contract one bracket at a time though.
+              (when do-symmetry
+                (setq beg-next (min beg-next (1+ beg)))
+                (setq end-next (max end-next (1- end))))
 
-            ;; A step that moved neither side is not a change.
-            (unless (and (eq beg-next beg) (eq end-next end))
-              (setq found t))
-            (cond
-             ((<= end-next beg-next)
-              ;; Contract to nothing.
-              (deactivate-mark t)
-              ;; Break.
-              (setq n 0))
+              ;; A step that moved neither side is not a change.
+              (unless (and (eq beg-next beg) (eq end-next end))
+                (setq found t))
+              (cond
+               ((<= end-next beg-next)
+                ;; Contract to nothing.
+                (deactivate-mark t)
+                ;; Break.
+                (setq n 0))
 
-             ((eq beg (point))
-              (goto-char beg-next)
-              (meep--set-marker-and-activate end-next))
+               ((eq beg (point))
+                (goto-char beg-next)
+                (meep--set-marker-and-activate end-next))
 
-             (t
-              (goto-char end-next)
-              (meep--set-marker-and-activate beg-next))))
+               (t
+                (goto-char end-next)
+                (meep--set-marker-and-activate beg-next))))
 
-          ;; Don't attempt symmetry in future.
-          (unless meep--region-syntax-asym
-            (unless (and do-beg do-end)
-              (setq meep--region-syntax-asym t))))))
+            ;; Don't attempt symmetry in future.
+            (unless meep--region-syntax-asym
+              (unless (and do-beg do-end)
+                (setq meep--region-syntax-asym t)))))))
      (t
       (message "No region to contract")))
     found))
