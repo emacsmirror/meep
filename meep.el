@@ -11271,7 +11271,9 @@ the nearest ancestor with a `meep-preset-MODE' file on `load-path'
 wins.  That file's preset function returns an alist of
 `(VARIABLE . VALUE)' pairs.  Each VARIABLE is then set buffer-locally
 to VALUE unless it is already buffer-local - a prior buffer-local
-user override is preserved.
+user override is preserved.  A global value is not consulted, the
+buffer-local value shadows it; `meep-preset-ensure-variable' reads a
+single variable the other way around.
 
 The alist is memoized globally under the current `major-mode',
 so the chain walk happens at most once per Emacs session per
@@ -11299,9 +11301,16 @@ Return the alist, or nil if no preset is available."
           (set (make-local-variable var) (cdr entry)))))
     alist))
 
+;; NOTE: the precedence is the opposite of `meep-preset-ensure' by design.
+;; Applying a preset is an explicit request from a mode hook, so it may shadow a
+;; global value with the buffer-local one it installs.  This function is called
+;; on demand while reading an option, where outranking the user's own `setq'
+;; would be surprising - the preset is the fallback there, not the authority.
 ;;;###autoload
 (defun meep-preset-ensure-variable (var)
-  "Return VAR's value: buffer-local, then global, falling back to the preset."
+  "Return VAR's value: buffer-local, then global, falling back to the preset.
+A buffer-local value wins even when nil, a global value only when non-nil.
+Unlike `meep-preset-ensure' the preset never overrides a global value."
   (declare (important-return-value t))
   (let ((val (and (boundp var) (symbol-value var))))
     (cond

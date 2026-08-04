@@ -470,6 +470,21 @@ of `nxml-mode'.  A mode that is not installed cannot be checked, skip it."
     (should (meep-preset-ensure))
     (should (eq :user-set meep-test--respected-var))))
 
+(ert-deftest meep-preset-ensure-shadows-global-value ()
+  "A global value is shadowed by the buffer-local the preset installs.
+This is the opposite of `meep-preset-ensure-variable', where a non-nil
+global value wins over the preset."
+  (with-meep-preset-test meep-test-apply-mode
+    (puthash 'meep-test-apply-mode '((meep-test--applied-var . :from-preset)) meep--preset-cache)
+    (let ((value-init meep-test--applied-var))
+      (unwind-protect
+          (progn
+            (setq-default meep-test--applied-var :user-set-globally)
+            (should (meep-preset-ensure))
+            (should (eq :from-preset meep-test--applied-var))
+            (should (eq :user-set-globally (default-value 'meep-test--applied-var))))
+        (setq-default meep-test--applied-var value-init)))))
+
 (ert-deftest meep-preset-ensure-walks-derived-mode-parent ()
   "Use an ancestor's preset when the current mode has none.
 
