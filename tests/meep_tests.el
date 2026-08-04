@@ -18892,6 +18892,65 @@ Verifies: `C-x z' inserts a second time instead of re-entering the keypad."
             (should (equal text-expected (buffer-string)))))
       (global-set-key key binding-init))))
 
+(ert-deftest keypad-command-byte-compiled-function ()
+  "Dispatch a byte-compiled function bound to a key.
+
+Any compiled configuration or package key-map holds these, so the keypad must
+run them instead of rejecting them as an unknown type.
+
+Workflow: insert via a function bound to `C-t'.
+Verifies: the function runs."
+  (let* ((fn
+          (byte-compile
+           (lambda ()
+             (interactive)
+             (insert "X"))))
+         (key (kbd "C-t"))
+         (binding-init (global-key-binding key))
+         (text-initial "hello")
+         (text-expected "Xhello"))
+    ;; Pin the premise, an interpreted function takes the other code-path.
+    (should (equal nil (interpreted-function-p fn)))
+    (unwind-protect
+        (progn
+          (global-set-key key fn)
+          (with-meep-test text-initial
+            (text-mode)
+            (bray-mode 1)
+            (simulate-input-for-meep
+              ;; Keypad `t' -> `C-t' -> FN.
+              '(:state normal :command meep-keypad)
+              "t")
+            (should (equal text-expected (buffer-string)))))
+      (global-set-key key binding-init))))
+
+(ert-deftest keypad-command-keyboard-macro ()
+  "Dispatch a keyboard macro bound to a key.
+
+Workflow: open a line via a macro bound to `C-t'.
+Verifies: the macro runs."
+  (let* ((macro [?\C-o])
+         (key (kbd "C-t"))
+         (binding-init (global-key-binding key))
+         (text-initial "hello")
+         (text-expected
+          ;; format-next-line: off
+          (concat
+           "\n"
+           "hello")))
+    (unwind-protect
+        (progn
+          (global-set-key key macro)
+          (with-meep-test text-initial
+            (text-mode)
+            (bray-mode 1)
+            (simulate-input-for-meep
+              ;; Keypad `t' -> `C-t' -> MACRO -> `C-o' (`open-line').
+              '(:state normal :command meep-keypad)
+              "t")
+            (should (equal text-expected (buffer-string)))))
+      (global-set-key key binding-init))))
+
 (provide 'meep_tests)
 ;; Local Variables:
 ;; fill-column: 99

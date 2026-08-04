@@ -10716,8 +10716,9 @@ for the normal dispatcher doesn't leak into the next `read-event'."
                 (setq bind (key-binding kbd-keyseq)))
 
               (cond
-               ((or (and bind (symbolp bind) (commandp bind))
-                    (and bind (null (symbolp bind)) (interpreted-function-p bind)))
+               ;; Use `commandp' to accept every kind of binding a key-map may
+               ;; hold: symbols, closures (compiled or not) & keyboard macros.
+               ((and bind (commandp bind))
 
                 ;; Don't look any further.
                 (setq found t)
@@ -10729,8 +10730,10 @@ for the normal dispatcher doesn't leak into the next `read-event'."
                            (cond
                             ((symbolp bind)
                              (symbol-name bind))
+                            ((or (stringp bind) (vectorp bind))
+                             "<keyboard macro ...>")
                             (t
-                             "<interpreted function ...>"))))
+                             "<anonymous command ...>"))))
 
                 ;; Needed because `repeat' (`C-x z') re-runs `last-repeatable-command',
                 ;; taken from `real-this-command' which neither
@@ -10764,7 +10767,8 @@ for the normal dispatcher doesn't leak into the next `read-event'."
                ((null bind)
                 (user-error "Keypad [%s] unknown!" keyseq-str-default))
                (t
-                ;; Should never happen, but this is early development so it might.
+                ;; Unlikely, a binding that is neither a command nor a key-map,
+                ;; a function without an `interactive' spec for e.g.
                 (user-error "Keypad [%s] unknown type: %S !" keyseq-str-default (type-of bind))))))
 
           (unless handled-elsewhere
