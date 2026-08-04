@@ -6339,6 +6339,7 @@ Repeat the search ARG times."
 
 (defmacro meep--with-respect-goal-column (&rest body)
   "Execute BODY, maintaining the goal column."
+  (declare (indent 0))
   `(meep--respect-goal-column-impl (lambda () ,@body)))
 
 (defun meep--delete-from-motion-fn (fn)
@@ -9709,9 +9710,9 @@ When DO-CUT is non-nil, cut instead of copying."
   (interactive "*")
   ;; Note that this command writes to the system clipboard.
   (meep--with-respect-goal-column
-   ;; The span is already line bounds, the system clipboard is plain text and
-   ;; cannot carry the line-wise hint, so read it linearly.
-   (meep--clipboard-only-cut-or-copy-impl (pos-bol) (min (1+ (pos-eol)) (point-max)) nil t)))
+    ;; The span is already line bounds, the system clipboard is plain text and
+    ;; cannot carry the line-wise hint, so read it linearly.
+    (meep--clipboard-only-cut-or-copy-impl (pos-bol) (min (1+ (pos-eol)) (point-max)) nil t)))
 
 (defun meep--clipboard-only-yank-impl ()
   "Yank-replace from the system clipboard."
@@ -10038,7 +10039,7 @@ The region need not be active."
         (end (min (1+ (pos-eol)) (point-max)))
         (do-cut t))
     (meep--with-respect-goal-column
-     (meep--clipboard-killring-cut-or-copy beg end region-type do-cut))))
+      (meep--clipboard-killring-cut-or-copy beg end region-type do-cut))))
 
 ;;;###autoload
 (defun meep-clipboard-killring-copy-line ()
@@ -10049,7 +10050,7 @@ The region need not be active."
         (end (min (1+ (pos-eol)) (point-max)))
         (do-cut nil))
     (meep--with-respect-goal-column
-     (meep--clipboard-killring-cut-or-copy beg end region-type do-cut))))
+      (meep--clipboard-killring-cut-or-copy beg end region-type do-cut))))
 
 ;;;###autoload
 (defun meep-clipboard-killring-yank-pop-stack (arg)
