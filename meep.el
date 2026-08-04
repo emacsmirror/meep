@@ -10543,25 +10543,21 @@ for the normal dispatcher doesn't leak into the next `read-event'."
           (lambda (keyseq) (mapconcat #'car (reverse keyseq) "")))
 
          (string-from-keyseq-all
-          ;; Return string from sequence, expanded from multiple keys.
+          ;; Return every combination of the sequences keys, most likely first:
+          ;; the keys as typed lead, then the newest key varies before older ones.
+          ;;
+          ;; Expanding only the newest key would be enough for a single special
+          ;; key, however a sequence may hold several & their bindings need not
+          ;; agree on which alternative they use. Only a handful of keys have
+          ;; alternatives at all (4 at most, for DEL), so the growth is bounded.
           (lambda (keyseq)
-            (let ((str "")
-                  (result (list)))
-              (while keyseq
-                (let ((ch-str-list (pop keyseq)))
-                  (cond
-                   ;; There is more than one key, expand all possible options.
-                   ((cdr-safe ch-str-list)
-                    (let ((head (funcall string-from-keyseq-default keyseq)))
-                      (dolist (ch-str ch-str-list)
-                        (push (concat head ch-str str) result)))
-                    ;; Break.
-                    (setq keyseq nil))
-                   (t
-                    (setq str (concat (car ch-str-list) str))))))
-
-              (unless result
-                (setq result (list str)))
+            (let ((result (list "")))
+              (dolist (ch-str-list (reverse keyseq))
+                (let ((result-next (list)))
+                  (dolist (str result)
+                    (dolist (ch-str ch-str-list)
+                      (push (concat str ch-str) result-next)))
+                  (setq result (nreverse result-next))))
               result)))
 
          (ellipsis-str

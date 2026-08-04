@@ -18951,6 +18951,43 @@ Verifies: the macro runs."
             (should (equal text-expected (buffer-string)))))
       (global-set-key key binding-init))))
 
+(ert-deftest keypad-command-alternate-keys-in-sequence ()
+  "Dispatch a binding using an alternative for a key that isn't the newest.
+
+`TAB' and `DEL' both have alternatives (`<tab>', `<backspace>' ...) and a
+key-map need not use the same one MEEP shows, so every combination must be
+tried, not only the newest keys.
+
+Workflow: insert via `C-t <tab> DEL', reached by typing `t SPC TAB SPC DEL'.
+Verifies: the binding is found even though `TAB' is not the newest key."
+  (let* ((fn
+          (lambda ()
+            (interactive)
+            (insert "X")))
+         (keymap (make-sparse-keymap))
+         (key (kbd "C-t"))
+         (binding-init (global-key-binding key))
+         (text-initial "hello")
+         (text-expected "Xhello"))
+    (define-key keymap (kbd "<tab> DEL") fn)
+    (unwind-protect
+        (progn
+          (global-set-key key keymap)
+          ;; Pin the premise, the keys as typed have no binding.
+          (should-not (commandp (key-binding (kbd "C-t TAB DEL"))))
+          (with-meep-test text-initial
+            (text-mode)
+            (bray-mode 1)
+            (simulate-input-for-meep
+              '(:state normal :command meep-keypad)
+              "t"
+              " "
+              [?\t]
+              " "
+              [?\C-?])
+            (should (equal text-expected (buffer-string)))))
+      (global-set-key key binding-init))))
+
 (provide 'meep_tests)
 ;; Local Variables:
 ;; fill-column: 99
