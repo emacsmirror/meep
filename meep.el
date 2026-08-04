@@ -8436,14 +8436,20 @@ USE-COMMENT-STRIP, strips comments between lines."
   (interactive "*p")
   ;; TODO: make optional.
   (let ((use-comment-strip t)
-        (changed nil))
+        (changed nil)
+        (skip-message nil))
     (cond
-     ((zerop arg)) ; NOP, unlikely, include for correctness.
+     ((zerop arg)
+      ;; Unlikely, joining zero times attempts nothing,
+      ;; so there is no failure to report.
+      (setq skip-message t))
      ((region-active-p)
       (when (meep--join-region-impl (region-beginning) (region-end) use-comment-strip)
         (setq changed t)))
      ((< arg 0)
-      (meep-join-line-prev (- arg)))
+      ;; The opposite direction reports its own failure, don't report it twice.
+      (setq skip-message t)
+      (setq changed (meep-join-line-prev (- arg))))
      (t
       (let ((bol (pos-bol))
             (eol nil)
@@ -8462,7 +8468,7 @@ USE-COMMENT-STRIP, strips comments between lines."
               (goto-char pos-new)
               (setq changed t)))))))
 
-    (unless changed
+    (unless (or changed skip-message)
       (message "Join line end: no following line found"))
     changed))
 
@@ -8472,14 +8478,20 @@ USE-COMMENT-STRIP, strips comments between lines."
   (interactive "*p")
   ;; TODO: make optional.
   (let ((use-comment-strip t)
-        (changed nil))
+        (changed nil)
+        (skip-message nil))
     (cond
-     ((zerop arg)) ; NOP, unlikely, include for correctness.
+     ((zerop arg)
+      ;; Unlikely, joining zero times attempts nothing,
+      ;; so there is no failure to report.
+      (setq skip-message t))
      ((region-active-p)
       (when (meep--join-region-impl (region-beginning) (region-end) use-comment-strip)
         (setq changed t)))
      ((< arg 0)
-      (meep-join-line-next (- arg)))
+      ;; The opposite direction reports its own failure, don't report it twice.
+      (setq skip-message t)
+      (setq changed (meep-join-line-next (- arg))))
      (t
       (let ((bol nil)
             (eol nil)
@@ -8498,7 +8510,7 @@ USE-COMMENT-STRIP, strips comments between lines."
               (goto-char pos-new)
               (setq changed t)))))))
 
-    (unless changed
+    (unless (or changed skip-message)
       (message "Join line beginning: no preceding line found"))
     changed))
 

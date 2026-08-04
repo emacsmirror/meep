@@ -11689,6 +11689,174 @@ Verifies: buffer unchanged, informative message displayed."
       ;; Verify informative message was displayed.
       (should (equal '("Join line beginning: no preceding line found") (meep-test-messages))))))
 
+(ert-deftest join-line-next-negative-arg-joins-previous ()
+  "Join with a negative prefix, handing off to the opposite direction.
+
+Verifies: the join succeeds silently, without a false failure message."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "hello\n"
+          "world\n"
+          "foo"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "hello world\n"
+          "foo")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to second line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next))
+      ;; Cursor line 2: world
+      ;;               ^
+      (should (equal '(2 . 0) (meep-test-point-line-column)))
+      ;; Join backward via a negative argument.
+      (simulate-input-for-meep
+        [?\C-u ?- ?1]
+        '(:state normal :command meep-join-line-next))
+      ;; Result: "hello world\nfoo"
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string)))
+      (should (equal '(1 . 6) (meep-test-point-line-column)))
+      (should (equal ?w (char-after)))
+      ;; A successful join reports nothing.
+      (should (equal nil (meep-test-messages))))))
+
+(ert-deftest join-line-prev-negative-arg-joins-next ()
+  "Join with a negative prefix, handing off to the opposite direction.
+
+Verifies: the join succeeds silently, without a false failure message."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "hello\n"
+          "world\n"
+          "foo"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "hello world\n"
+          "foo")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor line 1: hello
+      ;;               ^
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      ;; Join forward via a negative argument.
+      (simulate-input-for-meep
+        [?\C-u ?- ?1]
+        '(:state normal :command meep-join-line-prev))
+      ;; Result: "hello world\nfoo"
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string)))
+      (should (equal '(1 . 6) (meep-test-point-line-column)))
+      (should (equal ?w (char-after)))
+      ;; A successful join reports nothing.
+      (should (equal nil (meep-test-messages))))))
+
+(ert-deftest join-line-negative-arg-returns-the-result ()
+  "Join with a negative prefix, handing off to the opposite direction.
+
+Verifies: the handed-off result is returned rather than discarded.  The
+twins consume each other's return value, so discarding it is not visible
+in the buffer - only in what the caller sees."
+  ;; A successful hand-off returns non-nil.
+  (with-meep-test "hello\nworld"
+    (text-mode)
+    (bray-mode 1)
+    (simulate-input-for-meep
+      '(:state normal :command meep-move-line-next))
+    (should (meep-join-line-next -1))
+    (should (equal "hello world" (buffer-string))))
+  (with-meep-test "hello\nworld"
+    (text-mode)
+    (bray-mode 1)
+    (should (meep-join-line-prev -1))
+    (should (equal "hello world" (buffer-string))))
+  ;; A failed hand-off returns nil, as does joining zero times.
+  (with-meep-test "only line"
+    (text-mode)
+    (bray-mode 1)
+    (should-not (meep-join-line-next -1))
+    (should-not (meep-join-line-prev -1))
+    (should-not (meep-join-line-next 0))
+    (should-not (meep-join-line-prev 0))))
+
+(ert-deftest join-line-next-zero-arg-is-silent ()
+  "Join with a zero prefix, which joins nothing.
+
+Verifies: the no-op is silent, without a false failure message."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "hello\n"
+          "world")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor line 1: hello
+      ;;               ^
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      ;; A zero argument joins nothing, even though a next line exists.
+      (simulate-input-for-meep
+        [?\C-u ?0]
+        '(:state normal :command meep-join-line-next))
+      ;; Result: unchanged & silent.
+      (should (equal 'normal (bray-state)))
+      (should (equal text-initial (buffer-string)))
+      (should (equal nil (meep-test-messages))))))
+
+(ert-deftest join-line-prev-zero-arg-is-silent ()
+  "Join with a zero prefix, which joins nothing.
+
+Verifies: the no-op is silent, without a false failure message."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "hello\n"
+          "world")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move to second line, so a preceding line exists.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next))
+      (should (equal '(2 . 0) (meep-test-point-line-column)))
+      ;; A zero argument joins nothing.
+      (simulate-input-for-meep
+        [?\C-u ?0]
+        '(:state normal :command meep-join-line-prev))
+      ;; Result: unchanged & silent.
+      (should (equal 'normal (bray-state)))
+      (should (equal text-initial (buffer-string)))
+      (should (equal nil (meep-test-messages))))))
+
+(ert-deftest join-line-next-negative-arg-at-first-line ()
+  "Join with a negative prefix when there is no preceding line.
+
+Verifies: the failure is reported once, not once per direction."
+  (let ((text-initial "only line"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Cursor: only line
+      ;;         ^
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      ;; Attempt a backward join with no preceding line.
+      (simulate-input-for-meep
+        [?\C-u ?- ?1]
+        '(:state normal :command meep-join-line-next))
+      ;; Buffer unchanged.
+      (should (equal 'normal (bray-state)))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(1 . 0) (meep-test-point-line-column)))
+      ;; Only the direction actually attempted reports.
+      (should (equal '("Join line beginning: no preceding line found") (meep-test-messages))))))
+
 (ert-deftest join-line-next-python-comment-with-inline-comment ()
   "Join Python comment lines where the second line has an inline comment.
 
