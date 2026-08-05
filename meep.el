@@ -3526,8 +3526,7 @@ applied to the first/last lines of the block); otherwise include the
 trailing newline (outer is line-wise by default)."
   (declare (important-return-value t))
   (when-let* ((first-outer (meep--bounds-at-point-for-comment-outer)))
-    (let ((first-beg (car first-outer))
-          (last-beg (car first-outer))
+    (let ((last-beg (car first-outer))
           (beg (car first-outer))
           (end (cdr first-outer)))
       ;; Extend end forward across adjacent comments separated only by blanks.
@@ -3572,13 +3571,12 @@ trailing newline (outer is line-wise by default)."
                           (forward-char -1)
                           (setq prev (meep--bounds-at-point-for-comment-outer)))
                         (< (car prev) beg)))
-            (setq first-beg (car prev))
             (setq beg (car prev)))))
       (cond
        (inner
         ;; Apply `comment' inner logic on the first and last comments.
         (save-excursion
-          (goto-char first-beg)
+          (goto-char beg)
           (when-let* ((b (meep--bounds-of-comment t)))
             (setq beg (car b))))
         (save-excursion
