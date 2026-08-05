@@ -6025,16 +6025,21 @@ Useful for pasting while stepping over search results."
   (meep--isearch-handle-done nil))
 
 
+(defun meep--isearch-found-p ()
+  "Return t when the last ISEARCH found a match, nil otherwise."
+  (declare (important-return-value t))
+  ;; `isearch-success' stays set when nothing was searched for, with no search
+  ;; string or an invalid regexp it's `isearch-error' that holds the reason.
+  ;; `isearch-other-end' may still point into the buffer of an earlier search.
+  (and isearch-success (null isearch-error) isearch-other-end t))
+
 (defun meep--isearch-handle-done (had-region)
   "Handle the result of ISEARCH being done.
 
 This is only to be called from within ISEARCH functions.
 
 When HAD-REGION is non-nil, mark the region."
-  ;; When repeating a search with no previous search data,
-  ;; it's possible for `isearch-success' to be set without the other end.
-  ;; Use the other-end to detect success as well.
-  (when (and isearch-success isearch-other-end)
+  (when (meep--isearch-found-p)
     ;; Select.
     (meep--set-marker isearch-other-end)
     (cond
@@ -6050,6 +6055,8 @@ When HAD-REGION is non-nil, mark the region."
 
 (defun meep--isearch-regexp-impl (dir)
   "Start a regexp ISEARCH along DIR."
+  ;; NOTE: no result is returned (unlike the other ISEARCH commands),
+  ;; ISEARCH is still running when this returns.
   (add-hook 'isearch-mode-end-hook #'meep--isearch-done-hook 0 t)
   (call-interactively
    (cond
@@ -6081,11 +6088,13 @@ Return non-nil on success."
         (had-region (region-active-p))
         (pos-init (point)))
 
-    (prog1 (cond
-            ((< dir 0)
-             (isearch-repeat-backward (- dir)))
-            (t
-             (isearch-repeat-forward dir)))
+    (cond
+     ((< dir 0)
+      (isearch-repeat-backward (- dir)))
+     (t
+      (isearch-repeat-forward dir)))
+
+    (let ((found (meep--isearch-found-p)))
       (meep--isearch-handle-done had-region)
 
       ;; NOTE(@ideasman42): Without an explicit exit,
@@ -6093,11 +6102,15 @@ Return non-nil on success."
       ;; (based on a previous search that may have been edited out).
       ;; This looks to be default behavior as of Emacs 30.1,
       ;; although it seems like it could be arguably considered a bug.
+      ;; NOTE: `isearch-success', not FOUND, an empty search string is a
+      ;; failure to us but `isearch-exit' prompts via `isearch-edit-string'.
       (unless isearch-success
         (let ((isearch-opoint (point)))
           (isearch-exit))
         ;; Moving the cursor on a failed search also seems strange, restore it.
-        (goto-char pos-init)))))
+        (goto-char pos-init))
+
+      found)))
 
 ;;;###autoload
 (defun meep-isearch-repeat-next (arg)
@@ -6141,7 +6154,8 @@ Return non-nil on success."
     (concat (or beg "") (regexp-quote text) (or end ""))))
 
 (defun meep--isearch-at-point-impl (dir)
-  "Perform ISEARCH at point along DIR."
+  "Perform ISEARCH at point along DIR.
+Return non-nil on success."
   (let ((had-region (region-active-p))
         (text-bounds (meep--isearch-bounds-at-point-impl))
         ;; Re-display can flicker.
@@ -6190,19 +6204,23 @@ Return non-nil on success."
 
     (isearch-exit)
 
-    (meep--isearch-handle-done had-region)))
+    (meep--isearch-handle-done had-region)
+
+    (meep--isearch-found-p)))
 
 ;;;###autoload
 (defun meep-isearch-at-point-next (arg)
   "Search forwards for the symbol or region at point.
-Repeat the search ARG times."
+Repeat the search ARG times.
+Return non-nil on success."
   (interactive "p")
   (meep--isearch-at-point-impl arg))
 
 ;;;###autoload
 (defun meep-isearch-at-point-prev (arg)
   "Search backwards for the symbol or region at point.
-Repeat the search ARG times."
+Repeat the search ARG times.
+Return non-nil on success."
   (interactive "p")
   (meep--isearch-at-point-impl (- arg)))
 

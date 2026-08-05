@@ -16882,6 +16882,122 @@ Verifies: isearch-repeat-prev works with regex patterns."
       ;; Buffer unchanged by search.
       (should (equal text-expected (buffer-string))))))
 
+(ert-deftest isearch-repeat-return-value-found ()
+  "Repeating a search that matches returns non-nil.
+
+Verifies: isearch-repeat-next/prev report success."
+  (let ((text-initial "foo123 bar456 foo789"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (setq isearch-string "foo[0-9]+")
+      (setq isearch-regexp t)
+      (setq isearch-forward t)
+      ;; Both matches, then a third that wraps back to the first.
+      (should (meep-isearch-repeat-next 1))
+      (should (meep-isearch-repeat-next 1))
+      (should (meep-isearch-repeat-next 1))
+      ;; The same backwards.
+      (goto-char (point-max))
+      (setq isearch-forward nil)
+      (should (meep-isearch-repeat-prev 1))
+      (should (meep-isearch-repeat-prev 1)))))
+
+(ert-deftest isearch-repeat-return-value-not-found ()
+  "Repeating a search that cannot match returns nil.
+
+Verifies: isearch-repeat-next/prev report failure."
+  (let ((text-initial "foo123 bar456 foo789"))
+    ;; No match in the buffer.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (setq isearch-string "nomatch")
+      (setq isearch-regexp t)
+      (setq isearch-forward t)
+      (should-not (meep-isearch-repeat-next 1))
+      (goto-char (point-max))
+      (setq isearch-forward nil)
+      (should-not (meep-isearch-repeat-prev 1)))
+
+    ;; No previous search string, `isearch-success' is set without a match.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (let ((search-ring nil)
+            (regexp-search-ring nil))
+        (setq isearch-string "")
+        (setq isearch-regexp nil)
+        (setq isearch-forward t)
+        (should-not (meep-isearch-repeat-next 1))
+        (should-not (meep-isearch-repeat-prev 1))))
+
+    ;; Invalid regexp, `isearch-success' keeps its previous value.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (setq isearch-string "\\(")
+      (setq isearch-regexp t)
+      (setq isearch-forward t)
+      (should-not (meep-isearch-repeat-next 1))
+      (should-not (meep-isearch-repeat-prev 1)))))
+
+(ert-deftest isearch-repeat-not-found-leaves-no-region ()
+  "A repeat that finds nothing must not select a stale match.
+
+Verifies: an `isearch-other-end' left by an earlier search is not used
+to mark a region in a buffer the search never ran in."
+  (with-meep-test "foo bar foo baz"
+    (text-mode)
+    (bray-mode 1)
+    (goto-char (point-min))
+    (setq isearch-string "foo")
+    (setq isearch-regexp nil)
+    (setq isearch-forward t)
+    ;; Succeeds, leaving `isearch-other-end' set.
+    (should (meep-isearch-repeat-next 1)))
+
+  ;; Guard the setup, a nil value here would make the test prove nothing.
+  (should isearch-other-end)
+
+  (with-meep-test "unrelated text here"
+    (text-mode)
+    (bray-mode 1)
+    (goto-char (point-max))
+    (let ((search-ring nil)
+          (regexp-search-ring nil))
+      (setq isearch-string "")
+      (setq isearch-regexp nil)
+      (setq isearch-forward t)
+      (should-not (meep-isearch-repeat-next 1))
+      (should-not (region-active-p))
+      (should (eq (point-max) (point))))))
+
+(ert-deftest isearch-at-point-return-value ()
+  "Searching for the symbol at point returns t.
+
+Verifies: isearch-at-point-next/prev report success as t, not an
+internal value such as the `transient-mark-mode' cons cell."
+  (let ((text-initial "foo bar foo baz"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (should (eq t (meep-isearch-at-point-next 1))))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (goto-char (point-min))
+      (should (eq t (meep-isearch-at-point-prev 1))))
+
+    ;; No symbol under the cursor is reported as an error, not a return value.
+    (with-meep-test "foo   bar"
+      (text-mode)
+      (bray-mode 1)
+      (goto-char 5)
+      (should-error (meep-isearch-at-point-next 1) :type 'user-error)
+      (should-error (meep-isearch-at-point-prev 1) :type 'user-error))))
+
 ;; ---------------------------------------------------------------------------
 ;; Miscellaneous
 
