@@ -4073,12 +4073,11 @@ at the landing (no object there), the primitive landing is returned."
   (declare (important-return-value t))
   (let* ((result (meep--scan-walk step forward-fn))
          (pos (car result)))
-    (when pos
-      (when-let* ((b
-                   (save-excursion
-                     (goto-char pos)
-                     (funcall bounds-fn inner))))
-        (setq pos (meep--bounds-endpoint b at-start))))
+    (when-let* ((b
+                 (save-excursion
+                   (goto-char pos)
+                   (funcall bounds-fn inner))))
+      (setq pos (meep--bounds-endpoint b at-start)))
     (cons pos (cdr result))))
 
 (defun meep--scan-walk-thing (inner step at-start forward-fn bounds-fn)
