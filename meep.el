@@ -4960,39 +4960,26 @@ Return non-nil when the swap took place."
       ;; Implement `meep-region-swap-imply-region'.
       ;; Assume cursor is the top, left of the region.
       (save-excursion
-        (let ((col-beg nil)
-              (col-end nil)
-              (pos-init (point))
-              (col-init nil))
+        (let ((pos-init (point))
+              (col-init (current-column))
+              ;; Apply the offsets to calculate a rectangle region at `point'.
+              (col-len (abs (meep--columns-from-point-range secondary-beg secondary-end))))
+          (goto-char (pos-bol))
 
-          (goto-char secondary-beg)
-          (setq col-beg (current-column))
-          (goto-char secondary-end)
-          (setq col-end (current-column))
+          (when (> len-b 1)
+            (let ((len-a-left (forward-line (1- len-b))))
+              (unless (zerop len-a-left)
+                (user-error "Rectangle line count mismatch for implied region (%d and %d)"
+                            (- len-b len-a-left)
+                            len-b))))
 
-          (when (> col-beg col-end)
-            (meep--swap-vars col-beg col-end))
+          (move-to-column (+ col-init col-len))
+          (when (< (current-column) col-init)
+            (user-error
+             "Rectangle can't compute implied region (last line doesn't meet current column)"))
 
-          ;; Apply the offsets to calculate a rectangle region at `point'.
-          (let ((col-len (- col-end col-beg)))
-            (goto-char pos-init)
-            (setq col-init (current-column))
-            (goto-char (pos-bol))
-
-            (when (> len-b 1)
-              (let ((len-a-left (forward-line (1- len-b))))
-                (unless (zerop len-a-left)
-                  (user-error "Rectangle line count mismatch for implied region (%d and %d)"
-                              (- len-b len-a-left)
-                              len-b))))
-
-            (move-to-column (+ col-init col-len))
-            (when (< (current-column) col-init)
-              (user-error
-               "Rectangle can't compute implied region (last line doesn't meet current column)"))
-
-            (setq region-beg pos-init)
-            (setq region-end (point)))))))
+          (setq region-beg pos-init)
+          (setq region-end (point))))))
 
     (setq line-ranges-a (meep--rectangle-range-list-from-rectangle region-beg region-end))
     (setq len-a (length line-ranges-a))
