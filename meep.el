@@ -3129,18 +3129,17 @@ validate a span whose open is on an earlier line."
   ;; Rare in practice, so accept the limitation.
   (save-excursion
     (save-match-data
+      (goto-char pos)
       (let ((case-fold-search nil)
             (parity-start
              (cond
               (paragraph-parity
-               (goto-char pos)
                (cond
                 ((re-search-backward "\n[[:blank:]]*\n" clamp-min t)
                  (match-end 0))
                 (t
                  clamp-min)))
               (t
-               (goto-char pos)
                (pos-bol))))
             (is-open t))
         (goto-char parity-start)
@@ -4924,7 +4923,6 @@ Return non-nil when the swap took place."
                    ;; The trailing line is *not* on the new-line boundary.
                    ;; In this case apply the final lines column to this location.
                    (t
-                    (goto-char end-a)
                     (let ((col-end-a (current-column)))
                       (goto-char beg-b)
                       (beginning-of-line)
