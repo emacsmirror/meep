@@ -6151,25 +6151,15 @@ Return non-nil on success."
 
   (let ((text (buffer-substring-no-properties (car text-bounds) (cdr text-bounds)))
         (beg nil)
-        (end nil)
-        (beg-test-list (list "\\_<" "\\<" "\\b"))
-        (end-test-list (list "\\_>" "\\>" "\\b")))
+        (end nil))
 
     ;; NOTE: exactly how to do this isn't clear, looking-at commands work well enough.
     (save-excursion
       (goto-char (car text-bounds))
-      (while beg-test-list
-        (let ((beg-test (pop beg-test-list)))
-          (when (looking-at-p beg-test)
-            (setq beg-test-list nil) ; Break.
-            (setq beg beg-test))))
+      (setq beg (seq-find #'looking-at-p (list "\\_<" "\\<" "\\b")))
 
       (goto-char (cdr text-bounds))
-      (while end-test-list
-        (let ((end-test (pop end-test-list)))
-          (when (looking-at-p end-test)
-            (setq end-test-list nil) ; Break.
-            (setq end end-test)))))
+      (setq end (seq-find #'looking-at-p (list "\\_>" "\\>" "\\b"))))
 
     (concat (or beg "") (regexp-quote text) (or end ""))))
 
