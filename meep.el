@@ -1622,10 +1622,9 @@ Inside a string or comment, the depth is that of the enclosing code."
   (declare (important-return-value t))
   (memq last-command '(meep-move-by-sexp-over-next meep-move-by-sexp-over-prev)))
 
-;;;###autoload
-(defun meep-move-by-sexp-over-next (arg)
-  "Move to the next S-expression at the same depth, ARG times."
-  (interactive "^p")
+(defun meep--move-by-sexp-over-impl (n)
+  "Move to the S-expression at the same depth by N.
+Move forward when N is positive, otherwise backwards."
   (let ((step-over t)
         (this-depth (meep--sexp-depth-calc)))
     (unless (meep--move-by-sexp-over-last-command-check)
@@ -1633,30 +1632,24 @@ Inside a string or comment, the depth is that of the enclosing code."
     (when (and meep-move-by-sexp-over-depth (< this-depth meep-move-by-sexp-over-depth))
       (setq step-over nil))
 
-    (when-let* ((pos-found (meep--move-by-sexp-any-impl arg step-over)))
+    (when-let* ((pos-found (meep--move-by-sexp-any-impl n step-over)))
       (meep--with-mark-on-motion-maybe-set
         (goto-char pos-found)))
 
     (unless meep-move-by-sexp-over-depth
       (setq meep-move-by-sexp-over-depth this-depth))))
+
+;;;###autoload
+(defun meep-move-by-sexp-over-next (arg)
+  "Move to the next S-expression at the same depth, ARG times."
+  (interactive "^p")
+  (meep--move-by-sexp-over-impl arg))
 
 ;;;###autoload
 (defun meep-move-by-sexp-over-prev (arg)
   "Move to the previous S-expression at the same depth, ARG times."
   (interactive "^p")
-  (let ((step-over t)
-        (this-depth (meep--sexp-depth-calc)))
-    (unless (meep--move-by-sexp-over-last-command-check)
-      (setq meep-move-by-sexp-over-depth nil))
-    (when (and meep-move-by-sexp-over-depth (< this-depth meep-move-by-sexp-over-depth))
-      (setq step-over nil))
-
-    (when-let* ((pos-found (meep--move-by-sexp-any-impl (- arg) step-over)))
-      (meep--with-mark-on-motion-maybe-set
-        (goto-char pos-found)))
-
-    (unless meep-move-by-sexp-over-depth
-      (setq meep-move-by-sexp-over-depth this-depth))))
+  (meep--move-by-sexp-over-impl (- arg)))
 
 (defun meep--move-by-sexp-out-impl (arg)
   "Move up and out of the expression.
