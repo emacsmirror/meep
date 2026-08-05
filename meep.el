@@ -3330,7 +3330,7 @@ When IS-FORWARD is non-nil, point is after the mark."
   "Return the delimiter pair `(OPEN . CLOSE)' for CH.
 CLOSE is CH's symmetrical partner, or OPEN itself when it has none."
   (declare (important-return-value t))
-  (let ((ch-str (make-string 1 ch)))
+  (let ((ch-str (char-to-string ch)))
     (cons ch-str (or (meep--symmetrical-char-other-any ch-str) ch-str))))
 
 (defun meep--region-mark-bounds-of-char-impl (ch n inner)
