@@ -10927,9 +10927,7 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
 (defun meep-command-prop-get (cmd prop)
   "Return the PROP property for CMD or nil."
   (declare (important-return-value t))
-  (let* ((sym 'meep)
-         (plist (get cmd sym)))
-    (and plist (plist-get plist prop))))
+  (plist-get (get cmd 'meep) prop))
 
 ;;;###autoload
 (defun meep-command-prop-remove (cmd prop)
@@ -11306,13 +11304,11 @@ is found."
          (meep--major-mode-test-with-derived-fallback
           mode
           (lambda (node)
-            (pcase (meep--preset-try-mode node)
-              ;; Keep scanning into NODE's parents.
-              ('continue nil)
-              ;; Stop: a broken/empty preset shadows the ancestors.
-              ('missing 'missing)
-              ;; Stop: found a usable preset.
-              (found found))))))
+            (let ((found (meep--preset-try-mode node)))
+              ;; Stop on anything but `continue': a broken/empty preset
+              ;; (`missing') shadows the ancestors, an alist is usable.
+              (unless (eq found 'continue)
+                found))))))
     ;; The scan yields an alist, the `missing' sentinel, or nil - only
     ;; an alist is a real preset.
     (and (consp result) result)))
@@ -11329,23 +11325,13 @@ Shared cache/walk core for `meep-preset-ensure' and
 `meep-preset-ensure-variable'."
   (declare (important-return-value t))
   (let ((cached (gethash major-mode meep--preset-cache)))
-    (cond
-     ;; Cached-missing-state.
-     ((eq cached t)
-      nil)
-     ;; Cached alist.
-     (cached
-      cached)
-     ;; First attempt - walk the parent chain.
-     (t
-      (let ((result (meep--preset-walk major-mode)))
-        (cond
-         (result
-          (puthash major-mode result meep--preset-cache)
-          result)
-         (t
-          (puthash major-mode t meep--preset-cache)
-          nil)))))))
+    ;; First attempt - walk the parent chain, caching t as the
+    ;; cached-missing-state.
+    (unless cached
+      (setq cached (or (meep--preset-walk major-mode) t))
+      (puthash major-mode cached meep--preset-cache))
+    ;; Only an alist is a real preset, t is the cached-missing-state.
+    (and (consp cached) cached)))
 
 ;;;###autoload
 (defun meep-preset-ensure ()
