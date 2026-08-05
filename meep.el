@@ -1935,15 +1935,11 @@ STATE is a `syntax-ppss' result; nil is returned when it is not in a string
          (bounds-len (- end beg))
          (beg-str-len (length beg-str))
          (end-str-len (length end-str)))
-    (cond
-     ((and (>= bounds-len (+ beg-str-len end-str-len))
-           (or (zerop beg-str-len)
-               (string-equal beg-str (buffer-substring-no-properties beg (+ beg beg-str-len))))
-           (or (zerop end-str-len)
-               (string-equal end-str (buffer-substring-no-properties (- end end-str-len) end))))
-      t)
-     (t
-      nil))))
+    (and (>= bounds-len (+ beg-str-len end-str-len))
+         (or (zerop beg-str-len)
+             (string-equal beg-str (buffer-substring-no-properties beg (+ beg beg-str-len))))
+         (or (zerop end-str-len)
+             (string-equal end-str (buffer-substring-no-properties (- end end-str-len) end))))))
 
 ;;;###autoload
 (defun meep-bounds-inner-from-delimiters (pairs bounds)
@@ -2319,10 +2315,9 @@ they passed in.  Nil means the delimiters cross irreconcilably."
         (unless (and (eq beg (car bounds-outer)) (eq end (cdr bounds-outer)))
           (setq result (cons beg end))))
 
-      (when meep-move-comment-skip-space
-        (when result
-          (let ((skip "[:blank:]"))
-            (setq result (meep--bounds-contract-by-chars-non-empty result skip skip))))))
+      (when (and meep-move-comment-skip-space result)
+        (let ((skip "[:blank:]"))
+          (setq result (meep--bounds-contract-by-chars-non-empty result skip skip)))))
 
     (or result bounds-outer)))
 
@@ -3963,9 +3958,7 @@ string-syntax regexp (`\\\\s\"') for strings, with `syntax-ppss' validation."
             (cond
              ((null found)
               (setq cont nil))
-             ((eql found cur-beg)
-              nil)
-             (t
+             ((not (eql found cur-beg))
               (setq beg found)))))
         (cond
          (beg
@@ -5326,14 +5319,12 @@ If the region no longer meets line bounds, return nil."
 
 (defun meep--state-region-type ()
   "Return the region-type or nil."
-  (let ((region-type nil))
-    (when (region-active-p)
-      (cond
-       ((bound-and-true-p rectangle-mark-mode)
-        (setq region-type 'rect-wise))
-       ((meep--state-region-line-wise-check)
-        (setq region-type 'line-wise))))
-    region-type))
+  (when (region-active-p)
+    (cond
+     ((bound-and-true-p rectangle-mark-mode)
+      'rect-wise)
+     ((meep--state-region-line-wise-check)
+      'line-wise))))
 
 ;;;###autoload
 (defun meep-region-expand-to-line-bounds ()
