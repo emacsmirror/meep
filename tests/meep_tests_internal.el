@@ -1518,6 +1518,52 @@ the functions these stand in for."
           (should (eq (region-beginning) (meep--region-point-mark-beg)))
           (should (eq (region-end) (meep--region-point-mark-end))))))))
 
+;; ---------------------------------------------------------------------------
+;; Test Motion: Find Character
+;;
+;; These belong here and not in `meep_tests.el': `with-meep-test' replaces
+;; `message' with a stub returning nil, which is the very value a failed find
+;; must return, so the assertions would hold with or without the fix.
+
+(defmacro meep-test--with-find-char-buffer (&rest body)
+  "Run BODY in a buffer holding a single line, with the find messages muffled."
+  (declare (indent 0))
+  `(with-meep-message-suppress '("char %s not found" "No last character is set")
+     (with-temp-buffer
+       (insert "abc-def-ghi")
+       (goto-char (point-min))
+       (setq meep--move-find-last-char nil)
+       ,@body)))
+
+(ert-deftest move-find-char-returns-t-when-found ()
+  "A find that moves returns t, not the character it found."
+  (meep-test--with-find-char-buffer
+    (should (eq t (meep-move-find-char-on-line-at-next 1 ?-)))
+    (should (eq t (meep-move-find-char-on-line-till-next 1 ?-)))
+    (should (eq t (meep-move-find-char-on-line-till-prev 1 ?a)))
+    (should (eq t (meep-move-find-char-on-line-at-prev 1 ?a)))))
+
+(ert-deftest move-find-char-returns-nil-when-not-found ()
+  "A find that cannot move returns nil, not the `message' string."
+  (meep-test--with-find-char-buffer
+    (should-not (meep-move-find-char-on-line-at-next 1 ?Z))
+    (should-not (meep-move-find-char-on-line-till-next 1 ?Z))
+    (should-not (meep-move-find-char-on-line-at-prev 1 ?Z))
+    (should-not (meep-move-find-char-on-line-till-prev 1 ?Z))
+    ;; Present, but not this many times.
+    (should-not (meep-move-find-char-on-line-at-next 9 ?-))))
+
+(ert-deftest move-find-char-repeat-returns-t-or-nil ()
+  "Repeating a find reports success, including with no character set."
+  (meep-test--with-find-char-buffer
+    ;; Nothing to repeat until a find has run.
+    (should-not (meep-move-find-char-on-line-repeat-at-next 1))
+    (should (eq t (meep-move-find-char-on-line-at-next 1 ?-)))
+    (should (eq t (meep-move-find-char-on-line-repeat-at-next 1)))
+    ;; Both hyphens are behind the cursor now.
+    (should-not (meep-move-find-char-on-line-repeat-at-next 1))
+    (should-not (meep-move-find-char-on-line-repeat-till-next 1))
+    (should (eq t (meep-move-find-char-on-line-repeat-at-prev 1)))))
 
 (provide 'meep_tests_internal)
 ;; Local Variables:

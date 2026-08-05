@@ -2397,7 +2397,8 @@ When not at the bounds, jump to the start."
   "Implementation for find and till motions.
 N is the number of times to find.
 CH is the character to find.
-IS-TILL when non-nil, stop just before the character."
+IS-TILL when non-nil, stop just before the character.
+Return non-nil on success."
   (let* ((case-fold-search nil)
          (ch-str
           (cond
@@ -2430,7 +2431,8 @@ IS-TILL when non-nil, stop just before the character."
     (meep--with-mark-on-motion-maybe-set
       (cond
        ((null end)
-        (message "char %s not found" ch-str))
+        (message "char %s not found" ch-str)
+        nil)
 
        (is-till
         (goto-char
@@ -2440,10 +2442,12 @@ IS-TILL when non-nil, stop just before the character."
               1)
              (t
               -1))))
-        (setq meep--move-find-last-char ch))
+        (setq meep--move-find-last-char ch)
+        t)
        (t
         (goto-char end)
-        (setq meep--move-find-last-char ch))))))
+        (setq meep--move-find-last-char ch)
+        t)))))
 
 ;; Avoid repeating the message all over the place.
 (defun meep--move-find-last-char-or-message ()
@@ -2458,52 +2462,60 @@ IS-TILL when non-nil, stop just before the character."
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-at-next (arg ch)
-  "Find the next ARG char CH, read from minibuffer."
+  "Find the next ARG char CH, read from minibuffer.
+Return non-nil on success."
   (interactive "^p\ncFind Next:")
   (meep--move-find-impl arg ch nil))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-at-prev (arg ch)
-  "Find the previous ARG char CH, read from minibuffer."
+  "Find the previous ARG char CH, read from minibuffer.
+Return non-nil on success."
   (interactive "^p\ncFind Prev:")
   (meep--move-find-impl (- arg) ch nil))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-till-next (arg ch)
-  "Find till the next char CH, ARG times."
+  "Find till the next char CH, ARG times.
+Return non-nil on success."
   (interactive "^p\ncTill Next:")
   (meep--move-find-impl arg ch t))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-till-prev (arg ch)
-  "Find till the previous char CH, ARG times."
+  "Find till the previous char CH, ARG times.
+Return non-nil on success."
   (interactive "^p\ncTill Prev:")
   (meep--move-find-impl (- arg) ch t))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-repeat-at-next (arg)
-  "Repeat find ARG times forwards."
+  "Repeat find ARG times forwards.
+Return non-nil on success."
   (interactive "^p")
   (when-let* ((ch (meep--move-find-last-char-or-message)))
     (meep--move-find-impl arg ch nil)))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-repeat-at-prev (arg)
-  "Repeat find ARG times backwards."
+  "Repeat find ARG times backwards.
+Return non-nil on success."
   (interactive "^p")
   (when-let* ((ch (meep--move-find-last-char-or-message)))
     (meep--move-find-impl (- arg) ch nil)))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-repeat-till-next (arg)
-  "Repeat find-till ARG times forwards."
+  "Repeat find-till ARG times forwards.
+Return non-nil on success."
   (interactive "^p")
   (when-let* ((ch (meep--move-find-last-char-or-message)))
     (meep--move-find-impl arg ch t)))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-repeat-till-prev (arg)
-  "Repeat find-till ARG times backwards."
+  "Repeat find-till ARG times backwards.
+Return non-nil on success."
   (interactive "^p")
   (when-let* ((ch (meep--move-find-last-char-or-message)))
     (meep--move-find-impl (- arg) ch t)))
