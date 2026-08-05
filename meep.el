@@ -2433,23 +2433,16 @@ IS-TILL when non-nil, stop just before the character."
             (pos-bol))))
 
          (end
-          (save-mark-and-excursion
-            (when (cond
-                   (is-till
-                    ;; Stepping over the character would leave the line.
-                    (cond
-                     ((eq (point) end-limit)
-                      nil)
-                     (t
-                      (forward-char
-                       (cond
-                        ((> n 0)
-                         1)
-                        (t
-                         -1)))
-                      t)))
-                   (t
-                    t))
+          (save-excursion
+            ;; Stepping over the character would leave the line.
+            (unless (and is-till (eq (point) end-limit))
+              (when is-till
+                (forward-char
+                 (cond
+                  ((> n 0)
+                   1)
+                  (t
+                   -1))))
               (search-forward ch-str end-limit t n)))))
 
     (meep--with-mark-on-motion-maybe-set
