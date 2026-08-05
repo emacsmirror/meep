@@ -9645,17 +9645,8 @@ When DO-CUT is non-nil, cut instead of copying."
 
     (let ((col-min most-positive-fixnum))
       (goto-char beg)
-      (goto-char (pos-bol))
       (while (< (point) end)
-        (let ((eol
-               (progn
-                 (goto-char (pos-eol))
-                 (point)))
-              (bol
-               (progn
-                 (goto-char (pos-bol))
-                 (point))))
-          (ignore bol) ;; Happens to be unused, the motion is needed.
+        (let ((eol (pos-eol)))
           (skip-chars-forward "[:blank:]" eol)
           (unless (eq (point) eol)
             (setq col-min (min col-min (current-column)))))
@@ -9669,15 +9660,8 @@ When DO-CUT is non-nil, cut instead of copying."
       (unless (zerop col-min)
         (goto-char end)
         (while (and beg (<= beg (point)))
-          (let ((eol
-                 (progn
-                   (goto-char (pos-eol))
-                   (point)))
-                (bol
-                 (progn
-                   (goto-char (pos-bol))
-                   (point))))
-            (ignore eol) ;; Happens to be unused, keep for symmetry.
+          (goto-char (pos-bol))
+          (let ((bol (point)))
             (move-to-column col-min)
             (unless (eq (point) bol)
               (delete-region bol (point)))
