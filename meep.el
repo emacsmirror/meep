@@ -36,6 +36,7 @@
 (declare-function bray-state-stack-push "bray")
 
 (declare-function apply-on-rectangle "rect")
+(declare-function extract-rectangle-bounds "rect")
 (declare-function kmacro-ring-head "kmacro")
 
 ;; For `meep-repeat-fu-replay'.
@@ -542,10 +543,7 @@ boundary between them."
 (defun meep--rectangle-range-list-from-rectangle (beg end)
   "Return a list of ranges from a rectangle from BEG and END."
   (declare (important-return-value t))
-  (let ((result (list)))
-    (apply-on-rectangle
-     (lambda (col-beg col-end) (push (meep--rectangle-row-span col-beg col-end) result)) beg end)
-    (nreverse result)))
+  (extract-rectangle-bounds beg end))
 
 (defun meep--columns-from-point-range (beg end)
   "Calculate the column offset between points BEG and END.
