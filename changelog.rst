@@ -5,6 +5,9 @@ Change Log
 
 - In development
 
+  - ``meep-isearch-repeat-*`` and ``meep-isearch-at-point-*`` take a
+    ``:wrap`` keyword (``:wrap nil`` fails at the last match instead of
+    wrapping around the buffer).
   - A zero repeat of ``meep-clipboard-killring-yank-pop-stack`` drops the
     shown item from the kill-ring (a zero prefix argument drops without
     pasting).

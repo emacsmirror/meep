@@ -6129,25 +6129,65 @@ When HAD-REGION is non-nil, mark the region."
   (interactive)
   (meep--isearch-regexp-impl -1))
 
-(defun meep--isearch-repeat-impl (dir)
+(defun meep--isearch-wrap-function-for (wrap)
+  "Return the `isearch-wrap-function' to use, wrapping nowhere when WRAP is nil."
+  (declare (important-return-value t))
+  (cond
+   (wrap
+    isearch-wrap-function)
+   (t
+    #'ignore)))
+
+(defun meep--isearch-empty-match-at-edge-p (dir)
+  "Return non-nil when the last match was empty at the buffer edge along DIR.
+
+A repeat can only step off an empty match, at the edge it has nowhere to go
+and ISEARCH rings the bell (see `isearch-repeat', where this is not guarded
+by `isearch-wrap-pause')."
+  (declare (important-return-value t))
+  (and isearch-success
+       (eq (point) isearch-other-end)
+       (cond
+        ((< dir 0)
+         (bobp))
+        (t
+         (eobp)))))
+
+(defun meep--isearch-repeat-search (dir wrap)
   "Repeat search in direction DIR.
+When WRAP is nil, fail at the last match instead of wrapping.
 Return non-nil on success."
   ;; Re-display can flicker.
   (let ((inhibit-redisplay t)
         ;; Opinionated, but ISEARCH is not that usable without these.
         (isearch-wrap-pause 'no-ding)
         (isearch-repeat-on-direction-change t)
+        ;; Wrap nowhere without WRAP, a nil `isearch-wrap-pause' would seem
+        ;; correct however it rings the bell, ending a keyboard macro before
+        ;; this function can report the failure.
+        (isearch-wrap-function (meep--isearch-wrap-function-for wrap))
+        ;; Contain the flag wrapping sets, as `isearch-edit-string' does.
+        (isearch-wrapped isearch-wrapped)
         ;; Set as `isearch-beginning-of-buffer' does, reversing direction moves
         ;; point onto `isearch-other-end' which ISEARCH takes for an empty match.
         (isearch-just-started (not (meep--isearch-match-empty-p)))
         (had-region (region-active-p))
-        (pos-init (point)))
+        (pos-init (point))
+        ;; Resuming a failed search wraps before searching, unlike a wrap
+        ;; decided on part way through it isn't one to reject below.
+        (resuming-failed (null isearch-success)))
 
     (cond
      ((< dir 0)
       (isearch-repeat-backward (- dir)))
      (t
       (isearch-repeat-forward dir)))
+
+    ;; Without WRAP nothing reached by wrapping is ours to keep. A neutralized
+    ;; wrap leaves point where the failed search restored it, near enough to
+    ;; the previous match for the re-try ISEARCH forces to find it again.
+    (when (and (not wrap) (not resuming-failed) isearch-wrapped)
+      (setq isearch-success nil))
 
     (let ((found (meep--isearch-found-p)))
       (meep--isearch-handle-done had-region)
@@ -6167,19 +6207,36 @@ Return non-nil on success."
 
       found)))
 
-;;;###autoload
-(defun meep-isearch-repeat-next (arg)
-  "Repeat ISEARCH forwards ARG times.
+(defun meep--isearch-repeat-impl (dir wrap)
+  "Repeat search in direction DIR, checking it can run before it does.
+When WRAP is nil, fail at the last match instead of wrapping.
 Return non-nil on success."
-  (interactive "p")
-  (meep--isearch-repeat-impl arg))
+  (cond
+   ;; Without WRAP this search has run out, report it instead of running one
+   ;; that rings the bell, which ends a keyboard macro before this function
+   ;; can return. Wrapping still reaches the match at the other end.
+   ((and (not wrap) (meep--isearch-empty-match-at-edge-p dir))
+    nil)
+   (t
+    (meep--isearch-repeat-search dir wrap))))
 
 ;;;###autoload
-(defun meep-isearch-repeat-prev (arg)
-  "Repeat ISEARCH backwards ARG times.
+(defun meep-isearch-repeat-next (arg &rest keywords)
+  "Repeat ISEARCH forwards ARG times.
+KEYWORDS may contain :wrap nil, to fail at the last match instead of wrapping.
 Return non-nil on success."
   (interactive "p")
-  (meep--isearch-repeat-impl (- arg)))
+  (meep--let-bind-from-keywords ((wrap t))
+    (meep--isearch-repeat-impl arg wrap)))
+
+;;;###autoload
+(defun meep-isearch-repeat-prev (arg &rest keywords)
+  "Repeat ISEARCH backwards ARG times.
+KEYWORDS may contain :wrap nil, to fail at the last match instead of wrapping.
+Return non-nil on success."
+  (interactive "p")
+  (meep--let-bind-from-keywords ((wrap t))
+    (meep--isearch-repeat-impl (- arg) wrap)))
 
 (defun meep--isearch-bounds-at-point-impl ()
   "Return the bounds to search for, the active region or the symbol at point.
@@ -6209,23 +6266,33 @@ Callers must handle nil, and an empty range from an empty region."
 
     (concat (or beg "") (regexp-quote text) (or end ""))))
 
-(defun meep--isearch-at-point-search (dir text-bounds)
+(defun meep--isearch-at-point-search (dir wrap text-bounds)
   "Search for the text within TEXT-BOUNDS along DIR.
 TEXT-BOUNDS must not be empty.
+When WRAP is nil, fail at the last match instead of wrapping.
 Return non-nil on success."
-  (let ((had-region (region-active-p))
-        ;; Re-display can flicker.
-        (inhibit-redisplay t)
-        ;; Always wrap.
-        (isearch-wrap-pause 'no-ding))
+  ;; Re-display can flicker.
+  (let* ((inhibit-redisplay t)
+         ;; Wrap without flashing the screen.
+         (isearch-wrap-pause 'no-ding)
+         ;; Wrap nowhere without WRAP, see `meep--isearch-repeat-search'.
+         (isearch-wrap-function (meep--isearch-wrap-function-for wrap))
+         ;; Contain the flag wrapping sets, as `isearch-edit-string' does.
+         (isearch-wrapped isearch-wrapped)
+         (had-region (region-active-p))
+         (pos-init (point))
+         (backward (< dir 0))
+         ;; Searching backward with nothing before this instance starts the search
+         ;; *on* it, where it matches itself, needing a step to move off it.
+         (search-on-self (and backward (eq (point-min) (car text-bounds)))))
     (cond
-     ((< dir 0)
+     (backward
       ;; Unlike searching forward the point needs to be moved *before* the symbol.
-      ;; Skip before this instance, -1 or wrap.
+      ;; Skip before this instance, or onto it when there is nothing before.
       (goto-char
        (cond
-        ((eq (point-min) (car text-bounds))
-         (point-max))
+        (search-on-self
+         (point-min))
         (t
          (1- (car text-bounds)))))
       (call-interactively #'isearch-backward-regexp))
@@ -6246,11 +6313,17 @@ Return non-nil on success."
       (setq isearch-yank-flag t)
       (isearch-process-search-string text (mapconcat #'isearch-text-char-description text "")))
 
-    ;; Repeat for prefix arguments greater than 1.
-    (let ((n (1- (abs dir))))
+    ;; Repeat for prefix arguments greater than 1,
+    ;; plus one to step off this instance when the search started on it.
+    (let ((n
+           (cond
+            (search-on-self
+             (abs dir))
+            (t
+             (1- (abs dir))))))
       (unless (zerop n)
         (cond
-         ((< dir 0)
+         (backward
           (isearch-repeat-backward n))
          (t
           (isearch-repeat-forward n)))))
@@ -6263,10 +6336,17 @@ Return non-nil on success."
 
     (meep--isearch-handle-done had-region)
 
+    ;; Only reachable without WRAP, the cursor was moved off the instance
+    ;; at point to search from, restore it so a failure is a no-op,
+    ;; see `meep--isearch-repeat-search' which does the same.
+    (unless isearch-success
+      (goto-char pos-init))
+
     (meep--isearch-found-p)))
 
-(defun meep--isearch-at-point-impl (dir)
+(defun meep--isearch-at-point-impl (dir wrap)
   "Perform ISEARCH at point along DIR.
+When WRAP is nil, fail at the last match instead of wrapping.
 Return non-nil on success."
   (let ((text-bounds (meep--isearch-bounds-at-point-impl)))
     (cond
@@ -6279,23 +6359,27 @@ Return non-nil on success."
       (message "Empty selection")
       nil)
      (t
-      (meep--isearch-at-point-search dir text-bounds)))))
+      (meep--isearch-at-point-search dir wrap text-bounds)))))
 
 ;;;###autoload
-(defun meep-isearch-at-point-next (arg)
+(defun meep-isearch-at-point-next (arg &rest keywords)
   "Search forwards for the symbol or region at point.
 Repeat the search ARG times.
+KEYWORDS may contain :wrap nil, to fail at the last match instead of wrapping.
 Return non-nil on success."
   (interactive "p")
-  (meep--isearch-at-point-impl arg))
+  (meep--let-bind-from-keywords ((wrap t))
+    (meep--isearch-at-point-impl arg wrap)))
 
 ;;;###autoload
-(defun meep-isearch-at-point-prev (arg)
+(defun meep-isearch-at-point-prev (arg &rest keywords)
   "Search backwards for the symbol or region at point.
 Repeat the search ARG times.
+KEYWORDS may contain :wrap nil, to fail at the last match instead of wrapping.
 Return non-nil on success."
   (interactive "p")
-  (meep--isearch-at-point-impl (- arg)))
+  (meep--let-bind-from-keywords ((wrap t))
+    (meep--isearch-at-point-impl (- arg) wrap)))
 
 
 ;; ---------------------------------------------------------------------------

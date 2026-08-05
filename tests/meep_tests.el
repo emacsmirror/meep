@@ -17125,6 +17125,45 @@ reported about a mark being saved."
       (should-not mark-ring)
       (should-not (member message-mark-saved (meep-test-messages))))))
 
+(ert-deftest isearch-at-point-empty-region-is-a-no-op ()
+  "An empty active region has no text to search for.
+
+Verifies: the empty selection is reported and the search never runs, an
+empty search string prompts to edit the search instead of searching."
+  (let ((text-initial "abc xy abc"))
+
+    ;; Cursor: abc xy abc
+    ;;          ^ inside the word, where none of the word boundaries match.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-isearch-at-point-next))
+      (should (member "Empty selection" (meep-test-messages)))
+      ;; Nothing ran, the cursor & selection are as they were.
+      (should (equal '(1 . 1) (meep-test-point-line-column)))
+      (should (equal '(1 . 1) (meep-test-mark-line-column)))
+      (should (region-active-p)))
+
+    ;; A region with text is unaffected.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-isearch-at-point-next))
+      (should (equal "bc\\_>" isearch-string))
+      ;; The "bc" of the second "abc" is selected.
+      (should (equal 'visual (bray-state)))
+      (should (equal '(1 . 10) (meep-test-point-line-column)))
+      (should (equal '(1 . 8) (meep-test-mark-line-column)))
+      (should (equal "bc" (meep-test-region-as-string))))))
+
 (ert-deftest isearch-repeat-reverse-onto-edge-match ()
   "Reversing the search direction onto a match at the buffer edge.
 
@@ -17199,29 +17238,289 @@ stepping over an adjacent match."
       (should (eq 9 (point)))
       (should (eq 12 (mark t))))))
 
-(ert-deftest isearch-at-point-empty-region-is-a-no-op ()
-  "An empty active region has no text to search for.
+(ert-deftest isearch-wrap-keyword ()
+  "Searching past the last match honors the :wrap keyword.
 
-Verifies: the empty selection is reported and the search never runs, an
-empty search string prompts to edit the search instead of searching."
-  (let ((text-initial "abc xy abc"))
+Verifies: the default wraps to the match at the other end of the buffer,
+with :wrap nil the search fails, leaving the cursor and selection alone."
+  (let ((text-initial "foo bar foo baz"))
 
-    ;; Cursor: abc xy abc
-    ;;          ^ inside the word, where none of the word boundaries match.
+    ;; Repeat forwards from the end of the last match.
+    ;; Cursor: foo bar foo baz
+    ;;                    ^
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
       (simulate-input-for-meep
+        [?\C-u ?1 ?1]
+        '(:state normal :command meep-move-char-next))
+      (should (eq 12 (point)))
+      (meep-test-isearch-state-set "foo")
+      ;; NOTE: :wrap has no key binding, it exists for callers in Lisp.
+      (should-not (meep-isearch-repeat-next 1 :wrap nil))
+      (should-not (region-active-p))
+      (should (eq 12 (point)))
+      ;; Wrapping finds the first match.
+      (simulate-input-for-meep
+        '(:state normal :command meep-isearch-repeat-next))
+      (should (eq 4 (point))))
+
+    ;; Repeat backwards from before the first match.
+    ;; Cursor: foo bar foo baz
+    ;;         ^
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (should (eq (point-min) (point)))
+      (meep-test-isearch-state-set "foo" :forward nil)
+      (should-not (meep-isearch-repeat-prev 1 :wrap nil))
+      (should-not (region-active-p))
+      (should (eq (point-min) (point)))
+      ;; Wrapping finds the last match.
+      (simulate-input-for-meep
+        '(:state normal :command meep-isearch-repeat-prev))
+      (should (eq 9 (point))))
+
+    ;; The symbol at point, searching forwards from the last match.
+    ;; Cursor: foo bar foo baz
+    ;;                 ^
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        [?\C-u ?8]
+        '(:state normal :command meep-move-char-next))
+      (should (eq 9 (point)))
+      (should-not (meep-isearch-at-point-next 1 :wrap nil))
+      (should-not (region-active-p))
+      (should (eq 9 (point)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-isearch-at-point-next))
+      (should (eq 4 (point))))
+
+    ;; The symbol at point, searching backwards with nothing before it.
+    ;; Cursor: foo bar foo baz
+    ;;         ^
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (meep-test-isearch-state-set "an-earlier-search")
+      (should-not (meep-isearch-at-point-prev 1 :wrap nil))
+      (should-not (region-active-p))
+      (should (eq (point-min) (point)))
+      ;; A search that finds nothing is still the search to repeat.
+      (should (equal "\\_<foo\\_>" isearch-string))
+      (simulate-input-for-meep
+        '(:state normal :command meep-isearch-at-point-prev))
+      (should (eq 9 (point))))))
+
+(ert-deftest isearch-wrap-keyword-failure-is-repeatable ()
+  "A search that finds nothing still leaves a usable search behind.
+
+Verifies: reaching past the last match runs a real search, so repeating
+it uses this text as a regexp instead of a stale search function."
+  ;; Stale values ISEARCH must overwrite, as left by `M-s w' or by `C-s'
+  ;; when `search-default-mode' is set, and by a case sensitive search.
+  (let ((isearch-regexp-function #'word-search-regexp)
+        (isearch-case-fold-search nil))
+    (with-meep-test "foo bar FOO"
+      (text-mode)
+      (bray-mode 1)
+      (setq case-fold-search t)
+      (should (eq (point-min) (point)))
+      (should-not (meep-isearch-at-point-prev 1 :wrap nil))
+      (should (equal "\\_<foo\\_>" isearch-string))
+      (should-not isearch-regexp-function)
+      (should-not isearch-success)
+
+      ;; Repeating searches for the regexp & honors `case-fold-search',
+      ;; matching the capitalized instance.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-end)
+        '(:state normal :command meep-isearch-repeat-prev))
+      (should (eq 9 (point)))
+      (should (eq 12 (mark t))))))
+
+(ert-deftest isearch-wrap-keyword-count-overshoot ()
+  "A count reaching past the last match is all-or-nothing.
+
+Verifies: with :wrap nil a count with too few matches ahead of it fails
+without moving, wrapping cycles the matches to satisfy it."
+  ;; Only one match ahead of the cursor, so a count of two overshoots.
+  (let ((text-initial "foo bar foo baz"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (should (eq (point-min) (point)))
+      (should-not (meep-isearch-at-point-next 2 :wrap nil))
+      (should-not (meep-isearch-at-point-next 3 :wrap nil))
+      (should-not (region-active-p))
+      (should (eq (point-min) (point))))
+
+    ;; Wrapping cycles the matches, a count of three lands on the second.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-isearch-at-point-next))
+      (should (eq 12 (point)))
+      (should (eq 9 (mark t)))
+      (should (equal "foo" (meep-test-region-as-string))))
+
+    ;; The repeat commands take the same count, through their own restore.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (meep-test-isearch-state-set "foo")
+      ;; Two matches ahead of the cursor, so a count of three overshoots.
+      (should-not (meep-isearch-repeat-next 3 :wrap nil))
+      (should (eq (point-min) (point)))
+      ;; A count that fits is unaffected by :wrap nil.
+      (should (meep-isearch-repeat-next 2 :wrap nil))
+      (should (eq 12 (point))))
+
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-end))
+      (should (eq (point-max) (point)))
+      (meep-test-isearch-state-set "foo" :forward nil)
+      (should-not (meep-isearch-repeat-prev 3 :wrap nil))
+      (should (eq (point-max) (point)))
+      (should (meep-isearch-repeat-prev 2 :wrap nil))
+      (should (eq (point-min) (point))))))
+
+(ert-deftest isearch-wrap-keyword-direction-change ()
+  "Reversing the search direction honors the :wrap keyword.
+
+Verifies: ISEARCH marks a direction change as a success before it
+searches, so a reversed search must still fail with :wrap nil."
+  (let ((text-initial "foo bar foo baz"))
+
+    ;; Reverse onto nothing, with the cursor before the first match.
+    ;; Cursor: foo bar foo baz
+    ;;         ^
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (should (eq (point-min) (point)))
+      (meep-test-isearch-state-set "foo")
+      (should-not (meep-isearch-repeat-prev 1 :wrap nil))
+      (should (eq (point-min) (point)))
+      ;; Wrapping finds the last match.
+      (simulate-input-for-meep
+        '(:state normal :command meep-isearch-repeat-prev))
+      (should (eq 9 (point))))
+
+    ;; Reverse onto nothing, with the cursor after the last match.
+    ;; Cursor: foo bar foo baz
+    ;;                        ^
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-end))
+      (should (eq (point-max) (point)))
+      (meep-test-isearch-state-set "foo" :forward nil)
+      (should-not (meep-isearch-repeat-next 1 :wrap nil))
+      (should (eq (point-max) (point)))
+      ;; Wrapping finds the first match.
+      (simulate-input-for-meep
+        '(:state normal :command meep-isearch-repeat-next))
+      (should (eq 4 (point))))
+
+    ;; Reverse onto matches, the count is all-or-nothing as it is forwards.
+    ;; Cursor: foo bar foo baz
+    ;;                     ^
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        [?\C-u ?1 ?2]
+        '(:state normal :command meep-move-char-next))
+      (should (eq 13 (point)))
+      ;; Two matches behind the cursor, so a count of three overshoots.
+      (meep-test-isearch-state-set "foo")
+      (should-not (meep-isearch-repeat-prev 3 :wrap nil))
+      (should (eq 13 (point)))
+      ;; A count that fits is unaffected by the direction change.
+      (meep-test-isearch-state-set "foo")
+      (should (meep-isearch-repeat-prev 2 :wrap nil))
+      (should (eq (point-min) (point))))))
+
+(ert-deftest isearch-wrap-keyword-reaches-no-further ()
+  "A repeat that only ISEARCH's wrapping could satisfy fails with :wrap nil.
+
+Verifies: reversing onto the match at the buffer edge, and a match that
+matched nothing, both report the failure without ringing the bell."
+  (meep-test--with-no-ding
+
+    ;; Reversing onto the match at `point-min', nothing lies before it.
+    (with-meep-test "foo bar foo baz"
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        [?\C-u ?1 ?2]
+        '(:state normal :command meep-move-char-next))
+      (meep-test-isearch-state-set "foo")
+      ;; Wrapping lands on the first match.
+      (simulate-input-for-meep
+        '(:state normal :command meep-isearch-repeat-next))
+      (should (eq 4 (point)))
+      (should-not (meep-isearch-repeat-prev 1 :wrap nil))
+      (should (eq 4 (point)))
+      (should (eq (point-min) (mark t))))
+
+    ;; A regexp matching nothing leaves an empty match, at the buffer
+    ;; edge a repeat has nowhere to step off to.
+    (with-meep-test "foo bar"
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-end))
+      (should (eq (point-max) (point)))
+      (meep-test-isearch-state-set "o*" :regexp t)
+      (simulate-input-for-meep
+        '(:state normal :command meep-isearch-repeat-next))
+      (should (eq (point-max) (point)))
+      (should (eq (point-max) (mark t)))
+      (should-not (meep-isearch-repeat-next 1 :wrap nil))
+      (should (eq (point-max) (point))))))
+
+(ert-deftest isearch-wrap-keyword-region-at-point ()
+  "Searching for the region at point honors the :wrap keyword.
+
+Verifies: with :wrap nil a search with no match beyond the region fails,
+leaving the region and the cursor alone."
+  ;; The region is \"bc\", matching at the end of both words.
+  (let ((text-initial "abc xy abc"))
+
+    ;; Forwards from the last match, selecting the trailing "bc".
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        [?\C-u ?8]
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-region-toggle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next))
+      (should (eq 11 (point)))
+      (should (eq 9 (mark t)))
+      (should-not (meep-isearch-at-point-next 1 :wrap nil))
+      (should (eq 11 (point)))
+      (should (eq 9 (mark t)))
+      (should (region-active-p))
+      ;; Wrapping finds the first match.
+      (simulate-input-for-meep
         '(:state visual :command meep-isearch-at-point-next))
-      (should (member "Empty selection" (meep-test-messages)))
-      ;; Nothing ran, the cursor & selection are as they were.
-      (should (equal '(1 . 1) (meep-test-point-line-column)))
-      (should (equal '(1 . 1) (meep-test-mark-line-column)))
-      (should (region-active-p)))
+      (should (eq 4 (point)))
+      (should (eq 2 (mark t)))
+      (should (equal "bc" (meep-test-region-as-string))))
 
-    ;; A region with text is unaffected.
+    ;; Backwards from the first match, selecting the leading "bc".
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
@@ -17229,14 +17528,81 @@ empty search string prompts to edit the search instead of searching."
         '(:state normal :command meep-move-char-next)
         '(:state normal :command meep-region-toggle)
         [?\C-u ?2]
-        '(:state visual :command meep-move-char-next)
-        '(:state visual :command meep-isearch-at-point-next))
-      (should (equal "bc\\_>" isearch-string))
-      ;; The "bc" of the second "abc" is selected.
-      (should (equal 'visual (bray-state)))
-      (should (equal '(1 . 10) (meep-test-point-line-column)))
-      (should (equal '(1 . 8) (meep-test-mark-line-column)))
+        '(:state visual :command meep-move-char-next))
+      (should (eq 4 (point)))
+      (should (eq 2 (mark t)))
+      (should-not (meep-isearch-at-point-prev 1 :wrap nil))
+      (should (eq 4 (point)))
+      (should (eq 2 (mark t)))
+      (should (region-active-p)))
+
+    ;; Backwards with the region starting at `point-min'.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next))
+      (should (eq 3 (point)))
+      (should (eq (point-min) (mark t)))
+      (should-not (meep-isearch-at-point-prev 1 :wrap nil))
+      (should (eq 3 (point)))
+      (should (eq (point-min) (mark t)))
+      (should (region-active-p)))
+
+    ;; Forwards with a match ahead of the region.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next))
+      (should (eq 4 (point)))
+      (should (eq 2 (mark t)))
+      (should (meep-isearch-at-point-next 1 :wrap nil))
+      (should (eq 11 (point)))
+      (should (eq 9 (mark t)))
       (should (equal "bc" (meep-test-region-as-string))))))
+
+(ert-deftest isearch-wrap-keyword-never-rings-the-bell ()
+  "Running out of matches must not ring the bell.
+
+Verifies: the repeat & at-point commands report the failure instead,
+in both directions and for a count reaching past the last match."
+  (let ((text-initial "foo bar foo baz"))
+    (meep-test--with-no-ding
+
+      ;; The symbol at point, searching from the last match forwards.
+      (with-meep-test text-initial
+        (text-mode)
+        (bray-mode 1)
+        (simulate-input-for-meep
+          [?\C-u ?8]
+          '(:state normal :command meep-move-char-next))
+        (should-not (meep-isearch-at-point-next 1 :wrap nil))
+        ;; Backwards with nothing before it, and a count reaching past
+        ;; the last match.
+        (simulate-input-for-meep
+          '(:state normal :command meep-move-line-beginning))
+        (should-not (meep-isearch-at-point-prev 1 :wrap nil))
+        (should-not (meep-isearch-at-point-next 3 :wrap nil)))
+
+      ;; Repeating a search, in both directions.
+      (with-meep-test text-initial
+        (text-mode)
+        (bray-mode 1)
+        (simulate-input-for-meep
+          [?\C-u ?1 ?1]
+          '(:state normal :command meep-move-char-next))
+        (meep-test-isearch-state-set "foo")
+        (should-not (meep-isearch-repeat-next 1 :wrap nil))
+        (simulate-input-for-meep
+          '(:state normal :command meep-move-line-beginning))
+        (meep-test-isearch-state-set "foo" :forward nil)
+        (should-not (meep-isearch-repeat-prev 1 :wrap nil))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Miscellaneous
