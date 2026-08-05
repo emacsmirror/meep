@@ -707,23 +707,11 @@ POS-ORIG and MRK-ORIG define the original region."
   "Return the active or implied region as `(BEG . END)', or nil when neither.
 The implied region is the span a mark-on-motion command would have activated.
 Use this where a command must read those bounds without making the region visible."
-  (let ((result nil))
-    (cond
-     ((region-active-p)
-      (setq result (cons (region-beginning) (region-end))))
-     (meep-mark-set-on-motion
-      (let ((local-last-command (meep--last-command)))
-        (when (and (symbolp local-last-command)
-                   (meep-command-is-mark-set-on-motion-any local-last-command))
-          (let ((a (mark t))
-                (b (point)))
-            (setq result
-                  (cond
-                   ((< a b)
-                    (cons a b))
-                   (t
-                    (cons b a)))))))))
-    result))
+  (cond
+   ((region-active-p)
+    (cons (region-beginning) (region-end)))
+   (t
+    (meep--mark-on-motion-bounds))))
 
 (defun meep--mark-on-motion-bounds ()
   "Return the equivalent region beginning and end.
@@ -741,15 +729,6 @@ were to be made into the active region."
             (cons a b))
            (t
             (cons b a))))))))
-
-(defun meep--region-or-mark-on-motion-bounds ()
-  "Return the region beginning and end or motion bounds."
-  (declare (important-return-value t))
-  (cond
-   ((region-active-p)
-    (cons (region-beginning) (region-end)))
-   (t
-    (meep--mark-on-motion-bounds))))
 
 (defun meep--region-or-mark-bounds ()
   "Return the active or implied region as `(BEG . END)', or nil when no mark.
