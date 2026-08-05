@@ -7510,10 +7510,9 @@ PAIRS is the recognized delimiters; NEW-PAIR nil deletes, otherwise it is the
 `(OPEN . CLOSE)' replacement.  Lines with no surrounding pair are skipped."
   ;; Scope is the active region or the current line - not the implied region,
   ;; see `meep--surround-operate-region'.
-  (let* ((region (region-active-p))
-         (bounds
+  (let* ((bounds
           (cond
-           (region
+           ((region-active-p)
             (cons (region-beginning) (region-end)))
            (t
             (cons (pos-bol) (pos-eol)))))
@@ -7642,16 +7641,10 @@ and replace would delete the existing close and insert nothing - silently
 dropping it.  This is the same non-empty invariant `meep--surround-pair-valid-p'
 enforces for every other pair source, applied here since this reader bypasses it."
   (let ((open (read-string "Surround open: ")))
-    (cond
-     ((string-empty-p open)
-      nil)
-     (t
+    (unless (string-empty-p open)
       (let ((close (read-string "Surround close: " (meep--surround-mirror-string open))))
-        (cond
-         ((string-empty-p close)
-          nil)
-         (t
-          (cons open close))))))))
+        (unless (string-empty-p close)
+          (cons open close))))))
 
 (defun meep--surround-key-is-delimiter-p (ch)
   "Return non-nil when CH is a character usable as a literal surround delimiter.
@@ -9528,8 +9521,8 @@ When MOVE is non-nil, delete the original text."
       ;; Intentionally use the region even if it's not active.
       (let* ((beg (region-beginning))
              (end (region-end))
-             (text (and beg end (buffer-substring-no-properties beg end))))
-        (when (and beg end move)
+             (text (buffer-substring-no-properties beg end)))
+        (when move
           (delete-region beg end)
 
           (cond
@@ -9543,8 +9536,7 @@ When MOVE is non-nil, delete the original text."
 
         (goto-char pos-last-insert)
         (meep-insert)
-        (when text
-          (insert text)))
+        (insert text))
       t))))
 
 ;;;###autoload
@@ -9676,9 +9668,8 @@ When DO-CUT is non-nil, cut instead of copying."
     (unless text
       (user-error "No text in clipboard"))
 
-    (let ((bounds nil))
-      (when (region-active-p)
-        (setq bounds (cons (region-beginning) (region-end)))
+    (when (region-active-p)
+      (let ((bounds (cons (region-beginning) (region-end))))
         (deactivate-mark t)
         (delete-region (car bounds) (cdr bounds))))
 
