@@ -5548,14 +5548,20 @@ When only blank space was skipped, skip all blank space."
     ;; Should never reach this (all chars must be accounted for).
     (meep--assert-unreachable))))
 
+(defun meep--region-syntax-class-string (syn)
+  "Return the syntax class of SYN (from `syntax-after') as a string.
+Callers must ensure SYN is non-nil, `syntax-after' returns nil at the
+buffer bounds and the conversion raises an error on it."
+  (declare (important-return-value t))
+  (char-to-string (syntax-class-to-char (syntax-class syn))))
+
 (defun meep--region-syntax-expand-impl (n)
   "Expand matching syntax table N times."
   (when meep--region-syntax-asym
     (let ((local-last-command (meep--last-command)))
       (unless (memq local-last-command '(meep-region-syntax-expand meep-region-syntax-contract))
         (setq meep--region-syntax-asym nil))))
-  (let ((syn-as-str-fn (lambda (syn) (char-to-string (syntax-class-to-char (syntax-class syn)))))
-        (found nil))
+  (let ((found nil))
     (while (prog1 (< 0 n)
              (meep--decf n))
       (cond
@@ -5569,8 +5575,8 @@ When only blank space was skipped, skip all blank space."
                (beg-syn (and beg-ok (syntax-after (1- beg))))
                (end-syn (and end-ok (syntax-after end)))
 
-               (beg-syn-str (and beg-ok (funcall syn-as-str-fn beg-syn)))
-               (end-syn-str (and end-ok (funcall syn-as-str-fn end-syn)))
+               (beg-syn-str (and beg-ok (meep--region-syntax-class-string beg-syn)))
+               (end-syn-str (and end-ok (meep--region-syntax-class-string end-syn)))
 
                (do-beg nil)
                (do-end nil)
@@ -5713,7 +5719,8 @@ When only blank space was skipped, skip all blank space."
                        (cond
                         (do-beg
                          (save-excursion
-                           (meep--region-syntax-or-symbol-backward (funcall syn-as-str-fn syn))
+                           (meep--region-syntax-or-symbol-backward
+                            (meep--region-syntax-class-string syn))
                            (point)))
                         (t
                          (point)))))
@@ -5722,7 +5729,8 @@ When only blank space was skipped, skip all blank space."
                        (cond
                         (do-end
                          (save-excursion
-                           (meep--region-syntax-or-symbol-forward (funcall syn-as-str-fn syn))
+                           (meep--region-syntax-or-symbol-forward
+                            (meep--region-syntax-class-string syn))
                            (point)))
                         (t
                          (point))))))
@@ -5743,8 +5751,7 @@ Message and do nothing when there is no active region."
     (let ((local-last-command (meep--last-command)))
       (unless (memq local-last-command '(meep-region-syntax-expand meep-region-syntax-contract))
         (setq meep--region-syntax-asym nil))))
-  (let ((syn-as-str-fn (lambda (syn) (char-to-string (syntax-class-to-char (syntax-class syn)))))
-        (found nil))
+  (let ((found nil))
     (cond
      ((region-active-p)
       (while (prog1 (< 0 n)
@@ -5761,8 +5768,8 @@ Message and do nothing when there is no active region."
                (beg-syn (syntax-after beg))
                (end-syn (and (< (point-min) end) (syntax-after (1- end))))
 
-               (beg-syn-str (and beg-syn (funcall syn-as-str-fn beg-syn)))
-               (end-syn-str (and end-syn (funcall syn-as-str-fn end-syn)))
+               (beg-syn-str (and beg-syn (meep--region-syntax-class-string beg-syn)))
+               (end-syn-str (and end-syn (meep--region-syntax-class-string end-syn)))
 
                (do-beg nil)
                (do-end nil)
@@ -5820,23 +5827,21 @@ Message and do nothing when there is no active region."
               (setq beg-next (min beg-next (1+ beg)))
               (setq end-next (max end-next (1- end))))
 
+            (setq found t)
             (cond
              ((<= end-next beg-next)
               ;; Contract to nothing.
               (deactivate-mark t)
-              (setq found t)
               ;; Break.
               (setq n 0))
 
              ((eq beg (point))
               (goto-char beg-next)
-              (meep--set-marker-and-activate end-next)
-              (setq found t))
+              (meep--set-marker-and-activate end-next))
 
              (t
               (goto-char end-next)
-              (meep--set-marker-and-activate beg-next)
-              (setq found t))))
+              (meep--set-marker-and-activate beg-next))))
 
           ;; Don't attempt symmetry in future.
           (unless meep--region-syntax-asym
