@@ -3906,7 +3906,11 @@ string-syntax regexp (`\\\\s\"') for strings, with `syntax-ppss' validation."
               (lambda ()
                 (let ((beg nil))
                   (while (and (null beg) (re-search-backward "\\s\"" nil t))
-                    (let ((s (syntax-ppss (1+ (point)))))
+                    ;; NOTE: `syntax-ppss' leaves point at the position parsed,
+                    ;; which is past the match here - that both compares against
+                    ;; the wrong point & lets the next search find this match
+                    ;; again, never advancing.
+                    (let ((s (save-excursion (syntax-ppss (1+ (point))))))
                       (when (and (funcall in-region-p s)
                                  (eql (ppss-comment-or-string-start s) (point)))
                         (setq beg (point)))))
@@ -3932,7 +3936,14 @@ string-syntax regexp (`\\\\s\"') for strings, with `syntax-ppss' validation."
              ((null found)
               (setq cont nil))
              ((not (eql found cur-beg))
-              (setq beg found)))))
+              (setq beg found))
+             ;; Rejecting the region point is already in only makes progress
+             ;; when the primitive moved point past it.  `comment-search-backward'
+             ;; reports the comment start without moving, so step onto that
+             ;; start & the next search looks before it (returning nil at
+             ;; `point-min', ending the loop).
+             ((< sign 0)
+              (goto-char found)))))
         (cond
          (beg
           (goto-char beg)

@@ -843,6 +843,54 @@ reports it & not a timeout."
     (meep-test--with-call-limit #'meep--bounds-at-point-for-comment-outer 32
       (meep--bounds-of-comment-block inner))))
 
+(ert-deftest search-syntax-backward-comment-terminates ()
+  "Stepping back over comments must not spin on a non-advancing search.
+
+`comment-search-backward' reports the comment start of the comment point
+is already inside *without moving point*, so re-calling it to skip that
+comment returns the same position forever.  The scan has to move point
+onto the start it rejected, not merely reject it.
+
+A regression reports as a failure rather than hanging the run, see
+`meep-test--with-call-limit' - the loop reads no input, so a timeout
+could not have done that."
+  (with-temp-buffer
+    (emacs-lisp-mode)
+    (insert ";; c1\n(foo \"str\")\n;; c2\n")
+    (meep-test--with-call-limit #'comment-search-backward 32
+      ;; Inside the first comment, there is no earlier one to find.
+      (goto-char 3)
+      (should (eq -1 (meep--search-syntax-forward -1 #'ppss-comment-depth)))
+      (should (eq 3 (point)))
+
+      ;; Inside the last comment, stepping back reaches the first.
+      (goto-char 21)
+      (should (eq 0 (meep--search-syntax-forward -1 #'ppss-comment-depth)))
+      (should (eq 1 (point))))))
+
+(ert-deftest search-syntax-backward-string-terminates ()
+  "Stepping back over strings must not spin on a point-moving `syntax-ppss'.
+
+`syntax-ppss' leaves point at the position it parsed, which is past the
+match the backward search just landed on, so the next search finds that
+same match again.  Validating the match must not move point.
+
+A regression reports as a failure rather than hanging the run, see
+`meep-test--with-call-limit'."
+  (with-temp-buffer
+    (emacs-lisp-mode)
+    (insert ";; c1\n(foo \"str\")\n;; c2\n")
+    (meep-test--with-call-limit #'re-search-backward 32
+      ;; Past the string entirely, stepping back reaches it.
+      (goto-char 21)
+      (should (eq 0 (meep--search-syntax-forward -1 #'ppss-string-terminator)))
+      (should (eq 12 (point)))
+
+      ;; No string before this one.
+      (goto-char 13)
+      (should (eq -1 (meep--search-syntax-forward -1 #'ppss-string-terminator)))
+      (should (eq 13 (point))))))
+
 (ert-deftest comment-block-bounds-printing-closer-terminates ()
   "A comment whose closer is a printing character ends the block scan.
 
