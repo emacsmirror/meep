@@ -8401,7 +8401,10 @@ When USE-COMMENT-STRIP is non-nil, strip comments."
    (t
     (save-excursion
       (goto-char eol)
-      (let* ((eol-ws (- eol (- (skip-chars-backward "[:blank:]" bol))))
+      (let* ((eol-ws
+              (progn
+                (skip-chars-backward "[:blank:]" bol)
+                (point)))
              (bol-ws-next
               (save-excursion
                 (goto-char (1+ eol))
@@ -8454,19 +8457,16 @@ USE-COMMENT-STRIP, strips comments between lines."
     (save-excursion
       (goto-char beg)
       (while (< (point) end)
-        (let ((eol (pos-eol)))
-          (let ((range (meep--join-range beg eol use-comment-strip)))
-            (cond
-             (range
-              (let ((add-space (meep--join-range-add-space-p beg range)))
-                (let ((ofs
-                       (meep--join-delete-region-maybe-space (car range) (cdr range) add-space)))
-                  (setq eol (pos-eol))
-                  (goto-char eol)
-                  (meep--decf end ofs)
-                  (setq changed t))))
-             (t
-              (goto-char end)))))))
+        (let ((range (meep--join-range beg (pos-eol) use-comment-strip)))
+          (cond
+           (range
+            (let ((add-space (meep--join-range-add-space-p beg range)))
+              (let ((ofs (meep--join-delete-region-maybe-space (car range) (cdr range) add-space)))
+                (goto-char (pos-eol))
+                (meep--decf end ofs)
+                (setq changed t))))
+           (t
+            (goto-char end))))))
     changed))
 
 ;;;###autoload
@@ -8487,18 +8487,12 @@ USE-COMMENT-STRIP, strips comments between lines."
       (let ((bol (pos-bol))
             (eol nil)
             (range nil))
-        (while (and (null
-                     (zerop
-                      (prog1 arg
-                        (meep--decf arg))))
+        (while (and (<= 0 (meep--decf arg))
                     (save-excursion
                       (setq eol (pos-eol))
-                      (cond
-                       ((/= eol (point-max))
+                      (unless (eq eol (point-max))
                         ;; No need to update `bol' as it doesn't change.
-                        (setq range (meep--join-range bol eol use-comment-strip)))
-                       (t
-                        nil))))
+                        (setq range (meep--join-range bol eol use-comment-strip)))))
           (let ((add-space (meep--join-range-add-space-p bol range)))
             (meep--join-delete-region-maybe-space (car range) (cdr range) add-space)
             (let ((pos-new (car range)))
@@ -8529,19 +8523,12 @@ USE-COMMENT-STRIP, strips comments between lines."
       (let ((bol nil)
             (eol nil)
             (range nil))
-        (while (and (null
-                     (zerop
-                      (prog1 arg
-                        (meep--decf arg))))
+        (while (and (<= 0 (meep--decf arg))
                     (save-excursion
-
-                      (cond
-                       ((zerop (forward-line -1))
+                      (when (zerop (forward-line -1))
                         (setq bol (pos-bol))
                         (setq eol (pos-eol))
-                        (setq range (meep--join-range bol eol use-comment-strip)))
-                       (t
-                        nil))))
+                        (setq range (meep--join-range bol eol use-comment-strip)))))
           (let ((add-space (meep--join-range-add-space-p bol range)))
             (meep--join-delete-region-maybe-space (car range) (cdr range) add-space)
             (let ((pos-new (car range)))
