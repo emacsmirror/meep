@@ -6408,11 +6408,10 @@ When KEEP is non-nil, don't modify the char-ring."
   (cond
    (meep-delete-char-ring
     (let ((char-ring meep-delete-char-ring))
-      (while-let ((item
-                   (and (prog1 (< 0 n)
-                          (meep--decf n))
-                        (pop char-ring))))
-        (let ((pos-init (point)))
+      (while (and (< 0 n) char-ring)
+        (meep--decf n)
+        (let ((item (pop char-ring))
+              (pos-init (point)))
           (insert (car item))
           (when (cdr item)
             (goto-char pos-init))))
