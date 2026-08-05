@@ -672,20 +672,16 @@ POS-ORIG and MRK-ORIG define the original region."
     (cond
      ((< pos-orig mrk-orig)
       (when (>= (point) (mark t))
-        (beginning-of-line)
         (forward-line 1)
         (save-excursion
           (goto-char mrk-orig)
-          (beginning-of-line)
           (forward-line -1)
           (meep--set-marker (point)))))
      ((> pos-orig mrk-orig)
       (when (<= (point) (mark t))
-        (beginning-of-line)
         (forward-line -1)
         (save-excursion
           (goto-char mrk-orig)
-          (beginning-of-line)
           (forward-line 1)
           (meep--set-marker (point)))))))
   nil)
