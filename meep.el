@@ -611,6 +611,13 @@ Must never be set directly.")
 ;;
 ;;    - nil: don't mark on motion (same as missing).
 ;;
+;; :mark-on-motion-advice
+;;    - An integer count of the `meep-command-mark-on-motion-advice-add'
+;;      registrations on this command.  The advice & the `:mark-on-motion'
+;;      it implies are undone when the count reaches zero, so a command
+;;      registered by other means (which has no count) is never unregistered.
+;;      Set by that add/remove pair only, never assign it directly.
+;;
 ;; :mark-on-motion-no-repeat
 ;;    - t: Motions that should not be repeated, such as search.
 ;;      (used by repeat-fu).
@@ -10752,15 +10759,40 @@ Note that this only changes behavior when MEEP is used
 (defun meep-command-mark-on-motion-advice-add (cmd)
   "Add advice to CMD to set mark-on-motion.
 This can be explicitly overridden (when repeating).
-Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
-  (advice-add cmd :around #'meep--command-mark-on-motion-advice)
-  (meep-command-prop-set cmd :mark-on-motion t))
+Nesting is counted, the last matching
+`meep-command-mark-on-motion-advice-remove' undoes it.
+CMD must not already be a mark-on-motion command."
+  (let ((count (meep--command-mark-on-motion-advice-count cmd)))
+    (when (zerop count)
+      ;; The property is shared, so this advice can only take responsibility
+      ;; for undoing a registration nothing else made.
+      (meep--assert (null (meep-command-prop-get cmd :mark-on-motion)))
+      (advice-add cmd :around #'meep--command-mark-on-motion-advice)
+      (meep-command-prop-set cmd :mark-on-motion t))
+    (meep-command-prop-set cmd :mark-on-motion-advice (1+ count))))
 
 ;;;###autoload
 (defun meep-command-mark-on-motion-advice-remove (cmd)
-  "Remove advice added to CMD by `meep-command-mark-on-motion-advice-add'."
-  (advice-remove cmd #'meep--command-mark-on-motion-advice)
-  (meep-command-prop-remove cmd :mark-on-motion))
+  "Remove advice added to CMD by `meep-command-mark-on-motion-advice-add'.
+Commands registered by other means are left as-is."
+  ;; The count is what this advice added, so a command registered by other
+  ;; means (`adjust' motions & the commands MEEP sets the mark for directly)
+  ;; has none & is left alone - the `:mark-on-motion' property is shared and
+  ;; removing it outright would silently unregister them.
+  (let ((count (meep--command-mark-on-motion-advice-count cmd)))
+    ;; Zero means it was never added by this advice.
+    (unless (zerop count)
+      (meep--decf count)
+      (cond
+       ((zerop count)
+        (advice-remove cmd #'meep--command-mark-on-motion-advice)
+        (meep-command-prop-remove cmd :mark-on-motion-advice)
+        ;; Only undo the property while it's still the one add set,
+        ;; it may have been re-registered since.
+        (when (meep-command-is-mark-set-on-motion cmd)
+          (meep-command-prop-remove cmd :mark-on-motion)))
+       (t
+        (meep-command-prop-set cmd :mark-on-motion-advice count))))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -10977,6 +11009,10 @@ Use `meep-command-mark-on-motion-advice-remove' to remove the advice."
   "Return t if CMD is a set-mark-on-motion command."
   (declare (important-return-value t))
   (eq t (meep-command-prop-get cmd :mark-on-motion)))
+(defun meep--command-mark-on-motion-advice-count (cmd)
+  "Return the number of mark-on-motion advice registrations on CMD."
+  (declare (important-return-value t))
+  (or (meep-command-prop-get cmd :mark-on-motion-advice) 0))
 ;;;###autoload
 (defun meep-command-is-mark-set-on-motion-any (cmd)
   "Return t if CMD is any type of mark-on-motion command."

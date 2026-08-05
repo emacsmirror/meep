@@ -193,6 +193,80 @@ For a test sweeping many modes as data rather than exercising one."
 
 
 ;; ---------------------------------------------------------------------------
+;; Mark On Motion Advice
+
+(defun meep-test--mark-on-motion-noop ()
+  "Placeholder command for mark-on-motion advice tests."
+  (interactive))
+
+(defmacro meep-test--with-mark-on-motion-command (&rest body)
+  "Run BODY with `meep-test--mark-on-motion-noop' restored afterwards."
+  (declare (indent 0))
+  `(unwind-protect
+       (progn
+         ,@body)
+     (advice-remove 'meep-test--mark-on-motion-noop #'meep--command-mark-on-motion-advice)
+     (meep-command-prop-remove 'meep-test--mark-on-motion-noop :mark-on-motion)
+     (meep-command-prop-remove 'meep-test--mark-on-motion-noop :mark-on-motion-advice)))
+
+(ert-deftest mark-on-motion-advice-add-remove-round-trip ()
+  "Removing the advice unregisters the command it added."
+  (meep-test--with-mark-on-motion-command
+    (meep-command-mark-on-motion-advice-add 'meep-test--mark-on-motion-noop)
+    (should (meep-command-is-mark-set-on-motion 'meep-test--mark-on-motion-noop))
+    (meep-command-mark-on-motion-advice-remove 'meep-test--mark-on-motion-noop)
+    (should-not
+     (advice-member-p #'meep--command-mark-on-motion-advice 'meep-test--mark-on-motion-noop))
+    (should-not (meep-command-is-mark-set-on-motion-any 'meep-test--mark-on-motion-noop))))
+
+(ert-deftest mark-on-motion-advice-remove-keeps-adjust ()
+  "An `adjust' registration survives an advice add/remove round-trip."
+  (meep-test--with-mark-on-motion-command
+    (meep-command-mark-on-motion-advice-add 'meep-test--mark-on-motion-noop)
+    (meep-command-prop-set 'meep-test--mark-on-motion-noop :mark-on-motion 'adjust)
+    (meep-command-mark-on-motion-advice-remove 'meep-test--mark-on-motion-noop)
+    (should (meep-command-is-mark-set-on-motion-adjust 'meep-test--mark-on-motion-noop))))
+
+(ert-deftest mark-on-motion-advice-remove-without-add-is-noop ()
+  "Removing advice never added leaves the registration alone."
+  (meep-test--with-mark-on-motion-command
+    (meep-command-prop-set 'meep-test--mark-on-motion-noop :mark-on-motion t)
+    (meep-command-mark-on-motion-advice-remove 'meep-test--mark-on-motion-noop)
+    (should (meep-command-is-mark-set-on-motion 'meep-test--mark-on-motion-noop))))
+
+(ert-deftest mark-on-motion-advice-nested-add-needs-matching-removes ()
+  "Each add needs its own remove, one caller must not unregister another's."
+  (meep-test--with-mark-on-motion-command
+    (meep-command-mark-on-motion-advice-add 'meep-test--mark-on-motion-noop)
+    (meep-command-mark-on-motion-advice-add 'meep-test--mark-on-motion-noop)
+
+    (meep-command-mark-on-motion-advice-remove 'meep-test--mark-on-motion-noop)
+    (should
+     (advice-member-p #'meep--command-mark-on-motion-advice 'meep-test--mark-on-motion-noop))
+    (should (meep-command-is-mark-set-on-motion 'meep-test--mark-on-motion-noop))
+
+    (meep-command-mark-on-motion-advice-remove 'meep-test--mark-on-motion-noop)
+    (should-not
+     (advice-member-p #'meep--command-mark-on-motion-advice 'meep-test--mark-on-motion-noop))
+    (should-not (meep-command-is-mark-set-on-motion-any 'meep-test--mark-on-motion-noop))))
+
+(ert-deftest mark-on-motion-advice-add-rejects-existing-registration ()
+  "Advising a command that is already mark-on-motion is an error, not silent."
+  (meep-test--with-mark-on-motion-command
+    (meep-command-prop-set 'meep-test--mark-on-motion-noop :mark-on-motion 'adjust)
+    (should-error (meep-command-mark-on-motion-advice-add 'meep-test--mark-on-motion-noop))
+    (should (meep-command-is-mark-set-on-motion-adjust 'meep-test--mark-on-motion-noop))))
+
+(ert-deftest mark-on-motion-advice-surplus-remove-is-noop ()
+  "Removing more times than added leaves the count at zero, not negative."
+  (meep-test--with-mark-on-motion-command
+    (meep-command-mark-on-motion-advice-add 'meep-test--mark-on-motion-noop)
+    (meep-command-mark-on-motion-advice-remove 'meep-test--mark-on-motion-noop)
+    (meep-command-mark-on-motion-advice-remove 'meep-test--mark-on-motion-noop)
+    (should (zerop (meep--command-mark-on-motion-advice-count 'meep-test--mark-on-motion-noop)))))
+
+
+;; ---------------------------------------------------------------------------
 ;; Region list overlap checks
 
 (ert-deftest ranges-overlap-p-basic-overlap ()
