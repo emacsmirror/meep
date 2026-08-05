@@ -4037,82 +4037,65 @@ INNER) when STEP is non-zero and AT-START is non-nil."
    (t
     (meep--scan-walk-bounds inner step at-start forward-fn bounds-fn))))
 
-(defun meep--bounds-step-word (inner step at-start)
-  "`:bounds-step-fn' (INNER STEP AT-START) for the `word' text object; scan STEP words."
+(defun meep--scan-walk-forward-thing (inner step at-start thing bounds-fn)
+  "Scan STEP objects of kind THING via `forward-thing'.
+INNER, STEP, AT-START and BOUNDS-FN are as in `meep--scan-walk-thing'."
   (declare (important-return-value t))
   (meep--scan-walk-thing
    inner
    step
    at-start
-   (lambda (s) (meep--forward-multi s (lambda (n) (forward-thing 'word n))))
-   #'meep--bounds-of-word))
+   (lambda (s) (meep--forward-multi s (lambda (n) (forward-thing thing n))))
+   bounds-fn))
+
+(defun meep--scan-walk-syntax (inner step at-start in-region-p bounds-fn)
+  "Scan STEP string/comment regions via `meep--search-syntax-forward'.
+IN-REGION-P selects the region kind (see `meep--search-syntax-forward');
+INNER, STEP, AT-START and BOUNDS-FN are as in `meep--scan-walk-leading'."
+  (declare (important-return-value t))
+  (meep--scan-walk-leading
+   inner step at-start (lambda (s) (meep--search-syntax-forward s in-region-p)) bounds-fn))
+
+(defun meep--bounds-step-word (inner step at-start)
+  "`:bounds-step-fn' (INNER STEP AT-START) for the `word' text object; scan STEP words."
+  (declare (important-return-value t))
+  (meep--scan-walk-forward-thing inner step at-start 'word #'meep--bounds-of-word))
 
 (defun meep--bounds-step-symbol (inner step at-start)
   "`:bounds-step-fn' (INNER STEP AT-START) for the `symbol' text object; scan STEP symbols."
   (declare (important-return-value t))
-  (meep--scan-walk-thing
-   inner step at-start
-   (lambda (s)
-     (meep--forward-multi s (lambda (n) (forward-thing 'symbol n))))
-   #'meep--bounds-of-symbol))
+  (meep--scan-walk-forward-thing inner step at-start 'symbol #'meep--bounds-of-symbol))
 
 (defun meep--bounds-step-defun (inner step at-start)
   "`:bounds-step-fn' (INNER STEP AT-START) for the `defun' text object; scan STEP defuns."
   (declare (important-return-value t))
-  (meep--scan-walk-thing
-   inner
-   step
-   at-start
-   (lambda (s) (meep--forward-multi s (lambda (n) (forward-thing 'defun n))))
-   #'meep--bounds-of-defun))
+  (meep--scan-walk-forward-thing inner step at-start 'defun #'meep--bounds-of-defun))
 
 (defun meep--bounds-step-sentence (inner step at-start)
   "`:bounds-step-fn' (INNER STEP AT-START) for the `sentence' text object; scan STEP sentences."
   (declare (important-return-value t))
-  (meep--scan-walk-thing
-   inner step at-start
-   (lambda (s)
-     (meep--forward-multi s (lambda (n) (forward-thing 'sentence n))))
-   #'meep--bounds-of-sentence))
+  (meep--scan-walk-forward-thing inner step at-start 'sentence #'meep--bounds-of-sentence))
 
 (defun meep--bounds-step-paragraph (inner step at-start)
   "`:bounds-step-fn' (INNER STEP AT-START) for the `paragraph' text object; scan STEP paragraphs."
   (declare (important-return-value t))
-  (meep--scan-walk-thing
-   inner step at-start
-   (lambda (s)
-     (meep--forward-multi s (lambda (n) (forward-thing 'paragraph n))))
-   #'meep--bounds-of-paragraph))
+  (meep--scan-walk-forward-thing inner step at-start 'paragraph #'meep--bounds-of-paragraph))
 
 (defun meep--bounds-step-comment (inner step at-start)
   "`:bounds-step-fn' (INNER STEP AT-START) for the `comment' text object; scan STEP comments."
   (declare (important-return-value t))
-  (meep--scan-walk-leading
-   inner
-   step
-   at-start
-   (lambda (s) (meep--search-syntax-forward s #'ppss-comment-depth))
-   #'meep--bounds-of-comment))
+  (meep--scan-walk-syntax inner step at-start #'ppss-comment-depth #'meep--bounds-of-comment))
 
 (defun meep--bounds-step-comment-block (inner step at-start)
   "`:bounds-step-fn' (INNER STEP AT-START) for the `comment-block' text object; scan STEP blocks."
   (declare (important-return-value t))
-  (meep--scan-walk-leading
-   inner
-   step
-   at-start
-   (lambda (s) (meep--search-syntax-forward s #'ppss-comment-depth))
-   #'meep--bounds-of-comment-block))
+  (meep--scan-walk-syntax
+   inner step at-start #'ppss-comment-depth #'meep--bounds-of-comment-block))
 
 (defun meep--bounds-step-string (inner step at-start)
   "`:bounds-step-fn' (INNER STEP AT-START) for the `string' text object; scan STEP strings."
   (declare (important-return-value t))
-  (meep--scan-walk-leading
-   inner
-   step
-   at-start
-   (lambda (s) (meep--search-syntax-forward s #'ppss-string-terminator))
-   #'meep--bounds-of-string))
+  (meep--scan-walk-syntax inner step at-start #'ppss-string-terminator #'meep--bounds-of-string))
 
 (defun meep--bounds-step-line (inner step at-start)
   "`:bounds-step-fn' (INNER STEP AT-START) for the `line' text object; scan STEP lines."
