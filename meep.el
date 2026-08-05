@@ -229,24 +229,20 @@ The behavior if they have not is undefined."
       (while (< (point) end)
         (let ((bol (point))
               (eol (pos-eol)))
+          (skip-chars-forward "[:blank:]" eol)
           (cond
-           ((eq bol eol)
-            ;; Skip blank lines.
+           ((eq (point) eol) ; Blank line (blank-space only or empty).
+            ;; An empty line's column is 0, never over the stored maximum.
+            (let ((column (current-column)))
+              (when (< result-non-empty-column column)
+                (setq result-non-empty-column column)
+                (setq result-non-empty (buffer-substring-no-properties bol (point)))))
+            ;; Next line (maybe it's non-blank).
             (goto-char (min (1+ eol) end)))
            (t
-            (skip-chars-forward "[:blank:]" eol)
-            (cond
-             ((eq (point) eol) ; Blank line (with blank-space).
-              (let ((column (current-column)))
-                (when (< result-non-empty-column column)
-                  (setq result-non-empty-column column)
-                  (setq result-non-empty (buffer-substring-no-properties bol (point)))))
-              ;; Next line (maybe it's non-blank).
-              (goto-char (min (1+ eol) end)))
-             (t
-              (setq result-non-empty (buffer-substring-no-properties bol (point)))
-              ;; Break.
-              (goto-char end))))))))
+            (setq result-non-empty (buffer-substring-no-properties bol (point)))
+            ;; Break.
+            (goto-char end))))))
     (or result-non-empty "")))
 
 (defun meep--replace-in-region (str beg end)
