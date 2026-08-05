@@ -1490,11 +1490,7 @@ When STEP-OVER is non-nil, don't step into nested blocks."
         (dotimes (_ times)
           (while (and (meep--jump-prev-sexp-impl n step-over)
                       (let ((keep-searching
-                             (cond
-                              (bracket-chars
-                               (null (memq (char-after (point)) bracket-chars)))
-                              (t
-                               nil))))
+                             (and bracket-chars (null (memq (char-after (point)) bracket-chars)))))
                         (unless keep-searching
                           (setq pos-step (point)))
                         keep-searching))))
@@ -1519,11 +1515,8 @@ When STEP-OVER is non-nil, don't step into nested blocks."
         (dotimes (_ times)
           (while (and (meep--jump-next-sexp-impl n step-over)
                       (let ((keep-searching
-                             (cond
-                              (bracket-chars
-                               (null (memq (char-before (point)) bracket-chars)))
-                              (t
-                               nil))))
+                             (and bracket-chars
+                                  (null (memq (char-before (point)) bracket-chars)))))
                         (unless keep-searching
                           (setq pos-step (point)))
                         keep-searching))))
@@ -1748,25 +1741,21 @@ Return non-nil when point was moved."
           (pos-orig (point))
           ;; Jump to the start of the string to prevent failure to jump out of it.
           (pos-outer (ppss-comment-or-string-start (syntax-ppss))))
-      (cond
-       ((meep--is-point-before-bracket-open nil)
-        (let ((pos
-               (save-excursion
-                 (when pos-outer
-                   (goto-char pos-outer))
-                 (forward-sexp arg is-interactive)
-                 (point))))
-          (setq result t)
-          (goto-char pos)))
-       ((meep--is-point-after-bracket-close nil)
-        (let ((pos
-               (save-excursion
-                 (when pos-outer
-                   (goto-char pos-outer))
-                 (forward-sexp (- arg) is-interactive)
-                 (point))))
-          (setq result t)
-          (goto-char pos))))
+      (let ((dir
+             (cond
+              ((meep--is-point-before-bracket-open nil)
+               1)
+              ((meep--is-point-after-bracket-close nil)
+               -1))))
+        (when dir
+          (let ((pos
+                 (save-excursion
+                   (when pos-outer
+                     (goto-char pos-outer))
+                   (forward-sexp (* dir arg) is-interactive)
+                   (point))))
+            (setq result t)
+            (goto-char pos))))
       ;; As a handy fallback, jump up to the enclosing parenthesis.
       (when (eq pos-orig (point))
         (let ((pos
