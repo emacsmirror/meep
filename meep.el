@@ -10180,7 +10180,7 @@ Newest first; nil when every item has been popped (the stack is exhausted)."
       (unless (memq tail meep--clipboard-killring-yank-popped)
         (push i positions))
       (setq tail (cdr tail))
-      (setq i (1+ i)))
+      (meep--incf i))
     (nreverse positions)))
 
 (defun meep--clipboard-killring-yank-last-popped-pos ()
@@ -10196,7 +10196,7 @@ left the ring (unlikely, `kill-ring-max' truncation)."
         (pos 0))
     (while (and tail (not (eq tail cell)))
       (setq tail (cdr tail))
-      (setq pos (1+ pos)))
+      (meep--incf pos))
     ;; CELL is nil (nothing popped) or has left the ring (`kill-ring-max'
     ;; truncation): the walk falls off the end, fall back to the newest kill.
     (cond
