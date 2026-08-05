@@ -2329,19 +2329,13 @@ they passed in.  Nil means the delimiters cross irreconcilably."
         (setq bounds (cons beg end))))
     bounds))
 
-;;;###autoload
-(defun meep-move-matching-syntax-outer ()
-  "Move to the outer matching string/comment syntax.
-When not at the bounds, jump to the start (when in a string/comment).
-
-Return nil if no matching syntax was found."
-  (interactive "^")
+(defun meep--move-matching-syntax-impl (bounds)
+  "Move point between the ends of BOUNDS (a cons cell or nil).
+When not at either end, jump to the start.
+Return non-nil when BOUNDS is non-nil."
   (meep--with-mark-on-motion-maybe-set
     (let ((result nil)
-          (pos-orig (point))
-          (bounds
-           (or (meep--bounds-at-point-for-comment-outer)
-               (meep--bounds-at-point-for-string-outer))))
+          (pos-orig (point)))
       (when bounds
         (setq result t)
         (cond
@@ -2353,6 +2347,16 @@ Return nil if no matching syntax was found."
         (when (eq pos-orig (point))
           (goto-char (car bounds))))
       result)))
+
+;;;###autoload
+(defun meep-move-matching-syntax-outer ()
+  "Move to the outer matching string/comment syntax.
+When not at the bounds, jump to the start (when in a string/comment).
+
+Return nil if no matching syntax was found."
+  (interactive "^")
+  (meep--move-matching-syntax-impl
+   (or (meep--bounds-at-point-for-comment-outer) (meep--bounds-at-point-for-string-outer))))
 
 ;;;###autoload
 (defun meep-move-matching-syntax-inner ()
@@ -2361,23 +2365,8 @@ When not at the bounds, jump to the start (when in a string/comment).
 
 Return nil if no matching syntax was found."
   (interactive "^")
-  (meep--with-mark-on-motion-maybe-set
-    (let ((result nil)
-          (pos-orig (point))
-          (bounds
-           (or (meep--bounds-at-point-for-comment-inner)
-               (meep--bounds-at-point-for-string-inner))))
-      (when bounds
-        (setq result t)
-        (cond
-         ((eq (point) (car bounds))
-          (goto-char (cdr bounds)))
-         ((eq (point) (cdr bounds))
-          (goto-char (car bounds))))
-        ;; As a handy fallback, jump to the beginning of bounds.
-        (when (eq pos-orig (point))
-          (goto-char (car bounds))))
-      result)))
+  (meep--move-matching-syntax-impl
+   (or (meep--bounds-at-point-for-comment-inner) (meep--bounds-at-point-for-string-inner))))
 
 ;;;###autoload
 (defun meep-move-matching-contextual-outer ()
