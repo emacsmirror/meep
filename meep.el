@@ -8933,14 +8933,9 @@ Returns motion-info on success, \\='transpose-abort if pre-motion failed."
   (let ((pre-motion (car meep--transpose-repeat-motion-info))
         (motion-info (cdr meep--transpose-repeat-motion-info)))
     (cond
-     (pre-motion
-      ;; Execute pre-motion to set up cursor and mark.
-      (let ((pre-result (meep--transpose-execute-pre-motion pre-motion)))
-        (cond
-         ((eq pre-result 'transpose-abort)
-          'transpose-abort)
-         (t
-          motion-info))))
+     ;; Execute pre-motion to set up cursor and mark.
+     ((and pre-motion (eq (meep--transpose-execute-pre-motion pre-motion) 'transpose-abort))
+      'transpose-abort)
      (t
       motion-info))))
 
@@ -9325,11 +9320,10 @@ Callers must ensure `repeat-fu-mode' is active."
         ;; Skip when undo is disabled (`buffer-undo-list' is t).
         ;; Push a cursor-position entry first - `undo-boundary' is a no-op when
         ;; `buffer-undo-list' is nil because it considers nil "already a boundary".
-        (unless (eq buffer-undo-list t)
-          (push (point) buffer-undo-list)
-          (undo-boundary))
         (let ((undo-tail
                (unless (eq buffer-undo-list t)
+                 (push (point) buffer-undo-list)
+                 (undo-boundary)
                  buffer-undo-list)))
 
           ;; Use markers so BEG & END track through `delete-rectangle'.  An
