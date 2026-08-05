@@ -9266,10 +9266,11 @@ LINE-MARKER and MARK-MARKER delimit the replay range."
       ;; For top-to-bottom this lets the marker track through
       ;; any lines the macro adds or removes.
       (cond
-       ((= (pos-bol)
-           (save-excursion
-             (goto-char mark-marker)
-             (pos-bol)))
+       ((eq
+         (pos-bol)
+         (save-excursion
+           (goto-char mark-marker)
+           (pos-bol)))
         ;; Last target line, stop after executing.
         (setq continue nil))
        (t
