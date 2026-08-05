@@ -8890,8 +8890,8 @@ Dispatches to motion-specific wrappers that normalize direction and cursor."
 Returns t if transpose succeeded, \\='transpose-abort if at boundary, nil if not applicable."
   (let* ((range-a (cons (car last-motion-info) (point)))
          (range-b (cons nil nil))
-         (local-last-command (car (cdr last-motion-info)))
-         (local-last-prefix-arg (cdr (cdr last-motion-info)))
+         (local-last-command (cadr last-motion-info))
+         (local-last-prefix-arg (cddr last-motion-info))
          (mark-dir
           (cond
            ((< (car last-motion-info) (point))
@@ -8977,8 +8977,8 @@ to call before the next transpose (or nil), and MOTION-INFO is
 PRE-MOTION is a command to call before repeat (or nil).
 MARK-POS is the mark position to use (or nil to keep original).
 LAST-MOTION-INFO is the original motion info."
-  (let ((cmd (car (cdr last-motion-info)))
-        (prefix-arg (cdr (cdr last-motion-info))))
+  (let ((cmd (cadr last-motion-info))
+        (prefix-arg (cddr last-motion-info)))
     (setq meep--transpose-repeat-motion-info
           (cons pre-motion (cons (or mark-pos (car last-motion-info)) (cons cmd prefix-arg))))))
 
