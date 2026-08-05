@@ -703,6 +703,9 @@ The implied region is the span a mark-on-motion command would have activated.
 Use this where a command must read those bounds without making the region visible."
   (cond
    ((region-active-p)
+    ;; Keep `region-beginning' & `region-end' here, `rectangle-mark-mode' advises
+    ;; them to return the rectangles corners which the point & mark don't give,
+    ;; see the note below `meep--region-or-mark-bounds'.
     (cons (region-beginning) (region-end)))
    (t
     (meep--mark-on-motion-bounds))))
@@ -716,13 +719,7 @@ were to be made into the active region."
     (let ((local-last-command (meep--last-command)))
       (when (and (symbolp local-last-command)
                  (meep-command-is-mark-set-on-motion-any local-last-command))
-        (let ((a (point))
-              (b (mark t)))
-          (cond
-           ((<= a b)
-            (cons a b))
-           (t
-            (cons b a))))))))
+        (meep--region-or-mark-bounds)))))
 
 (defun meep--region-or-mark-bounds ()
   "Return the active or implied region as `(BEG . END)', or nil when no mark.
