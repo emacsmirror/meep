@@ -6435,8 +6435,7 @@ matching `meep-delete-char-ring-yank'."
    ((< arg 0)
     (meep--delete-char-ring-yank-impl (- arg) nil))
    (t
-    (when meep-delete-char-ring
-      (meep--delete-char-ring-maybe-clear))
+    (meep--delete-char-ring-maybe-clear)
     (let ((pos-init (point)))
       (forward-char arg)
       (unless (eq pos-init (point))
@@ -6456,8 +6455,7 @@ matching `meep-delete-char-ring-yank'."
    ((< arg 0)
     (meep--delete-char-ring-yank-impl (- arg) nil))
    (t
-    (when meep-delete-char-ring
-      (meep--delete-char-ring-maybe-clear))
+    (meep--delete-char-ring-maybe-clear)
     (let ((pos-init (point)))
       (forward-char (- arg))
       (unless (eq pos-init (point))
