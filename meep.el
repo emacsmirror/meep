@@ -4790,14 +4790,7 @@ POINT-AT-END is non-nil when the point was on END."
 (defun meep--range-list-as-marker-list (ranges)
   "Create a list of markers from RANGES, a list of integer ranges."
   (declare (important-return-value t))
-  (mapcar
-   (lambda (item)
-     (let ((mark-beg (set-marker (make-marker) (car item)))
-           (mark-end (set-marker (make-marker) (cdr item))))
-       (set-marker-insertion-type mark-beg nil)
-       (set-marker-insertion-type mark-end t)
-       (cons mark-beg mark-end)))
-   ranges))
+  (mapcar (lambda (item) (cons (copy-marker (car item)) (copy-marker (cdr item) t))) ranges))
 
 
 (defun meep--region-swap-contiguous-impl (range-a is-line-wise)
