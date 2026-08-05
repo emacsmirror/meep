@@ -10579,12 +10579,7 @@ for the normal dispatcher doesn't leak into the next `read-event'."
   (let* ((string-from-keyseq-default
           ;; Return string from sequence, using the first key
           ;; (for items that contain multiple).
-          (lambda (keyseq)
-            (let ((str ""))
-              (while keyseq
-                (let ((ch-str-list (pop keyseq)))
-                  (setq str (concat (car ch-str-list) str))))
-              str)))
+          (lambda (keyseq) (mapconcat #'car (reverse keyseq) "")))
 
          (string-from-keyseq-all
           ;; Return string from sequence, expanded from multiple keys.
@@ -10754,14 +10749,10 @@ for the normal dispatcher doesn't leak into the next `read-event'."
                    (keyseq-str-default (car keyseq-str-list))
                    (keyseq-str ""))
 
-              (while keyseq-str-list
+              (while (and keyseq-str-list (null bind))
                 (setq keyseq-str (pop keyseq-str-list))
                 (setq kbd-keyseq (kbd keyseq-str))
-                (setq bind (key-binding kbd-keyseq))
-
-                (when bind
-                  ;; break.
-                  (setq keyseq-str-list nil)))
+                (setq bind (key-binding kbd-keyseq)))
 
               (cond
                ((or (and bind (symbolp bind) (commandp bind))
