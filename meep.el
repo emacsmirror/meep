@@ -4521,11 +4521,7 @@ where a `%k' key-list hint stays live for `format-spec' to expand."
 
 (defun meep--move-bounds-of-thing-impl (n)
   "Initiate a bounds motion, forward when N is positive."
-  (let ((km nil)
-        (info-text
-         (mapcar
-          (lambda (cmd) (format "%s: %s" (string (nth 0 cmd)) (nth 2 cmd))) meep-bounds-commands)))
-    (setq km (make-sparse-keymap))
+  (let ((km (make-sparse-keymap)))
     (when (< n 0)
       (setq prefix-arg -1))
     (dolist (cmd (reverse meep-bounds-commands))
@@ -4536,7 +4532,10 @@ where a `%k' key-list hint stays live for `format-spec' to expand."
       (format "Jump to the %s of"
               (or (and (< n 0) "beginning") "end"))
       ": %k or any other to exit\n")
-     (mapconcat #'identity info-text ", ")
+     (mapconcat (lambda (cmd)
+                  (format "%s: %s" (string (nth 0 cmd)) (nth 2 cmd)))
+                meep-bounds-commands
+                ", ")
      ;; NOTE: pairs with the prefix set above - exiting on a key outside KM must
      ;; not leave it pending, it would apply to whichever command that key runs.
      ;; Emacs calls this from `pre-command-hook', before the prefix is read, so
