@@ -4592,8 +4592,7 @@ The mark is not moved, the region can be restored
 via `meep-region-activate-or-reverse' or `meep-region-activate-and-reverse'."
   (interactive)
   (when (region-active-p)
-    (unless (meep--region-shift-select-promote)
-      (deactivate-mark t))))
+    (deactivate-mark t)))
 
 ;;;###autoload
 (defun meep-region-toggle ()
@@ -4604,7 +4603,8 @@ this operation makes it stay active, running again clears it."
   (interactive)
   (cond
    ((region-active-p)
-    (meep-region-disable))
+    (unless (meep--region-shift-select-promote)
+      (meep-region-disable)))
    (t
     (meep-region-enable))))
 
