@@ -73,6 +73,20 @@ PROMPT is ignored, ARGS are passed through."
 PROMPT is ignored, ARGS are passed through."
   (apply meep-test--original-read-char-from-minibuffer nil args))
 
+;; Store original `read-event' for wrapper.
+(defvar meep-test--original-read-event (symbol-function 'read-event))
+
+(defun meep-test--read-event-capture-prompt (&optional prompt &rest args)
+  "Call `read-event' with PROMPT captured instead of displayed.
+ARGS are passed through."
+  ;; In batch mode the prompt is written out by C code before any Lisp runs,
+  ;; so `inhibit-message' and `set-message-function' never see it and it lands
+  ;; in the test output.  Passing nil keeps it out, capturing it here keeps it
+  ;; available to assert on (`meep-keypad' prompts with each key typed).
+  (when prompt
+    (push prompt meep-test--captured-messages))
+  (apply meep-test--original-read-event nil args))
+
 (defmacro with-meep-test-message-capture (&rest body)
   "Execute BODY with messages captured instead of displayed.
 Messages are stored in `meep-test--captured-messages'.
@@ -88,6 +102,7 @@ Also suppresses minibuffer prompts from interactive specs."
          (orig-message (symbol-function 'message))
          (orig-read-char (symbol-function 'read-char))
          (orig-read-char-from-minibuffer (symbol-function 'read-char-from-minibuffer))
+         (orig-read-event (symbol-function 'read-event))
          ;; Save tooltip-mode state to restore later.
          ;; When enabled, `execute-kbd-macro' calls `tooltip-hide' which calls
          ;; `(message "")' to clear the echo area, polluting captured messages.
@@ -97,12 +112,14 @@ Also suppresses minibuffer prompts from interactive specs."
            (fset 'message #'meep-test--message-capture)
            (fset 'read-char #'meep-test--read-char-no-prompt)
            (fset 'read-char-from-minibuffer #'meep-test--read-char-from-minibuffer-no-prompt)
+           (fset 'read-event #'meep-test--read-event-capture-prompt)
            (when (fboundp 'tooltip-mode)
              (tooltip-mode 0))
            ,@body)
        (fset 'message orig-message)
        (fset 'read-char orig-read-char)
        (fset 'read-char-from-minibuffer orig-read-char-from-minibuffer)
+       (fset 'read-event orig-read-event)
        (when (fboundp 'tooltip-mode)
          (tooltip-mode
           (cond
@@ -19084,7 +19101,16 @@ Verifies: the binding is found even though `TAB' is not the newest key."
          (key (kbd "C-t"))
          (binding-init (global-key-binding key))
          (text-initial "hello")
-         (text-expected "Xhello"))
+         (text-expected "Xhello")
+         ;; The keypad prompt for each key typed, then the binding it ran.
+         (messages-expected
+          (list
+           "Keypad [C-…], m for M-…, g for C-M-…"
+           "Keypad [C-t C-…]"
+           "Keypad [C-t …]"
+           "Keypad [C-t TAB C-…]"
+           "Keypad [C-t TAB …]"
+           "[C-t <tab> DEL] -> <anonymous command ...>")))
     (define-key keymap (kbd "<tab> DEL") fn)
     (unwind-protect
         (progn
@@ -19101,7 +19127,8 @@ Verifies: the binding is found even though `TAB' is not the newest key."
               [?\t]
               " "
               [?\C-?])
-            (should (equal text-expected (buffer-string)))))
+            (should (equal text-expected (buffer-string)))
+            (should (equal messages-expected (meep-test-messages)))))
       (global-set-key key binding-init))))
 
 (provide 'meep_tests)
