@@ -636,6 +636,24 @@ Signals an error if no region is active."
     (error "No active region for `meep-test-region-as-string'"))
   (buffer-substring-no-properties (region-beginning) (region-end)))
 
+(defun meep-test-isearch-state-set (string regexp forward)
+  "Set ISEARCH to search for STRING, as starting a search would.
+REGEXP sets `isearch-regexp', FORWARD the search direction."
+  ;; The match state must be cleared, not only the search string.  ISEARCH
+  ;; resumes relative to `isearch-other-end' and wraps based on
+  ;; `isearch-success', so a match left by an earlier test would change where
+  ;; a repeat starts.  These are global, `with-meep-test' does not reset them.
+  (setq isearch-string string)
+  (setq isearch-regexp regexp)
+  (setq isearch-forward forward)
+  (setq isearch-other-end nil)
+  (setq isearch-success t)
+  (setq isearch-error nil)
+  ;; Seed the state stack as `isearch-mode' does, `isearch-pop-state' fails
+  ;; on the nil state when a repeat is the first search of the session.
+  (setq isearch-cmds nil)
+  (isearch-push-state))
+
 (defmacro simulate-input (&rest keys)
   "Helper macro to simulate input using KEYS."
   (declare (indent 0))
@@ -663,7 +681,11 @@ to retrieve captured messages for validation."
            (kill-ring nil)
            (kill-ring-yank-pointer nil)
            ;; Isolate register clipboard state too.
-           (register-alist nil))
+           (register-alist nil)
+           ;; Batch Emacs starts with this disabled, tests that check the
+           ;; region would otherwise depend on an earlier test enabling it
+           ;; (commands set it to promote a transient selection).
+           (transient-mark-mode t))
 
        (switch-to-buffer buf)
        (buffer-reset-text ,initial-buffer-text)
@@ -16838,9 +16860,7 @@ Verifies: isearch-repeat-next works with regex patterns."
       (should (equal 'normal (bray-state)))
       (should (equal ?f (char-after)))
       ;; Set up regex search state.
-      (setq isearch-string "foo[0-9]+")
-      (setq isearch-regexp t)
-      (setq isearch-forward t)
+      (meep-test-isearch-state-set "foo[0-9]+" t t)
       ;; Repeat search forward.
       (simulate-input-for-meep
         '(:state normal :command meep-isearch-repeat-next))
@@ -16877,9 +16897,7 @@ Verifies: isearch-repeat-prev works with regex patterns."
       (should (equal 'normal (bray-state)))
       (should (equal nil (char-after)))
       ;; Set up regex search state for backward search.
-      (setq isearch-string "foo[0-9]+")
-      (setq isearch-regexp t)
-      (setq isearch-forward nil)
+      (meep-test-isearch-state-set "foo[0-9]+" t nil)
       ;; Repeat search backward.
       (simulate-input-for-meep
         '(:state normal :command meep-isearch-repeat-prev))
@@ -16907,9 +16925,7 @@ Verifies: isearch-repeat-next/prev report success."
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
-      (setq isearch-string "foo[0-9]+")
-      (setq isearch-regexp t)
-      (setq isearch-forward t)
+      (meep-test-isearch-state-set "foo[0-9]+" t t)
       ;; Both matches, then a third that wraps back to the first.
       (should (meep-isearch-repeat-next 1))
       (should (meep-isearch-repeat-next 1))
@@ -16929,9 +16945,7 @@ Verifies: isearch-repeat-next/prev report failure."
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
-      (setq isearch-string "nomatch")
-      (setq isearch-regexp t)
-      (setq isearch-forward t)
+      (meep-test-isearch-state-set "nomatch" t t)
       (should-not (meep-isearch-repeat-next 1))
       (goto-char (point-max))
       (setq isearch-forward nil)
