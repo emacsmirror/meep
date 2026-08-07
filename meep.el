@@ -6666,8 +6666,8 @@ Each entry is `(SYMBOL . SPEC)' where SYMBOL matches a value in
 `meep-surround-alist' and SPEC is either:
 
   (OPEN . CLOSE)   two delimiter strings (single or multi-character), or
-  FUNCTION         a function of no arguments returning such a cons \
-\(used for prompted delimiters such as tags).
+  FUNCTION         a function of no arguments returning such a cons
+                   (used for prompted delimiters such as tags).
 
 When nil, falls back to the preset for the current `major-mode'.  A mode that
 does not define a symbol simply has no surround for that key, rather than
