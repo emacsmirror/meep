@@ -17015,6 +17015,40 @@ internal value such as the `transient-mark-mode' cons cell."
       (should-error (meep-isearch-at-point-next 1) :type 'user-error)
       (should-error (meep-isearch-at-point-prev 1) :type 'user-error))))
 
+(ert-deftest isearch-at-point-exits-without-saving-a-mark ()
+  "Searching for the symbol at point must not save ISEARCH's own mark.
+
+Verifies: the mark is the match, `mark-ring' is untouched and nothing is
+reported about a mark being saved."
+  (let ((text-initial "foo a foo b foo c foo")
+        (message-mark-saved "Mark saved where search started"))
+
+    ;; An inactive mark, ISEARCH would save the location searched from over it.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (push-mark 6 t)
+      (goto-char 2)
+      (should (meep-isearch-at-point-next 1))
+      (should (eq 10 (point)))
+      (should (eq 7 (mark t)))
+      (should-not mark-ring)
+      (should-not (member message-mark-saved (meep-test-messages))))
+
+    ;; Without `meep-isearch-activate-mark' the mark never activates,
+    ;; so every search would save another.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (let ((meep-isearch-activate-mark nil))
+        (goto-char 2)
+        (should (meep-isearch-at-point-next 1))
+        (should (meep-isearch-at-point-next 1))
+        (should (meep-isearch-at-point-next 1)))
+      (should (eq 19 (mark t)))
+      (should-not mark-ring)
+      (should-not (member message-mark-saved (meep-test-messages))))))
+
 ;; ---------------------------------------------------------------------------
 ;; Miscellaneous
 

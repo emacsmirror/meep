@@ -6214,7 +6214,11 @@ Return non-nil on success."
          (t
           (isearch-repeat-forward n)))))
 
-    (isearch-exit)
+    ;; Override `isearch-opoint' so exiting never saves a mark,
+    ;; the location ISEARCH would save is one this function jumped to
+    ;; and the mark is set by `meep--isearch-handle-done' regardless.
+    (let ((isearch-opoint (point)))
+      (isearch-exit))
 
     (meep--isearch-handle-done had-region)
 
