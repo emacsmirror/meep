@@ -6139,7 +6139,8 @@ Return non-nil on success."
   (meep--isearch-repeat-impl (- arg)))
 
 (defun meep--isearch-bounds-at-point-impl ()
-  "Return the region for `meep-isearch-at-point-next' to use."
+  "Return the bounds to search for, the active region or the symbol at point.
+Callers must handle nil, and an empty range from an empty region."
   (cond
    ((region-active-p)
     ;; TODO: don't attempt multi-line.
@@ -6165,17 +6166,15 @@ Return non-nil on success."
 
     (concat (or beg "") (regexp-quote text) (or end ""))))
 
-(defun meep--isearch-at-point-impl (dir)
-  "Perform ISEARCH at point along DIR.
+(defun meep--isearch-at-point-search (dir text-bounds)
+  "Search for the text within TEXT-BOUNDS along DIR.
+TEXT-BOUNDS must not be empty.
 Return non-nil on success."
   (let ((had-region (region-active-p))
-        (text-bounds (meep--isearch-bounds-at-point-impl))
         ;; Re-display can flicker.
         (inhibit-redisplay t)
         ;; Always wrap.
         (isearch-wrap-pause 'no-ding))
-    (unless text-bounds
-      (user-error "No symbol at cursor"))
     (cond
      ((< dir 0)
       ;; Unlike searching forward the point needs to be moved *before* the symbol.
@@ -6201,9 +6200,8 @@ Return non-nil on success."
 
       ;; Inline `isearch-yank-string' because it expects non regex text,
       ;; however this text is already quoted.
-      (progn
-        (setq isearch-yank-flag t)
-        (isearch-process-search-string text (mapconcat #'isearch-text-char-description text ""))))
+      (setq isearch-yank-flag t)
+      (isearch-process-search-string text (mapconcat #'isearch-text-char-description text "")))
 
     ;; Repeat for prefix arguments greater than 1.
     (let ((n (1- (abs dir))))
@@ -6223,6 +6221,22 @@ Return non-nil on success."
     (meep--isearch-handle-done had-region)
 
     (meep--isearch-found-p)))
+
+(defun meep--isearch-at-point-impl (dir)
+  "Perform ISEARCH at point along DIR.
+Return non-nil on success."
+  (let ((text-bounds (meep--isearch-bounds-at-point-impl)))
+    (cond
+     ((null text-bounds)
+      (message "No symbol at cursor")
+      nil)
+     ;; Searching for nothing runs a search for an empty string, which
+     ;; `isearch-exit' takes as a request to edit it, prompting the user.
+     ((eq (car text-bounds) (cdr text-bounds))
+      (message "Empty selection")
+      nil)
+     (t
+      (meep--isearch-at-point-search dir text-bounds)))))
 
 ;;;###autoload
 (defun meep-isearch-at-point-next (arg)

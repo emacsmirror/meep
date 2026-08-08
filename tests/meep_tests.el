@@ -17021,13 +17021,25 @@ internal value such as the `transient-mark-mode' cons cell."
       (goto-char (point-min))
       (should (eq t (meep-isearch-at-point-prev 1))))
 
-    ;; No symbol under the cursor is reported as an error, not a return value.
+    ;; No symbol under the cursor reports a message and fails.
     (with-meep-test "foo   bar"
       (text-mode)
       (bray-mode 1)
       (goto-char 5)
-      (should-error (meep-isearch-at-point-next 1) :type 'user-error)
-      (should-error (meep-isearch-at-point-prev 1) :type 'user-error))))
+      (should-not (meep-isearch-at-point-next 1))
+      (should-not (meep-isearch-at-point-prev 1))
+      (should (member "No symbol at cursor" (meep-test-messages))))
+
+    ;; An empty selection has no text to search for, it fails the same way.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle))
+      (should (region-active-p))
+      (should-not (meep-isearch-at-point-next 1))
+      (should-not (meep-isearch-at-point-prev 1))
+      (should (member "Empty selection" (meep-test-messages))))))
 
 (ert-deftest isearch-at-point-exits-without-saving-a-mark ()
   "Searching for the symbol at point must not save ISEARCH's own mark.
@@ -17062,6 +17074,45 @@ reported about a mark being saved."
       (should (eq 19 (mark t)))
       (should-not mark-ring)
       (should-not (member message-mark-saved (meep-test-messages))))))
+
+(ert-deftest isearch-at-point-empty-region-is-a-no-op ()
+  "An empty active region has no text to search for.
+
+Verifies: the empty selection is reported and the search never runs, an
+empty search string prompts to edit the search instead of searching."
+  (let ((text-initial "abc xy abc"))
+
+    ;; Cursor: abc xy abc
+    ;;          ^ inside the word, where none of the word boundaries match.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-isearch-at-point-next))
+      (should (member "Empty selection" (meep-test-messages)))
+      ;; Nothing ran, the cursor & selection are as they were.
+      (should (equal '(1 . 1) (meep-test-point-line-column)))
+      (should (equal '(1 . 1) (meep-test-mark-line-column)))
+      (should (region-active-p)))
+
+    ;; A region with text is unaffected.
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-isearch-at-point-next))
+      (should (equal "bc\\_>" isearch-string))
+      ;; The "bc" of the second "abc" is selected.
+      (should (equal 'visual (bray-state)))
+      (should (equal '(1 . 10) (meep-test-point-line-column)))
+      (should (equal '(1 . 8) (meep-test-mark-line-column)))
+      (should (equal "bc" (meep-test-region-as-string))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Miscellaneous
