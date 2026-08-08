@@ -2652,8 +2652,8 @@ Used for `meep-region-mark-bounds-of-char-inner' and
 While this is typically used for brackets and quotes,
 multi-character pairs are also supported.
 
-Used for `meep-region-mark-bounds-of-char-inner-contextual' and
-`meep-region-mark-bounds-of-char-outer-contextual'."
+Used for `meep-region-mark-bounds-of-char-contextual-inner' and
+`meep-region-mark-bounds-of-char-contextual-outer'."
   :type '(repeat (cons string string)))
 
 (defcustom meep-bounds-for-inner-comment nil
@@ -6139,7 +6139,7 @@ Return non-nil on success."
   (meep--isearch-repeat-impl (- arg)))
 
 (defun meep--isearch-bounds-at-point-impl ()
-  "Return the region for `meep-isearch-next-at-point' to use."
+  "Return the region for `meep-isearch-at-point-next' to use."
   (cond
    ((region-active-p)
     ;; TODO: don't attempt multi-line.
@@ -6692,7 +6692,7 @@ operators for them, see `meep--surround-recognition-pairs'."
   "When non-nil, surround delete and replace mark the affected content.
 Point is left just inside the opening delimiter and the mark just inside the
 closing delimiter - without activating the region - so the operated-on content
-spans point..mark and can be re-selected (e.g. with `meep-region-activate').
+spans point..mark and can be re-selected (e.g. with `meep-region-activate-or-reverse').
 When nil, point and the mark are left where they were before the command.
 
 Applies to the region / point verbs only.  The line-wise and rectangle verbs
