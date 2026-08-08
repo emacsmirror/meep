@@ -6045,6 +6045,11 @@ Useful for pasting while stepping over search results."
   ;; `isearch-other-end' may still point into the buffer of an earlier search.
   (and isearch-success (null isearch-error) isearch-other-end t))
 
+(defun meep--isearch-match-empty-p ()
+  "Return non-nil when the last ISEARCH match was empty."
+  (declare (important-return-value t))
+  (and isearch-match-data (eq (car isearch-match-data) (cadr isearch-match-data))))
+
 (defun meep--isearch-handle-done (had-region)
   "Handle the result of ISEARCH being done.
 
@@ -6097,6 +6102,9 @@ Return non-nil on success."
         ;; Opinionated, but ISEARCH is not that usable without these.
         (isearch-wrap-pause 'no-ding)
         (isearch-repeat-on-direction-change t)
+        ;; Set as `isearch-beginning-of-buffer' does, reversing direction moves
+        ;; point onto `isearch-other-end' which ISEARCH takes for an empty match.
+        (isearch-just-started (not (meep--isearch-match-empty-p)))
         (had-region (region-active-p))
         (pos-init (point)))
 
