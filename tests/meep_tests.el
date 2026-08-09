@@ -431,6 +431,17 @@ FUNCTION is removed from HOOK when BODY completes, even if an error occurs."
            ,@body)
        (remove-hook ,hook ,function))))
 
+(defmacro meep-test--with-no-ding (&rest body)
+  "Evaluate BODY, checking `ding' was never called."
+  (declare (indent 0))
+  ;; `ding' raises an error while a keyboard macro runs, ending it before the
+  ;; caller can handle the failure, so commands must report one instead.
+  (let ((called (make-symbol "called")))
+    `(let ((,called nil))
+       (meep-test--with-advice ((#'ding :override (lambda (&rest _args) (setq ,called t))))
+         ,@body)
+       (should-not ,called))))
+
 (defmacro simulate-input-deferred-eval (&rest keys)
   "Simulate input with deferred state validation at execution time.
 
@@ -17119,78 +17130,74 @@ reported about a mark being saved."
 
 Verifies: ISEARCH takes point being moved onto `isearch-other-end' for
 sitting on an empty match, ringing the bell at the buffer edge and
-stepping over an adjacent match.  The bell ends a keyboard macro."
-  (let ((ding-count 0))
-    (meep-test--with-advice ((#'ding
-                              :override (lambda (&rest _args) (setq ding-count (1+ ding-count)))))
+stepping over an adjacent match."
+  (meep-test--with-no-ding
 
-      ;; Wrap forwards onto the match at `point-min', then reverse.
-      ;; Cursor: foo bar foo baz
-      ;;                     ^
-      (with-meep-test "foo bar foo baz"
-        (text-mode)
-        (bray-mode 1)
-        (simulate-input-for-meep
-          [?\C-u ?1 ?2]
-          '(:state normal :command meep-move-char-next))
-        (should (eq 13 (point)))
-        (meep-test-isearch-state-set "foo")
-        ;; Nothing ahead of the cursor, wrapping lands on the first match.
-        (simulate-input-for-meep
-          '(:state normal :command meep-isearch-repeat-next))
-        (should (eq 4 (point)))
-        (should (eq (point-min) (mark t)))
-        ;; Reversing reaches the last match.
-        (simulate-input-for-meep
-          '(:state visual :command meep-isearch-repeat-prev))
-        (should (eq 9 (point)))
-        (should (eq 12 (mark t))))
+    ;; Wrap forwards onto the match at `point-min', then reverse.
+    ;; Cursor: foo bar foo baz
+    ;;                     ^
+    (with-meep-test "foo bar foo baz"
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        [?\C-u ?1 ?2]
+        '(:state normal :command meep-move-char-next))
+      (should (eq 13 (point)))
+      (meep-test-isearch-state-set "foo")
+      ;; Nothing ahead of the cursor, wrapping lands on the first match.
+      (simulate-input-for-meep
+        '(:state normal :command meep-isearch-repeat-next))
+      (should (eq 4 (point)))
+      (should (eq (point-min) (mark t)))
+      ;; Reversing reaches the last match.
+      (simulate-input-for-meep
+        '(:state visual :command meep-isearch-repeat-prev))
+      (should (eq 9 (point)))
+      (should (eq 12 (mark t))))
 
-      ;; An adjacent match must not be stepped over.
-      ;; Cursor: foofoo
-      ;;          ^
-      (with-meep-test "foofoo"
-        (text-mode)
-        (bray-mode 1)
-        (simulate-input-for-meep
-          '(:state normal :command meep-move-char-next))
-        (meep-test-isearch-state-set "foo")
-        (simulate-input-for-meep
-          '(:state normal :command meep-isearch-repeat-next))
-        (should (eq 7 (point)))
-        (should (eq 4 (mark t)))
-        ;; The match before this one, not this one over again.
-        (simulate-input-for-meep
-          '(:state visual :command meep-isearch-repeat-prev))
-        (should (eq (point-min) (point)))
-        (should (eq 4 (mark t))))
+    ;; An adjacent match must not be stepped over.
+    ;; Cursor: foofoo
+    ;;          ^
+    (with-meep-test "foofoo"
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next))
+      (meep-test-isearch-state-set "foo")
+      (simulate-input-for-meep
+        '(:state normal :command meep-isearch-repeat-next))
+      (should (eq 7 (point)))
+      (should (eq 4 (mark t)))
+      ;; The match before this one, not this one over again.
+      (simulate-input-for-meep
+        '(:state visual :command meep-isearch-repeat-prev))
+      (should (eq (point-min) (point)))
+      (should (eq 4 (mark t))))
 
-      ;; Reversing the region puts the cursor on `isearch-other-end', where
-      ;; the match must still be read from `isearch-match-data', not point.
-      ;; Cursor: foo bar foo
-      ;;                    ^
-      (with-meep-test "foo bar foo"
-        (text-mode)
-        (bray-mode 1)
-        (simulate-input-for-meep
-          '(:state normal :command meep-move-line-end))
-        (should (eq (point-max) (point)))
-        (meep-test-isearch-state-set "foo")
-        ;; Nothing ahead of the cursor, wrapping lands on the first match.
-        (simulate-input-for-meep
-          '(:state normal :command meep-isearch-repeat-next))
-        (should (eq 4 (point)))
-        (should (eq (point-min) (mark t)))
-        (simulate-input-for-meep
-          '(:state visual :command meep-region-activate-and-reverse))
-        (should (eq (point-min) (point)))
-        ;; Reversing reaches the last match.
-        (simulate-input-for-meep
-          '(:state visual :command meep-isearch-repeat-prev))
-        (should (eq 9 (point)))
-        (should (eq 12 (mark t)))))
-
-    (should (eq 0 ding-count))))
+    ;; Reversing the region puts the cursor on `isearch-other-end', where
+    ;; the match must still be read from `isearch-match-data', not point.
+    ;; Cursor: foo bar foo
+    ;;                    ^
+    (with-meep-test "foo bar foo"
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-end))
+      (should (eq (point-max) (point)))
+      (meep-test-isearch-state-set "foo")
+      ;; Nothing ahead of the cursor, wrapping lands on the first match.
+      (simulate-input-for-meep
+        '(:state normal :command meep-isearch-repeat-next))
+      (should (eq 4 (point)))
+      (should (eq (point-min) (mark t)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-activate-and-reverse))
+      (should (eq (point-min) (point)))
+      ;; Reversing reaches the last match.
+      (simulate-input-for-meep
+        '(:state visual :command meep-isearch-repeat-prev))
+      (should (eq 9 (point)))
+      (should (eq 12 (mark t))))))
 
 (ert-deftest isearch-at-point-empty-region-is-a-no-op ()
   "An empty active region has no text to search for.
