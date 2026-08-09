@@ -164,6 +164,48 @@ For a test sweeping many modes as data rather than exercising one."
 (meep-bootstrap-once)
 
 ;; ---------------------------------------------------------------------------
+;; Let Bind From Keywords
+
+(defun meep-test--keywords-example (&rest keywords)
+  "Return the values bound from KEYWORDS, for testing the binding macro."
+  (meep--let-bind-from-keywords ((wrap t) (limit 10)) (list wrap limit)))
+
+(ert-deftest let-bind-from-keywords-defaults ()
+  "No keywords leaves every default in place."
+  (should (equal (list t 10) (meep-test--keywords-example))))
+
+(ert-deftest let-bind-from-keywords-override ()
+  "A keyword replaces the default of the matching binding."
+  (should (equal (list nil 10) (meep-test--keywords-example :wrap nil)))
+  (should (equal (list t 5) (meep-test--keywords-example :limit 5)))
+  (should (equal (list nil 5) (meep-test--keywords-example :wrap nil :limit 5)))
+  ;; The order keywords are passed in doesn't matter.
+  (should (equal (list nil 5) (meep-test--keywords-example :limit 5 :wrap nil))))
+
+(ert-deftest let-bind-from-keywords-unknown ()
+  "A keyword without a binding is an error."
+  (should-error (meep-test--keywords-example :bogus 1) :type 'error))
+
+(ert-deftest let-bind-from-keywords-not-a-keyword ()
+  "A property that isn't a keyword is an error, before & after a valid one."
+  (should-error (meep-test--keywords-example 'wrap nil) :type 'error)
+  (should-error (meep-test--keywords-example :wrap nil 'limit 5) :type 'error))
+
+(ert-deftest let-bind-from-keywords-value-missing ()
+  "A keyword without a value is an error, not a silent nil."
+  (should-error (meep-test--keywords-example :wrap) :type 'error)
+  (should-error (meep-test--keywords-example :wrap nil :limit) :type 'error))
+
+(defun meep-test--keywords-shadow (&rest keywords)
+  "Return the value bound from KEYWORDS by a binding of the same name."
+  (meep--let-bind-from-keywords ((keywords 'default)) keywords))
+
+(ert-deftest let-bind-from-keywords-binding-named-keywords ()
+  "A binding named `keywords' doesn't shadow the property list it reads."
+  (should (eq 'default (meep-test--keywords-shadow)))
+  (should (eq 'passed (meep-test--keywords-shadow :keywords 'passed))))
+
+;; ---------------------------------------------------------------------------
 ;; P-list Remove
 
 (ert-deftest plist-remove-empty ()

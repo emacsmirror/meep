@@ -119,6 +119,41 @@ This must be set by commands that pass the:
 ;; ---------------------------------------------------------------------------
 ;; Internal Functions: Generic Helpers
 
+(defmacro meep--let-bind-from-keywords (bindings &rest body)
+  "Bind BINDINGS from the `keywords' property list, then evaluate BODY.
+
+BINDINGS take the form `let' uses, `(SYMBOL DEFAULT)', where SYMBOL is
+read from the `:SYMBOL' property when the caller passes one.
+For use by functions taking a `&rest keywords' argument.
+
+Signal an error for a property that isn't a keyword, has no value,
+or that BINDINGS doesn't declare."
+  (declare (indent 1))
+  (let ((plist (make-symbol "plist"))
+        (keyw (make-symbol "keyw"))
+        (val (make-symbol "val"))
+        (cases nil))
+    (setq cases
+          (mapcar
+           (lambda (binding)
+             (let ((var (car binding)))
+               `(,(intern (concat ":" (symbol-name var))) (setq ,var ,val))))
+           bindings))
+    ;; Read `keywords' outside BINDINGS, a binding of that name would shadow it.
+    `(let ((,plist keywords))
+       (let ,bindings
+         (while ,plist
+           (let ((,keyw (pop ,plist)))
+             (unless (keywordp ,keyw)
+               (error "Expected a keyword, found %S" ,keyw))
+             (unless ,plist
+               (error "Keyword %S has no value" ,keyw))
+             (let ((,val (pop ,plist)))
+               (pcase ,keyw
+                 ,@cases
+                 (_ (error "Unknown keyword %S" ,keyw))))))
+         ,@body))))
+
 (defun meep--assert-unreachable ()
   "Raise an error."
   (error "Assertion, unreachable"))

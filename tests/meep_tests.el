@@ -673,23 +673,25 @@ Signals an error if no region is active."
     (error "No active region for `meep-test-region-as-string'"))
   (buffer-substring-no-properties (region-beginning) (region-end)))
 
-(defun meep-test-isearch-state-set (string regexp forward)
+(defun meep-test-isearch-state-set (string &rest keywords)
   "Set ISEARCH to search for STRING, as starting a search would.
-REGEXP sets `isearch-regexp', FORWARD the search direction."
-  ;; The match state must be cleared, not only the search string.  ISEARCH
-  ;; resumes relative to `isearch-other-end' and wraps based on
-  ;; `isearch-success', so a match left by an earlier test would change where
-  ;; a repeat starts.  These are global, `with-meep-test' does not reset them.
-  (setq isearch-string string)
-  (setq isearch-regexp regexp)
-  (setq isearch-forward forward)
-  (setq isearch-other-end nil)
-  (setq isearch-success t)
-  (setq isearch-error nil)
-  ;; Seed the state stack as `isearch-mode' does, `isearch-pop-state' fails
-  ;; on the nil state when a repeat is the first search of the session.
-  (setq isearch-cmds nil)
-  (isearch-push-state))
+KEYWORDS may contain :regexp non-nil to set `isearch-regexp' (nil by default),
+and :forward nil to search backwards (forwards by default)."
+  (meep--let-bind-from-keywords ((regexp nil) (forward t))
+    ;; The match state must be cleared, not only the search string.  ISEARCH
+    ;; resumes relative to `isearch-other-end' and wraps based on
+    ;; `isearch-success', so a match left by an earlier test would change where
+    ;; a repeat starts.  These are global, `with-meep-test' does not reset them.
+    (setq isearch-string string)
+    (setq isearch-regexp regexp)
+    (setq isearch-forward forward)
+    (setq isearch-other-end nil)
+    (setq isearch-success t)
+    (setq isearch-error nil)
+    ;; Seed the state stack as `isearch-mode' does, `isearch-pop-state' fails
+    ;; on the nil state when a repeat is the first search of the session.
+    (setq isearch-cmds nil)
+    (isearch-push-state)))
 
 (defmacro simulate-input (&rest keys)
   "Helper macro to simulate input using KEYS."
@@ -16897,7 +16899,7 @@ Verifies: isearch-repeat-next works with regex patterns."
       (should (equal 'normal (bray-state)))
       (should (equal ?f (char-after)))
       ;; Set up regex search state.
-      (meep-test-isearch-state-set "foo[0-9]+" t t)
+      (meep-test-isearch-state-set "foo[0-9]+" :regexp t)
       ;; Repeat search forward.
       (simulate-input-for-meep
         '(:state normal :command meep-isearch-repeat-next))
@@ -16934,7 +16936,7 @@ Verifies: isearch-repeat-prev works with regex patterns."
       (should (equal 'normal (bray-state)))
       (should (equal nil (char-after)))
       ;; Set up regex search state for backward search.
-      (meep-test-isearch-state-set "foo[0-9]+" t nil)
+      (meep-test-isearch-state-set "foo[0-9]+" :regexp t :forward nil)
       ;; Repeat search backward.
       (simulate-input-for-meep
         '(:state normal :command meep-isearch-repeat-prev))
@@ -16962,7 +16964,7 @@ Verifies: isearch-repeat-next/prev report success."
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
-      (meep-test-isearch-state-set "foo[0-9]+" t t)
+      (meep-test-isearch-state-set "foo[0-9]+" :regexp t)
       ;; Both matches, then a third that wraps back to the first.
       (should (meep-isearch-repeat-next 1))
       (should (meep-isearch-repeat-next 1))
@@ -16982,7 +16984,7 @@ Verifies: isearch-repeat-next/prev report failure."
     (with-meep-test text-initial
       (text-mode)
       (bray-mode 1)
-      (meep-test-isearch-state-set "nomatch" t t)
+      (meep-test-isearch-state-set "nomatch" :regexp t)
       (should-not (meep-isearch-repeat-next 1))
       (goto-char (point-max))
       (setq isearch-forward nil)
@@ -17132,7 +17134,7 @@ stepping over an adjacent match.  The bell ends a keyboard macro."
           [?\C-u ?1 ?2]
           '(:state normal :command meep-move-char-next))
         (should (eq 13 (point)))
-        (meep-test-isearch-state-set "foo" nil t)
+        (meep-test-isearch-state-set "foo")
         ;; Nothing ahead of the cursor, wrapping lands on the first match.
         (simulate-input-for-meep
           '(:state normal :command meep-isearch-repeat-next))
@@ -17152,7 +17154,7 @@ stepping over an adjacent match.  The bell ends a keyboard macro."
         (bray-mode 1)
         (simulate-input-for-meep
           '(:state normal :command meep-move-char-next))
-        (meep-test-isearch-state-set "foo" nil t)
+        (meep-test-isearch-state-set "foo")
         (simulate-input-for-meep
           '(:state normal :command meep-isearch-repeat-next))
         (should (eq 7 (point)))
@@ -17173,7 +17175,7 @@ stepping over an adjacent match.  The bell ends a keyboard macro."
         (simulate-input-for-meep
           '(:state normal :command meep-move-line-end))
         (should (eq (point-max) (point)))
-        (meep-test-isearch-state-set "foo" nil t)
+        (meep-test-isearch-state-set "foo")
         ;; Nothing ahead of the cursor, wrapping lands on the first match.
         (simulate-input-for-meep
           '(:state normal :command meep-isearch-repeat-next))
@@ -19348,6 +19350,7 @@ Verifies: the binding is found even though `TAB' is not the newest key."
 (provide 'meep_tests)
 ;; Local Variables:
 ;; fill-column: 99
+;; elisp-autofmt-load-packages-local: ("./../meep.el")
 ;; indent-tabs-mode: nil
 ;; End:
 ;;; meep_tests.el ends here
