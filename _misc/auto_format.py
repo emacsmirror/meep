@@ -30,6 +30,12 @@ _FORMAT_ELISP = """\
   (setq make-backup-files nil)
   (setq create-lockfiles nil)
   (setq buffer-undo-list t)
+  ;; Definitions are only taken from packages this session already loaded,
+  ;; a batch session loads none so macro indentation would be lost.
+  ;; Entries beginning with "." are buffer relative paths, not packages.
+  (dolist (pkg elisp-autofmt-load-packages-local)
+    (unless (string-prefix-p "." pkg)
+      (require (intern pkg) nil t)))
   (elisp-autofmt-buffer)
   (unless (string-equal orig (buffer-string))
     (save-buffer)
