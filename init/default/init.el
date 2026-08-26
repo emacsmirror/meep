@@ -38,7 +38,7 @@
 ;; +-------------+-------------+-------------+-------------+-------------+  +-------------+-------------+-------------+-------------+-------------+-------------+
 ;; | Repeat      | CopyKillRing| CutKillRing | YankKillRing| Surround... |  | MarkExpand  | SwapPtMark  | SwapPtMotion| MarkBoundsIn| ClipToReg   | JumpToReg   |
 ;; | Free:S      | CopyClip:S  | CutClip:S   | PasteClip:S | SurrLine:S..|  | MarkShrink:S|             |             | MarkBounds:S| PointToReg:S| MacroRec:S  |
-;; |             | CopyToIns/s | CutToIns/s  |YankKillCh/s |             |  |             |             |             |             |             | Fill&Move/s |
+;; |             | CopyToIns/s | CutToIns/s  |YankKillCh/s |             |  |             | Narrow/s    | Widen/s     |             |             | Fill&Move/s |
 ;; |             |             |             |             |             |  |             | AvyNext/f   | AvyPrev/f   |             |             |             |
 ;; |             |             |             |             |             |  |             |             |             |             |             |             |
 ;; |            q|            w|            e|            r|            t|  |            y|            u|            i|            o|            p|            \|
@@ -223,10 +223,12 @@
 
       '("u" . meep-region-activate-and-reverse)
       (cons (concat my-find "u") 'avy-goto-symbol-1-below)
+      (cons (concat my-ex "u") 'meep-restriction-narrow)
 
       '("i" . meep-region-activate-and-reverse-motion)
       '("I" . my-key-free)
       (cons (concat my-find "i") 'avy-goto-symbol-1-above)
+      (cons (concat my-ex "i") 'meep-restriction-widen)
 
       '("o" . meep-region-mark-bounds-of-char-inner)
       '("O" . meep-region-mark-bounds-of-char-outer)
@@ -416,6 +418,9 @@
 ;; Don't nag on use of the inactive region.
 (put 'upcase-region 'disabled nil)
 (put 'downcase-region 'disabled nil)
+
+;; Don't nag on narrowing, it's bound to a key.
+(put 'narrow-to-region 'disabled nil)
 
 (when my-meep-is-test-env
   ;; Just avoid added overhead.

@@ -267,6 +267,7 @@ Also suppresses minibuffer prompts from interactive specs."
       meep-region-syntax-expand
       meep-region-to-secondary-selection
       meep-region-toggle
+      meep-restriction-widen
       meep-secondary-selection-jump-to
       meep-space-shrink-contextual
       meep-transpose
@@ -315,6 +316,7 @@ Also suppresses minibuffer prompts from interactive specs."
       meep-region-syntax-expand
       meep-region-to-secondary-selection
       meep-region-toggle-rectangle
+      meep-restriction-narrow
       meep-secondary-selection-jump-to)))
   "Alist mapping states to lists of commands whose keys should be looked up.")
 
@@ -16745,6 +16747,31 @@ Verifies: region-expand-to-line-bounds extends to line boundaries."
       (should (equal nil (char-after)))
       ;; Buffer unchanged by region operation.
       (should (equal text-expected (buffer-string))))))
+
+(ert-deftest restriction-narrow-then-widen ()
+  "Narrow to the region, then widen.
+
+Verifies: restriction-narrow clears the region."
+  (let ((text-initial "one\ntwo\nthree\n"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (should (equal 'normal (bray-state)))
+      ;; Select the first line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-line-next))
+      (should (equal 'visual (bray-state)))
+      (should (equal "one\n" (meep-test-region-as-string)))
+      ;; Narrowing clears the region, falling back to normal state.
+      (simulate-input-for-meep
+        '(:state visual :command meep-restriction-narrow))
+      (should (equal 'normal (bray-state)))
+      (should (equal "one\n" (buffer-string)))
+      ;; Widen restores the whole buffer.
+      (simulate-input-for-meep
+        '(:state normal :command meep-restriction-widen))
+      (should (equal text-initial (buffer-string))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Insert: Completeness

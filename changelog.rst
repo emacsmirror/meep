@@ -5,6 +5,8 @@ Change Log
 
 - In development
 
+  - Add ``meep-restriction-narrow`` & ``meep-restriction-widen``
+    (narrowing to the region de-activates it).
   - ``meep-isearch-repeat-*`` and ``meep-isearch-at-point-*`` take a
     ``:wrap`` keyword (``:wrap nil`` fails at the last match instead of
     wrapping around the buffer).

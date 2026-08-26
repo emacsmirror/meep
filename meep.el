@@ -4756,6 +4756,25 @@ When USE-ADJUST-MARK is non-nil, use the previous point of adjust commands."
       nil))))
 
 ;; ---------------------------------------------------------------------------
+;; Buffer: Restriction
+
+;;;###autoload
+(defun meep-restriction-narrow ()
+  "Narrow to the current region, de-activating the mark."
+  (interactive)
+  (let ((bounds (meep--region-or-mark-bounds-or-error)))
+    (narrow-to-region (car bounds) (cdr bounds))
+    ;; Narrowing doesn't modify the buffer so the region would stay active,
+    ;; spanning the whole restriction once it has been set.
+    (setq deactivate-mark t)))
+
+;;;###autoload
+(defun meep-restriction-widen ()
+  "Remove the buffer restriction."
+  (interactive)
+  (widen))
+
+;; ---------------------------------------------------------------------------
 ;; Selection/Region: Secondary Selection
 
 (defcustom meep-region-swap-imply-region t
