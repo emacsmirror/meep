@@ -3388,8 +3388,8 @@ Verifies: error is signaled, buffer unchanged, `kill-ring' empty."
       (should-error-with-message
           (simulate-input-for-meep
             '(:state normal :command meep-clipboard-killring-cut))
-        'error
-        "The mark is not set now, so there is no region")
+        'user-error
+        "No mark set")
       ;; Kill-ring should remain empty.
       (should (null kill-ring))
       ;; Buffer should be unchanged.
@@ -3408,8 +3408,8 @@ Verifies: error is signaled, `kill-ring' remains empty."
       (should-error-with-message
           (simulate-input-for-meep
             '(:state normal :command meep-clipboard-killring-copy))
-        'error
-        "The mark is not set now, so there is no region")
+        'user-error
+        "No mark set")
       ;; Kill-ring should remain empty.
       (should (null kill-ring)))))
 

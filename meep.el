@@ -789,6 +789,19 @@ on point and do not use this, see `meep--surround-operate-region'."
          (let ((p (point)))
            (cons (min m p) (max m p))))))
 
+(defun meep--region-or-mark-bounds-or-error ()
+  "Return the active or implied region as `(BEG . END)'.
+Signals when no mark is set, for verbs that require a region."
+  (declare (important-return-value t))
+  (let ((range (meep--region-or-mark-bounds)))
+    (cond
+     (range
+      range)
+     (t
+      ;; Signal here rather than defer to `region-beginning', whose error depends
+      ;; on `mark-even-if-inactive': with no mark set it reports `mark-inactive'.
+      (user-error "No mark set")))))
+
 ;; NOTE: `region-beginning' & `region-end' are advised by `rectangle-mark-mode'
 ;; to return the rectangles upper-left & lower-right corners, and
 ;; `rectangle--region-end' places the lower-right with `move-to-column', which
@@ -10060,11 +10073,7 @@ This may be used when yanking."
   "Kill the current region.
 The region need not be active."
   (interactive "*")
-  (let* ((scope
-          (or (meep--region-or-mark-bounds)
-              ;; No mark set: `region-beginning' signals the standard "mark
-              ;; is not set" error, matching the prior behavior.
-              (cons (region-beginning) (region-end))))
+  (let* ((scope (meep--region-or-mark-bounds-or-error))
          (region-type (meep--state-region-type)))
     (meep--clipboard-killring-cut-or-copy (car scope) (cdr scope) region-type t)))
 
@@ -10073,11 +10082,7 @@ The region need not be active."
   "Add the current region to the `kill-ring'.
 The region need not be active."
   (interactive)
-  (let* ((scope
-          (or (meep--region-or-mark-bounds)
-              ;; No mark set: `region-beginning' signals the standard "mark
-              ;; is not set" error, matching the prior behavior.
-              (cons (region-beginning) (region-end))))
+  (let* ((scope (meep--region-or-mark-bounds-or-error))
          (region-type (meep--state-region-type)))
     (meep--clipboard-killring-cut-or-copy (car scope) (cdr scope) region-type nil)))
 
