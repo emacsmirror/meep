@@ -19568,6 +19568,28 @@ command with a `-' prefix, read as -1.  It resolves to `?-' via its
         [kp-subtract])
       (should (equal '(1 . 3) (meep-test-point-line-column))))))
 
+(ert-deftest digit-argument-repeat-after-register-macro ()
+  "Repeat a keyboard macro stored in a register.
+
+Running the macro enters a nested command loop, which must not clobber
+`last-command', otherwise the repeat has no command to run."
+  (let ((text-initial "abcdefghij")
+        ;; Isolate the register from other tests.
+        (register-alist nil))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; NOTE: `meep-register-kmacro-start-or-end' cannot be driven here, keys
+      ;; taken from a macro (`simulate-input') are never recorded into one.
+      (set-register ?a (kmacro (meep-test-key 'normal 'meep-move-char-next)))
+      ;; Run the macro (cursor on `b'), then repeat the jump 3 times (cursor on `e').
+      ;; The repeat re-uses register `a', no second prompt consumes input here.
+      (simulate-input-for-meep
+        '(:state normal :command meep-register-jump-to)
+        "a"
+        "3")
+      (should (equal '(1 . 4) (meep-test-point-line-column))))))
+
 (ert-deftest repeat-fu-upcase-region ()
   "Repeat `upcase-region' on a visual selection using repeat-fu.
 

@@ -5,6 +5,8 @@ Change Log
 
 - In development
 
+  - A numeric repeat of ``meep-register-jump-to`` re-uses the register
+    instead of prompting for it again.
   - A numeric repeat re-uses the character instead of prompting again
     (``meep-char-insert``, ``meep-char-replace``,
     ``meep-region-mark-bounds-of-char-{inner,outer}`` and

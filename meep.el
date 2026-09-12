@@ -6114,19 +6114,31 @@ see `meep-clipboard-killring-yank-pop-stack', which cycles the paste."
     (kmacro-start-macro nil))))
 
 ;;;###autoload
-(defun meep-register-jump-to (arg)
-  "Jump to a register, or run a macro stored in a register ARG times."
-  (interactive "p")
-  (let* ((reg (register-read-with-preview "Use register: "))
-         (val (get-register reg)))
+(defun meep-register-jump-to (arg reg)
+  "Jump to REG, or run a macro stored in REG ARG times.
+
+A numeric repeat re-uses the register instead of prompting for it again."
+  (interactive (list
+                (prefix-numeric-value current-prefix-arg)
+                (or
+                 ;; Another command running this one (a numeric repeat) takes the register
+                 ;; from the recorded call, `command-history' holds it because this spec
+                 ;; is a form, not a string.
+                 (unless (eq this-command 'meep-register-jump-to)
+                   (nth 2 (assq 'meep-register-jump-to command-history)))
+                 (register-read-with-preview "Use register: "))))
+  (let ((val (get-register reg)))
     (cond
      ;; Keyboard macro.
      ;; NOTE: `kmacro-p' isn't auto-loaded, a kmacro can only exist once
      ;; `kmacro' has loaded, so this is a load check, not a paranoid one.
      ((and (fboundp 'kmacro-p) (kmacro-p val))
-      (with-undo-amalgamate
-        (dotimes (_ (abs arg))
-          (register-val-jump-to val nil))))
+      ;; NOTE: `execute-kbd-macro' runs a nested command loop which clears
+      ;; `this-command', leaving `last-command' nil for the next command.
+      (let ((this-command this-command))
+        (with-undo-amalgamate
+          (dotimes (_ (abs arg))
+            (register-val-jump-to val nil)))))
      ;; Anything else.
      (t
       (register-val-jump-to val nil)))))
