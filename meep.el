@@ -248,6 +248,24 @@ Stop at the first detected overlap."
 ;;
 ;; Not specific to MEEP.
 
+(defun meep--interactive-char-or-repeat (cmd n prompt)
+  "Read a character for CMD with PROMPT, matching the `c' interactive code.
+The character is CMD's argument number N, counting from one.
+
+When another command runs CMD (a numeric repeat) the character is taken
+from the last call recorded in the variable `command-history',
+instead of prompting again."
+  (declare (important-return-value t))
+  (or (unless (eq this-command cmd)
+        (nth n (assq cmd command-history)))
+      (let ((ch (read-char (propertize prompt 'face 'minibuffer-prompt))))
+        ;; Clear the prompt, `read-char' leaves it shown.
+        (message nil)
+        ;; NOTE: `read-char' can return a non-character event, see: bug#8479.
+        (unless (characterp ch)
+          (error "Non-character input-event"))
+        ch)))
+
 (defun meep--indent-calc-in-region-from-first-non-blank-or-non-empty (beg end)
   "Return a string representing the text indenting this region.
 
@@ -2513,28 +2531,48 @@ Return non-nil on success."
 (defun meep-move-find-char-on-line-at-next (arg ch)
   "Find the next ARG char CH, read from minibuffer.
 Return non-nil on success."
-  (interactive "^p\ncFind Next:")
+  (interactive (progn
+                 (handle-shift-selection)
+                 (list
+                  (prefix-numeric-value current-prefix-arg)
+                  (meep--interactive-char-or-repeat
+                   'meep-move-find-char-on-line-at-next 2 "Find Next:"))))
   (meep--move-find-impl arg ch nil))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-at-prev (arg ch)
   "Find the previous ARG char CH, read from minibuffer.
 Return non-nil on success."
-  (interactive "^p\ncFind Prev:")
+  (interactive (progn
+                 (handle-shift-selection)
+                 (list
+                  (prefix-numeric-value current-prefix-arg)
+                  (meep--interactive-char-or-repeat
+                   'meep-move-find-char-on-line-at-prev 2 "Find Prev:"))))
   (meep--move-find-impl (- arg) ch nil))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-till-next (arg ch)
   "Find till the next char CH, ARG times.
 Return non-nil on success."
-  (interactive "^p\ncTill Next:")
+  (interactive (progn
+                 (handle-shift-selection)
+                 (list
+                  (prefix-numeric-value current-prefix-arg)
+                  (meep--interactive-char-or-repeat
+                   'meep-move-find-char-on-line-till-next 2 "Till Next:"))))
   (meep--move-find-impl arg ch t))
 
 ;;;###autoload
 (defun meep-move-find-char-on-line-till-prev (arg ch)
   "Find till the previous char CH, ARG times.
 Return non-nil on success."
-  (interactive "^p\ncTill Prev:")
+  (interactive (progn
+                 (handle-shift-selection)
+                 (list
+                  (prefix-numeric-value current-prefix-arg)
+                  (meep--interactive-char-or-repeat
+                   'meep-move-find-char-on-line-till-prev 2 "Till Prev:"))))
   (meep--move-find-impl (- arg) ch t))
 
 ;;;###autoload
@@ -3433,7 +3471,10 @@ A negative ARG positions point at the end of the region.
 
 Note that pressing Return instead of a character performs a contextual mark,
 finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
-  (interactive "cMark inner char:\np")
+  (interactive (list
+                (meep--interactive-char-or-repeat
+                 'meep-region-mark-bounds-of-char-inner 1 "Mark inner char:")
+                (prefix-numeric-value current-prefix-arg)))
   ;; NOTE: we could add useful features with other characters.
   (cond
    ((eq ch ?\r) ; RET.
@@ -3449,7 +3490,10 @@ A negative ARG positions point at the end of the region.
 
 Note that pressing Return instead of a character performs a contextual mark,
 finding the closest pair, see: `meep-match-bounds-of-char-contextual'."
-  (interactive "cMark outer char:\np")
+  (interactive (list
+                (meep--interactive-char-or-repeat
+                 'meep-region-mark-bounds-of-char-outer 1 "Mark outer char:")
+                (prefix-numeric-value current-prefix-arg)))
   ;; NOTE: we could add useful features with other characters.
   (cond
    ((eq ch ?\r) ; RET.
@@ -6643,7 +6687,9 @@ Leave the char-ring unmodified afterwards."
 ;;;###autoload
 (defun meep-char-replace (ch)
   "Read a character CH and replace the selection with it."
-  (interactive "*cReplace Char:")
+  (interactive (progn
+                 (barf-if-buffer-read-only)
+                 (list (meep--interactive-char-or-repeat 'meep-char-replace 1 "Replace Char:"))))
 
   (meep--char-is-ok-or-error "Replace" ch)
 
@@ -6752,7 +6798,11 @@ Leave the char-ring unmodified afterwards."
 (defun meep-char-insert (ch arg)
   "Read a character CH and insert it or replace the active region.
 Insert ARG times."
-  (interactive "*cInsert Char:\np")
+  (interactive (progn
+                 (barf-if-buffer-read-only)
+                 (list
+                  (meep--interactive-char-or-repeat 'meep-char-insert 1 "Insert Char:")
+                  (prefix-numeric-value current-prefix-arg))))
   ;; Sanitize numeric prefix.
   (when (< arg 0)
     (setq arg (abs arg)))

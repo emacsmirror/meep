@@ -5,6 +5,10 @@ Change Log
 
 - In development
 
+  - A numeric repeat re-uses the character instead of prompting again
+    (``meep-char-insert``, ``meep-char-replace``,
+    ``meep-region-mark-bounds-of-char-{inner,outer}`` and
+    ``meep-move-find-char-on-line-{at,till}-{next,prev}``).
   - Add ``meep-restriction-narrow`` & ``meep-restriction-widen``
     (narrowing to the region de-activates it).
   - ``meep-isearch-repeat-*`` and ``meep-isearch-at-point-*`` take a

@@ -444,6 +444,26 @@ FUNCTION is removed from HOOK when BODY completes, even if an error occurs."
          ,@body)
        (should-not ,called))))
 
+(defmacro meep-test--with-one-read-char (&rest body)
+  "Evaluate BODY where only the first `read-char' may prompt.
+A later prompt signals, instead of blocking to read input the keyboard
+macro driving BODY has already exhausted."
+  (declare (indent 0))
+  (let ((fn (make-symbol "fn"))
+        (count (make-symbol "count")))
+    `(let ((,fn (symbol-function 'read-char))
+           (,count 0))
+       (meep-test--with-advice ((#'read-char
+                                 :override
+                                 (lambda (&rest args)
+                                   (setq ,count (1+ ,count))
+                                   (cond
+                                    ((eq ,count 1)
+                                     (apply ,fn args))
+                                    (t
+                                     (error "Prompted again"))))))
+         ,@body))))
+
 (defmacro simulate-input-deferred-eval (&rest keys)
   "Simulate input with deferred state validation at execution time.
 
@@ -8799,6 +8819,50 @@ Verifies: selects innermost matching outer pair."
       (should (equal '(1 . 15) (meep-test-mark-line-column)))
       (should (equal "(b1 (c2) d3)" (meep-test-region-as-string))))))
 
+(ert-deftest selection-mark-bounds-of-char-inner-repeat-reuses-char ()
+  "A numeric repeat marks with the same character, without prompting again.
+
+Without the re-use the `2' would be read as the character to mark."
+  (let ((text-initial "((abc))")
+        ;; Isolate the recorded call from other tests.
+        (command-history nil))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move onto `a', inside both pairs.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next))
+      ;; Mark inner with `(' (marks `abc'), then repeat 2 levels out.
+      (meep-test--with-one-read-char
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-bounds-of-char-inner)
+          "("
+          "2"))
+      (should (equal "(abc)" (meep-test-region-as-string))))))
+
+(ert-deftest selection-mark-bounds-of-char-outer-repeat-reuses-char ()
+  "A numeric repeat marks with the same character, without prompting again.
+
+Without the re-use the `2' would be read as the character to mark."
+  (let ((text-initial "((abc))")
+        ;; Isolate the recorded call from other tests.
+        (command-history nil))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Move onto `a', inside both pairs.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next))
+      ;; Mark outer with `(' (marks `(abc)'), then repeat 2 levels out.
+      (meep-test--with-one-read-char
+        (simulate-input-for-meep
+          '(:state normal :command meep-region-mark-bounds-of-char-outer)
+          "("
+          "2"))
+      (should (equal "((abc))" (meep-test-region-as-string))))))
+
 (ert-deftest selection-mark-bounds-of-char-bracket-inside-string ()
   "Characterize: a bracket inside a string is counted by the text backend.
 
@@ -11384,6 +11448,46 @@ Verifies: find-at moves to just after the target character."
       (should (equal 'normal (bray-state)))
       (should (equal '(1 . 8) (meep-test-point-line-column)))
       (should (equal ?o (char-before))))))
+
+(ert-deftest movement-find-char-at-next-repeat-reuses-char ()
+  "A numeric repeat finds the same character, without prompting again.
+
+Without the re-use the `2' would be read as the character to find."
+  (let ((text-initial "xaxaxaxa")
+        ;; Isolate the recorded call from other tests.
+        (command-history nil))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Find `x' (lands after the first), then repeat for two more.
+      ;; Cursor: xaxaxaxa
+      ;;              ^
+      (meep-test--with-one-read-char
+        (simulate-input-for-meep
+          '(:state normal :command meep-move-find-char-on-line-at-next)
+          "x"
+          "2"))
+      (should (equal '(1 . 5) (meep-test-point-line-column))))))
+
+(ert-deftest movement-find-char-till-next-repeat-reuses-char ()
+  "A numeric repeat finds the same character, without prompting again.
+
+Without the re-use the `2' would be read as the character to find."
+  (let ((text-initial "xaxaxaxa")
+        ;; Isolate the recorded call from other tests.
+        (command-history nil))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Till `x' (lands before the first), then repeat for two more.
+      ;; Cursor: xaxaxaxa
+      ;;               ^
+      (meep-test--with-one-read-char
+        (simulate-input-for-meep
+          '(:state normal :command meep-move-find-char-on-line-till-next)
+          "x"
+          "2"))
+      (should (equal '(1 . 6) (meep-test-point-line-column))))))
 
 (ert-deftest movement-find-char-till-at-line-bound ()
   "Find till a character with no room to step over one.
@@ -17682,6 +17786,45 @@ Verifies: char-insert respects count argument."
       (should (equal text-expected (buffer-string)))
       (should (equal '(1 . 3) (meep-test-point-line-column)))
       (should (equal ?h (char-after))))))
+
+(ert-deftest char-insert-repeat-reuses-char ()
+  "A numeric repeat inserts the same character, without prompting again.
+
+Without the re-use the `3' would be read as the character to insert."
+  (let ((text-initial "hello")
+        (text-expected "XXXXhello")
+        ;; Isolate the recorded call from other tests.
+        (command-history nil))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Insert `X', then repeat it 3 times.
+      (meep-test--with-one-read-char
+        (simulate-input-for-meep
+          '(:state normal :command meep-char-insert)
+          "X"
+          "3"))
+      (should (equal text-expected (buffer-string)))
+      (should (equal '(1 . 4) (meep-test-point-line-column))))))
+
+(ert-deftest char-replace-repeat-reuses-char ()
+  "A numeric repeat replaces with the same character, without prompting again.
+
+Without the re-use the `=' would be read as the replacement character.
+The repeat replaces the same character as the command doesn't move point."
+  (let ((text-initial "hello")
+        (text-expected "Xello")
+        ;; Isolate the recorded call from other tests.
+        (command-history nil))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (meep-test--with-one-read-char
+        (simulate-input-for-meep
+          '(:state normal :command meep-char-replace)
+          "X"
+          "="))
+      (should (equal text-expected (buffer-string))))))
 
 (ert-deftest char-insert-replace-selection ()
   "Replace selection with character.
