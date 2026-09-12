@@ -19388,6 +19388,25 @@ to `?+' via its `ascii-character' property."
         [kp-add])
       (should (equal '(1 . 4) (meep-test-point-line-column))))))
 
+(ert-deftest digit-argument-repeat-error-no-command ()
+  "Repeating with no last command reports an error.
+
+`last-command' is nil before anything runs, and after a command that runs
+a nested command loop such as jumping to a register holding a macro."
+  (let ((text-initial "abcdefghij"))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (setq last-command nil)
+      (should-error-with-message
+          (simulate-input-for-meep
+            "5")
+        'user-error
+        "No command to repeat")
+      ;; Buffer and point are unchanged.
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(1 . 0) (meep-test-point-line-column))))))
+
 (ert-deftest digit-argument-repeat-kp-minus ()
   "Repeat in the negative direction using the keypad-subtract key.
 

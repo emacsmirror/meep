@@ -6031,6 +6031,10 @@ see `meep-clipboard-killring-yank-pop-stack', which cycles the paste."
             (t
              (setq meep--numeric-last-prefix-arg last-prefix-arg)))))
       (ignore local-last-prefix-arg)
+      ;; Nil when nothing ran before, or after a command that runs a nested
+      ;; command loop (`execute-kbd-macro') which clears `this-command'.
+      (unless (commandp local-last-command)
+        (user-error "No command to repeat"))
       ;; TODO: allow typing in larger numbers. 2,3 -> 23 not (2 + 3 = 5).
       ;; TODO: explore how negative should be applied to the existing "digit".
       ;; TODO: check fn using the previous prefix arg.
