@@ -37,6 +37,7 @@
 
 (declare-function apply-on-rectangle "rect")
 (declare-function extract-rectangle-bounds "rect")
+(declare-function kmacro-p "kmacro")
 (declare-function kmacro-ring-head "kmacro")
 
 ;; For `meep-repeat-fu-replay'.
@@ -6072,7 +6073,9 @@ see `meep-clipboard-killring-yank-pop-stack', which cycles the paste."
          (val (get-register reg)))
     (cond
      ;; Keyboard macro.
-     ((or (vectorp val) (functionp val))
+     ;; NOTE: `kmacro-p' isn't auto-loaded, a kmacro can only exist once
+     ;; `kmacro' has loaded, so this is a load check, not a paranoid one.
+     ((and (fboundp 'kmacro-p) (kmacro-p val))
       (with-undo-amalgamate
         (dotimes (_ (abs arg))
           (register-val-jump-to val nil))))
