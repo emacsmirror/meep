@@ -40,6 +40,7 @@
 (declare-function extract-rectangle-bounds "rect")
 (declare-function kmacro-p "kmacro")
 (declare-function kmacro-ring-head "kmacro")
+(declare-function rectangle--crutches "rect")
 
 ;; For `meep-repeat-fu-replay'.
 (declare-function repeat-fu-listener-register "repeat-fu")
@@ -51,6 +52,7 @@
 (declare-function with-command-redo-break "with-command-redo")
 
 ;; Must be forward declared for byte-compilation.
+(defvar rectangle--mark-crutches)
 (defvar which-key-this-command-keys-function)
 (defvar which-key-show-early-on-C-h)
 
@@ -10311,12 +10313,14 @@ The `:region-type' extends `meep--state-region-type' so a single value captures
 the whole selection: `rect-wise' or `line-wise' as that function reports, t for
 an active char-wise region (which it reports as nil), or nil when no region is
 active.  Point and mark are the raw values (not the normalized beginning/end) so
-each restore keeps the cursor on whichever end point was on."
+each restore keeps the cursor on whichever end point was on.  The `:crutches'
+are the columns a rectangle holds past the end of a short line."
   (declare (important-return-value t))
   (list
    :region-type (and (region-active-p) (or (meep--state-region-type) t))
    :point (point)
-   :mark (mark t)))
+   :mark (mark t)
+   :crutches (and (bound-and-true-p rectangle-mark-mode) (rectangle--crutches))))
 
 (defun meep--clipboard-killring-yank-cycle-region-restore (region)
   "Restore REGION captured by `meep--clipboard-killring-yank-cycle-region-capture'.
@@ -10340,7 +10344,12 @@ identically on every cycle step."
       (set-mark (plist-get region :mark))
       (cond
        ((eq region-type 'rect-wise)
-        (rectangle-mark-mode 1))
+        (rectangle-mark-mode 1)
+        ;; Enabling resets the crutches, restore them through `rect.el' internals as there is no
+        ;; public API, a change to their layout fails the rectangle "crutch" yank-cycle test.
+        (let ((crutches (plist-get region :crutches)))
+          (setq rectangle--mark-crutches (car crutches))
+          (set-window-parameter nil 'rectangle--point-crutches (cdr crutches))))
        (t
         (activate-mark)))
       ;; Keep the region active past the command loop, which deactivates the

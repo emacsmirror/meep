@@ -2168,6 +2168,59 @@ untouched."
       (should (equal text-expected (buffer-string)))
       (should (equal '("AB\nCD" "zz") kill-ring)))))
 
+(ert-deftest clipboard-killring-yank-pop-stack-cycle-rectangle-crutch-past-short-line ()
+  "A digit repeat keeps the column a rectangle holds past a short line.
+
+Workflow: copy rectangles 'AB' then 'CD', mark column 9, then move down with
+`next-line', which `rectangle-mark-mode' remaps to keep the column past the end
+of the short line, then paste and press '1'.
+Verifies: the cycled paste replaces the selected (zero width) rectangle at
+column 9, without deleting the columns between the clamped point and the mark."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "CD\n"
+          "abcdefghij\n"
+          "kl\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "CD\n"
+          "abcdefghiABj\n"
+          "kl\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Copy rectangles AB & CD from lines 1 & 2.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-clipboard-killring-copy)
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-clipboard-killring-copy))
+      ;; Mark line 3 column 9, then move down onto the short line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-move-line-next)
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        '(:state visual :command next-line))
+      ;; The point clamps to the end of the short line, the crutch keeps column 9.
+      (should (equal '(4 . 2) (meep-test-point-line-column)))
+      ;; Paste CD, then cycle to AB.
+      (simulate-input-for-meep
+        '(:state visual :command meep-clipboard-killring-yank-pop-stack)
+        "1")
+      (should (equal text-expected (buffer-string))))))
+
 (ert-deftest clipboard-killring-yank-pop-stack-cycle-line-wise ()
   "Cycling a line-wise paste replaces the whole inserted line.
 
