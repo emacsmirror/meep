@@ -17657,6 +17657,106 @@ Verifies: moves selected text to last insert location, deleting original."
       (should (equal '(1 . 6) (meep-test-point-line-column)))
       (should (equal ?\s (char-after))))))
 
+(ert-deftest insert-into-last-copy-primary-selection ()
+  "Copy a region to the last insert point, setting PRIMARY to the region.
+
+Workflow: set the last insert point below, select a word, then copy it.
+Verifies: the PRIMARY selection is the selected word, not the span between the
+mark & the point moved to the insert point."
+  (let ((primary nil))
+    (with-meep-test "abcdef\nghijkl\nmnopqr\nXX"
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      (meep-test--with-primary-selection primary
+        ;; Select "bcd" on line 1.
+        (simulate-input-for-meep
+          [?\C-u ?3]
+          '(:state normal :command meep-move-line-prev)
+          '(:state normal :command meep-move-char-next)
+          '(:state normal :command meep-region-toggle)
+          [?\C-u ?3]
+          '(:state visual :command meep-move-char-next))
+        (should (equal "bcd" (meep-test-region-as-string)))
+        (should-not primary)
+        (simulate-input-for-meep
+          '(:state visual :command meep-insert-into-last-copy))
+        (should (equal '("bcd") primary))))))
+
+(ert-deftest insert-into-last-move-inactive-region-primary-selection ()
+  "Move the inactive region to the last insert point.
+
+Workflow: set the last insert point below, select a word then de-activate the
+region, then move it.
+Verifies: the move doesn't set PRIMARY and the inactive region's text isn't left
+in `saved-region-selection', which the function `deactivate-mark' only uses (and
+clears) for an active region."
+  (let ((primary nil)
+        (saved-region-selection nil))
+    (with-meep-test "abcdef\nghijkl\nmnopqr\nXX"
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      (meep-test--with-primary-selection primary
+        ;; Select "bcd" on line 1, then de-activate it.
+        (simulate-input-for-meep
+          [?\C-u ?3]
+          '(:state normal :command meep-move-line-prev)
+          '(:state normal :command meep-move-char-next)
+          '(:state normal :command meep-region-toggle)
+          [?\C-u ?3]
+          '(:state visual :command meep-move-char-next)
+          '(:state visual :command meep-region-toggle))
+        (should-not (region-active-p))
+        ;; De-activating the region sets PRIMARY.
+        (should (equal '("bcd") primary))
+        (simulate-input-for-meep
+          '(:state normal :command meep-insert-into-last-move))
+        (should (equal "aef\nghijkl\nmnopqr\nbcdXX" (buffer-string)))
+        (should (equal '("bcd") primary))
+        (should-not saved-region-selection)))))
+
+(ert-deftest insert-into-last-copy-no-selection-display ()
+  "Copy a region to the last insert point when selections can't be displayed.
+
+Workflow: set the last insert point below, select a word in batch mode, then
+copy it.
+Verifies: the region's text isn't left in `saved-region-selection', which the
+function `deactivate-mark' only uses (and clears) when selections can be
+displayed."
+  (let ((saved-region-selection nil))
+    (with-meep-test "abcdef\nghijkl\nmnopqr\nXX"
+      (text-mode)
+      (bray-mode 1)
+      (should-not (display-selections-p))
+      ;; Set the last insert point.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      ;; Select "bcd" on line 1, then copy it.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle)
+        [?\C-u ?3]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-insert-into-last-copy))
+      (should (equal "abcdef\nghijkl\nmnopqr\nbcdXX" (buffer-string)))
+      (should-not saved-region-selection))))
+
 (ert-deftest insert-into-last-copy-rectangle ()
   "Copy a rectangle to the last insert point.
 

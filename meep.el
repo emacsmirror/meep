@@ -9884,6 +9884,9 @@ When MOVE is non-nil, delete the original text."
               (meep--rectangle-insert-lines lines))))))
       t)
      (t
+      ;; Called in each branch: above the `cond' it would also run for the early exits,
+      ;; below them it would need a nested `cond'.
+      (meep--region-save-selection)
       ;; Intentionally use the region even if it's not active.
       (let* ((beg (region-beginning))
              (end (region-end))
