@@ -10074,21 +10074,14 @@ The `kill-ring' and its pointer are left untouched."
      ;; Rectangle paste.
      ((eq region-type 'rect-wise)
       (when (region-active-p)
-        ;; Important for the point to be at the start.
-        ;; So pasting replaces this region.
-        ;; This is needed for both `line-wise' and `rect-wise' paste.
-        (when (< (mark t) (point))
-          (let ((pos-orig (point)))
-            (goto-char (mark t))
-            (meep--set-marker pos-orig)))
-
         (cond
          ((bound-and-true-p rectangle-mark-mode)
-          (deactivate-mark t)
-          (delete-rectangle (region-beginning) (region-end)))
+          (meep--region-delete-rectangle-for-yank))
          (t
           (let ((bounds (cons (region-beginning) (region-end))))
             (deactivate-mark t)
+            ;; Paste from the start, so pasting replaces this region.
+            (goto-char (car bounds))
             ;; Deleting the region doesn't work so nicely with block pasting.
             ;; Instead, make each line blank, then the block paste replaces
             ;; the empty lines

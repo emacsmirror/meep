@@ -3274,6 +3274,46 @@ returns to normal state after copy."
         '(:state normal :command meep-clipboard-killring-yank-pop-stack))
       (should (equal text-expected (buffer-string))))))
 
+(ert-deftest clipboard-rectangle-paste-over-char-wise-region ()
+  "Rectangle paste over a char-wise region with the point after the mark.
+
+Workflow: copy 'AB/CD', select from line 3 into line 4, paste.
+Verifies: the region's text is removed, the block is inserted from the region's
+start, not from the point."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "CD\n"
+          "efgh\n"
+          "ijkl\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "CD\n"
+          "eAB\n"
+          "jCDkl\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Copy rectangle AB/CD from lines 1-2, columns 0-1.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-clipboard-killring-copy))
+      ;; Select from line 3 column 1 into line 4, then paste.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal text-expected (buffer-string))))))
+
 (ert-deftest clipboard-killring-yank-char-wise-over-rectangle ()
   "Yank char-wise text over a rectangle.
 
@@ -3314,6 +3354,49 @@ rectangle's upper-left corner."
         '(:state visual :command meep-move-line-next)
         '(:state visual :command meep-clipboard-killring-yank-pop-stack))
       (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest clipboard-killring-yank-rectangle-over-rectangle-crutch-past-short-line ()
+  "Yank a rectangle over a rectangle whose point column is held past a short line.
+
+Workflow: copy a rectangle, mark column 9, then move down with `next-line',
+which `rectangle-mark-mode' remaps to keep the column past the end of the short
+line, then yank.
+Verifies: the yank replaces the selected (zero width) rectangle at column 9,
+without deleting the columns between the clamped point and the mark."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "abcdefghij\n"
+          "kl\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "abcdefghiABj\n"
+          "kl\n")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Copy rectangle AB from line 1.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-clipboard-killring-copy))
+      ;; Mark line 2 column 9, then move down onto the short line.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-move-line-next)
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        '(:state visual :command next-line))
+      ;; The point clamps to the end of the short line, the crutch keeps column 9.
+      (should (equal '(3 . 2) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-clipboard-killring-yank-pop-stack))
       (should (equal text-expected (buffer-string))))))
 
 (ert-deftest clipboard-rectangle-single-column ()
