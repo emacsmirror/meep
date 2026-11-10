@@ -464,6 +464,19 @@ macro driving BODY has already exhausted."
                                      (error "Prompted again"))))))
          ,@body))))
 
+(defmacro meep-test--with-primary-selection (var &rest body)
+  "Evaluate BODY, pushing the text of each PRIMARY selection set onto VAR.
+The display is stubbed so deactivating the region sets PRIMARY in batch mode."
+  (declare (indent 1))
+  `(meep-test--with-advice ((#'display-selections-p :override (lambda (&rest _args) t))
+                            (#'gui-backend-selection-owner-p :override (lambda (&rest _args) t))
+                            (#'gui-set-selection
+                             :override
+                             (lambda (type data)
+                               (when (eq type 'PRIMARY)
+                                 (push (substring-no-properties data) ,var)))))
+     ,@body))
+
 (defmacro simulate-input-deferred-eval (&rest keys)
   "Simulate input with deferred state validation at execution time.
 
@@ -628,7 +641,10 @@ PLIST must contain exactly :state and :command keys."
     ;; Non-popping yank (not bound in init/default/init.el).
     (meep-clipboard-killring-yank . (normal))
     ;; Clipboard register commands.
-    (meep-clipboard-register-yank-lines . (normal visual)))
+    (meep-clipboard-register-yank-lines . (normal visual))
+    ;; Remapped by `rectangle-mark-mode' to motions that keep the column.
+    (next-line . (visual))
+    (previous-line . (visual)))
   "Commands needing test bindings, with list of states for each.
 Each entry is (COMMAND . STATES) where STATES is a list of state symbols.
 Commands get the same key in all specified states for consistency.")
@@ -3258,6 +3274,48 @@ returns to normal state after copy."
         '(:state normal :command meep-clipboard-killring-yank-pop-stack))
       (should (equal text-expected (buffer-string))))))
 
+(ert-deftest clipboard-killring-yank-char-wise-over-rectangle ()
+  "Yank char-wise text over a rectangle.
+
+Workflow: cut a word into the `kill-ring', select a rectangle spanning three
+rows, then yank.
+Verifies: only the rectangle's columns are removed, the text is inserted at the
+rectangle's upper-left corner."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "mnopqr"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "aXYef\n"
+          "gkl\n"
+          "mqr")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Insert "XY", reactivate the inserted region and cut it.
+      (simulate-input-for-meep
+        '(:state normal :command meep-insert)
+        "XY"
+        '(:state insert :command bray-state-stack-pop)
+        '(:state normal :command meep-region-activate-or-reverse)
+        '(:state visual :command meep-clipboard-killring-cut))
+      (should (equal text-initial (buffer-string)))
+      ;; Select columns 1..4 over all three rows, then yank.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?3]
+        '(:state visual :command meep-move-char-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-clipboard-killring-yank-pop-stack))
+      (should (equal 'normal (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
 (ert-deftest clipboard-rectangle-single-column ()
   "Single-column (1 char wide) rectangle: vertical strip of characters.
 
@@ -3729,11 +3787,10 @@ Verifies: user-error is raised, buffer unchanged."
 (ert-deftest clipboard-only-yank-rectangle-over-short-line ()
   "Yank over a rectangle whose last line is too short to reach its widest column.
 
-The system clipboard is plain text and cannot carry the rect-wise hint, so the
-region is replaced linearly, spanning the rectangles corners.
-Verifies: `region-beginning' & `region-end' are read here on purpose - the span
-starts at the rectangles left hand column, where the point & mark would start at
-whichever column the mark happens to hold and leave selected text behind."
+Workflow: mark column 9, then move down onto the short line with meep's motion,
+which clamps the point to the end of the line.
+Verifies: only the rectangle's columns are removed (the short line is left as-is),
+the text is inserted at the rectangle's upper-left corner."
   (let ((text-initial
          ;; format-next-line: off
          (concat
@@ -3742,7 +3799,8 @@ whichever column the mark happens to hold and leave selected text behind."
         (text-expected
          ;; format-next-line: off
          (concat
-          "abZ\n"))
+          "abZj\n"
+          "kl\n"))
         (interprogram-paste-function (lambda () "Z")))
     (with-meep-test text-initial
       (text-mode)
@@ -3755,6 +3813,155 @@ whichever column the mark happens to hold and leave selected text behind."
       ;; The point clamps to the end of the short line, the mark keeps column 9.
       (simulate-input-for-meep
         '(:state visual :command meep-move-line-next))
+      (simulate-input-for-meep
+        '(:state visual :command meep-clipboard-only-yank))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest clipboard-only-yank-rectangle-primary-selection ()
+  "Yank over a rectangle sets PRIMARY to the replaced rectangle.
+
+Workflow: select a rectangle spanning three rows, then yank.
+Verifies: the PRIMARY selection is the whole rectangle, not the part left
+between the point & mark once deleting moved the point."
+  (let ((primary nil)
+        (interprogram-paste-function (lambda () "Z")))
+    (with-meep-test "abcdef\nghijkl\nmnopqr"
+      (text-mode)
+      (bray-mode 1)
+      (meep-test--with-primary-selection primary
+        ;; Select columns 1..4 over all three rows.
+        (simulate-input-for-meep
+          '(:state normal :command meep-move-char-next)
+          '(:state normal :command meep-region-toggle-rectangle)
+          [?\C-u ?3]
+          '(:state visual :command meep-move-char-next)
+          [?\C-u ?2]
+          '(:state visual :command meep-move-line-next))
+        (should-not primary)
+        (simulate-input-for-meep
+          '(:state visual :command meep-clipboard-only-yank))
+        (should (equal '("bcd\nhij\nnop") primary))))))
+
+(ert-deftest clipboard-only-yank-rectangle-select-active-regions-only ()
+  "Yank over a rectangle when `select-active-regions' is `only'.
+
+Workflow: select a rectangle (not a temporary region), then yank.
+Verifies: the replaced text isn't left in `saved-region-selection', which the
+function `deactivate-mark' only uses (and clears) for a temporary region."
+  (let ((primary nil)
+        (saved-region-selection nil)
+        (select-active-regions 'only)
+        (interprogram-paste-function (lambda () "Z")))
+    (with-meep-test "abcdef\nghijkl\nmnopqr"
+      (text-mode)
+      (bray-mode 1)
+      (meep-test--with-primary-selection primary
+        (simulate-input-for-meep
+          '(:state normal :command meep-move-char-next)
+          '(:state normal :command meep-region-toggle-rectangle)
+          [?\C-u ?3]
+          '(:state visual :command meep-move-char-next)
+          '(:state visual :command meep-move-line-next)
+          '(:state visual :command meep-clipboard-only-yank))
+        (should (equal "aZef\ngkl\nmnopqr" (buffer-string)))
+        (should-not primary)
+        (should-not saved-region-selection)))))
+
+(ert-deftest clipboard-only-yank-rectangle-crutch-past-short-line ()
+  "Yank over a rectangle whose point column is held past the end of a short line.
+
+Workflow: mark column 9, then move down with `next-line', which
+`rectangle-mark-mode' remaps to keep the column past the end of the short line.
+Verifies: the text is inserted at the rectangle's column, not the column point
+is clamped to."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "kl\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "abcdefghiZj\n"
+          "kl\n"))
+        (interprogram-paste-function (lambda () "Z")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        '(:state visual :command next-line))
+      ;; The point clamps to the end of the short line, the crutch keeps column 9.
+      (should (equal '(2 . 2) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-clipboard-only-yank))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest clipboard-only-yank-rectangle-crutch-pads-short-first-line ()
+  "Yank over a rectangle whose first line is too short to reach its column.
+
+Workflow: mark column 9 on a long line, then move up with `previous-line', which
+`rectangle-mark-mode' remaps to keep the column past the end of the short line.
+Verifies: the short first line is padded with spaces so the text is inserted at
+the rectangle's column, not the end of the line."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "ab\n"
+          "abcdefghij\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "ab       Z\n"
+          "abcdefghij\n"))
+        (interprogram-paste-function (lambda () "Z")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        [?\C-u ?9]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        '(:state visual :command previous-line))
+      ;; The point clamps to the end of the short line, the crutch keeps column 9.
+      (should (equal '(1 . 2) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-clipboard-only-yank))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest clipboard-only-yank-rectangle-edge-within-tab ()
+  "Yank over a rectangle whose right edge falls within a TAB.
+
+Workflow: select columns 0..4 over three lines, the middle line has a TAB
+spanning column 4, then yank.
+Verifies: the TAB is split into spaces (as `delete-rectangle' does), text after
+the rectangle keeps its offset from the rectangle's edge."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "a\tb\n"
+          "abcdefghij"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "Zefghij\n"
+          "    b\n"
+          "efghij"))
+        (interprogram-paste-function (lambda () "Z")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?4]
+        '(:state visual :command meep-move-char-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-line-next))
+      (should (equal '(3 . 4) (meep-test-point-line-column)))
       (simulate-input-for-meep
         '(:state visual :command meep-clipboard-only-yank))
       (should (equal text-expected (buffer-string))))))
@@ -3934,6 +4141,53 @@ Verifies: active region is deleted and register content inserted in its place."
       ;; Yank as lines: active region should be replaced.
       (simulate-input-for-meep
         '(:state visual :command meep-clipboard-register-yank-lines))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest clipboard-register-yank-over-rectangle ()
+  "Register yank over a rectangle.
+
+Workflow: cut a word into register z, select a rectangle spanning three rows,
+then yank through the register map.
+Verifies: only the rectangle's columns are removed, the text is inserted at the
+rectangle's upper-left corner."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "mnopqr"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "aXYef\n"
+          "gkl\n"
+          "mqr")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Insert "XY", reactivate the inserted region, choose register z,
+      ;; and cut through the register map.
+      (simulate-input-for-meep
+        '(:state normal :command meep-insert)
+        "XY"
+        '(:state insert :command bray-state-stack-pop)
+        '(:state normal :command meep-region-activate-or-reverse)
+        '(:state visual :command meep-clipboard-register-actions)
+        "z"
+        (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-cut))
+      (should (equal text-initial (buffer-string)))
+      ;; Select columns 1..4 over all three rows, then yank through the register map.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?3]
+        '(:state visual :command meep-move-char-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-clipboard-register-actions)
+        "z"
+        (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-yank))
+      (should (equal 'normal (bray-state)))
       (should (equal text-expected (buffer-string))))))
 
 ;; ---------------------------------------------------------------------------

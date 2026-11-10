@@ -36,6 +36,7 @@
 (declare-function bray-state-stack-push "bray")
 
 (declare-function apply-on-rectangle "rect")
+(declare-function delete-rectangle-line "rect")
 (declare-function extract-rectangle-bounds "rect")
 (declare-function kmacro-p "kmacro")
 (declare-function kmacro-ring-head "kmacro")
@@ -600,12 +601,51 @@ boundary between them."
   (declare (important-return-value t))
   (extract-rectangle-bounds beg end))
 
+(defun meep--region-save-selection ()
+  "Save the region's text for the function `deactivate-mark' to set as PRIMARY.
+Call before editing or moving point away from the region."
+  ;; Emacs saves it on the first edit, wherever point is by then.  Save only
+  ;; when `deactivate-mark' uses (and clears) it, else it outlives the command.
+  (when (and (null saved-region-selection)
+             (cond
+              ((eq select-active-regions 'only)
+               (eq (car-safe transient-mark-mode) 'only))
+              (t
+               select-active-regions))
+             ;; Like the save on edit (unlike `deactivate-mark'), skip the `dont-save' check,
+             ;; since `deactivate-mark' is nil at command start and edits set it to t.
+             (region-active-p) (display-selections-p))
+    (setq saved-region-selection (funcall region-extract-function nil))))
+
 (defun meep--region-delete-for-yank ()
-  "Delete the active region, leaving point where yanked text replaces it."
-  (let ((beg (region-beginning))
-        (end (region-end)))
+  "Delete the active region, leaving point where yanked text replaces it.
+A rectangle deletes only its columns."
+  (cond
+   ((bound-and-true-p rectangle-mark-mode)
+    (meep--region-delete-rectangle-for-yank))
+   (t
+    (let ((beg (region-beginning))
+          (end (region-end)))
+      (deactivate-mark t)
+      (delete-region beg end)))))
+
+(defun meep--region-delete-rectangle-for-yank ()
+  "Delete the active rectangle's columns, leaving point at its upper-left corner.
+A first line too short to reach the corner is padded."
+  (meep--region-save-selection)
+  ;; Inline `delete-rectangle' to take the corner from its own pass, which
+  ;; honors the "crutches" holding a column past the end of a short line.
+  (let ((pos nil)
+        (indent-tabs-mode nil))
+    (apply-on-rectangle
+     (lambda (col-beg col-end)
+       (unless pos
+         (move-to-column col-beg t)
+         (setq pos (point)))
+       (delete-rectangle-line col-beg col-end nil))
+     (meep--region-point-mark-beg) (meep--region-point-mark-end))
     (deactivate-mark t)
-    (delete-region beg end)))
+    (goto-char pos)))
 
 (defun meep--columns-from-point-range (beg end)
   "Calculate the column offset between points BEG and END.
@@ -848,8 +888,8 @@ Signals when no mark is set, for verbs that require a region."
 ;;
 ;; Use these wherever the columns matter - `apply-on-rectangle' and anything
 ;; deriving a column from the result.  Not for a flat span over a rectangle,
-;; which wants the corners instead: see `meep--clipboard-only-yank-impl', where
-;; starting from the mark would leave selected text behind.
+;; which wants the corners instead, since starting from the mark could leave
+;; selected text behind.
 
 (defun meep--region-point-mark-beg ()
   "Return the position of the beginning of the region from the point & mark.
