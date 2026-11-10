@@ -603,6 +603,38 @@ boundary between them."
   (declare (important-return-value t))
   (extract-rectangle-bounds beg end))
 
+(defun meep--rectangle-insert-lines (lines)
+  "Insert LINES as a rectangle with its upper-left corner at point.
+Like `insert-rectangle' without pushing the mark."
+  (let ((col (current-column)))
+    (insert-for-yank (car lines))
+    (dolist (line (cdr lines))
+      (forward-line 1)
+      (unless (bolp)
+        (insert ?\n))
+      (move-to-column col t)
+      (insert-for-yank line))))
+
+(defun meep--yank-string-rectangle-without-push-mark (str)
+  "Return a copy of STR where rectangles insert without pushing the mark.
+Each `rectangle--insert-for-yank' yank-handler is replaced with
+`meep--rectangle-insert-lines'."
+  (declare (important-return-value t))
+  ;; Copy even without a rectangle, the cost is negligible next to inserting STR.
+  (let ((str (copy-sequence str))
+        (beg 0))
+    (while beg
+      (let ((yank-handler (get-text-property beg 'yank-handler str))
+            (end (next-single-property-change beg 'yank-handler str)))
+        (when (eq (car yank-handler) 'rectangle--insert-for-yank)
+          (put-text-property beg
+                             (or end (length str))
+                             'yank-handler
+                             (cons #'meep--rectangle-insert-lines (cdr yank-handler))
+                             str))
+        (setq beg end)))
+    str))
+
 (defun meep--region-save-selection ()
   "Save the region's text for the function `deactivate-mark' to set as PRIMARY.
 Call before editing or moving point away from the region."
@@ -10097,9 +10129,9 @@ The `kill-ring' and its pointer are left untouched."
                     (unless (zerop (forward-line 1))
                       (setq keep-searching nil))))))))))
 
-      ;; Note, no need to set the marker.
-      (let ((lines (string-split text "\n")))
-        (insert-rectangle lines)))
+      (let ((pos-init (point)))
+        (meep--rectangle-insert-lines (string-split text "\n"))
+        (meep--set-marker pos-init)))
 
      ((or (null region-type) (eq region-type 'line-wise))
       ;; Ignore the text's region type if we already have an active region.
@@ -10115,7 +10147,7 @@ The `kill-ring' and its pointer are left untouched."
 
       (let ((pos-init (point)))
         ;; TODO: there may be aspects of `yank' we want to copy.
-        (insert-for-yank text)
+        (insert-for-yank (meep--yank-string-rectangle-without-push-mark text))
         (meep--set-marker pos-init)))
      (t
       ;; Internal error.
@@ -10709,8 +10741,17 @@ When LINE-WISE is non-nil and there is no region, insert at the line start."
    (line-wise
     (goto-char (pos-bol))))
 
-  (let ((pos-init (point)))
-    (register-val-insert (get-register reg))
+  (let ((pos-init (point))
+        (val (get-register reg)))
+    (cond
+     ;; Text from `copy-to-register', where a rectangle's yank-handler pushes the mark.
+     ((stringp val)
+      (register-val-insert (meep--yank-string-rectangle-without-push-mark val)))
+     ;; A rectangle from `copy-rectangle-to-register', see `register--insertable-p'.
+     ((and (consp val) (stringp (car val)))
+      (meep--rectangle-insert-lines val))
+     (t
+      (register-val-insert val)))
     (meep--set-marker pos-init)))
 
 

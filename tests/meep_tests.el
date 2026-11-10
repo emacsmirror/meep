@@ -644,7 +644,14 @@ PLIST must contain exactly :state and :command keys."
     (meep-clipboard-register-yank-lines . (normal visual))
     ;; Remapped by `rectangle-mark-mode' to motions that keep the column.
     (next-line . (visual))
-    (previous-line . (visual)))
+    (previous-line . (visual))
+    ;; Stores a rectangle as a list of lines (unlike `copy-to-register').
+    (copy-rectangle-to-register . (visual))
+    ;; Add text before or after a rectangle in a register's string.
+    (append-to-register . (visual))
+    (prepend-to-register . (visual))
+    ;; Copies a rectangle with a `rectangle--insert-for-yank' yank-handler.
+    (kill-ring-save . (visual)))
   "Commands needing test bindings, with list of states for each.
 Each entry is (COMMAND . STATES) where STATES is a list of state symbols.
 Commands get the same key in all specified states for consistency.")
@@ -3202,7 +3209,8 @@ existing content right), then creates new lines for subsequent rows.
 
 Workflow: select 2x2 rectangle 'AB/CD', copy, paste at line 3 column 0.
 Verifies: rectangle shape preserved, paste pushes content right,
-returns to normal state after copy."
+returns to normal state after copy, the mark is on the pasted rectangle's
+upper-left corner and the `mark-ring' is unchanged by the paste."
   (let ((text-initial
          ;;  01234
          ;; format-next-line: off
@@ -3237,9 +3245,58 @@ returns to normal state after copy."
       ;; Move to line 3, column 0, and paste rectangle.
       (simulate-input-for-meep
         '(:state normal :command meep-move-line-next)
-        '(:state normal :command meep-move-line-beginning)
-        '(:state normal :command meep-clipboard-killring-yank-pop-stack))
-      (should (equal text-expected (buffer-string))))))
+        '(:state normal :command meep-move-line-beginning))
+      (let ((mark-ring-init (copy-sequence mark-ring)))
+        (simulate-input-for-meep
+          '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+        (should (equal text-expected (buffer-string)))
+        (should (equal '(3 . 0) (meep-test-mark-line-column)))
+        (should (equal mark-ring-init mark-ring))))))
+
+(ert-deftest clipboard-rectangle-copy-paste-from-kill-ring-save ()
+  "Paste a rectangle copied with `kill-ring-save'.
+
+Workflow: select 2x2 rectangle 'AB/CD', copy with `kill-ring-save' (its text
+has a `rectangle--insert-for-yank' yank-handler), paste at line 3 column 0.
+Verifies: the block is inserted, the mark is on its upper-left corner and the
+`mark-ring' is unchanged by the paste."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          ".AB.\n"
+          ".CD.\n"
+          "....\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          ".AB.\n"
+          ".CD.\n"
+          "AB....\n"
+          "CD")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Select rectangle from (line 1, col 1) to (line 2, col 2).
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command kill-ring-save))
+      (should
+       (eq 'rectangle--insert-for-yank (car (get-text-property 0 'yank-handler (car kill-ring)))))
+      (should (equal 'normal (bray-state)))
+      ;; Move to line 3, column 0, and paste rectangle.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-beginning))
+      (let ((mark-ring-init (copy-sequence mark-ring)))
+        (simulate-input-for-meep
+          '(:state normal :command meep-clipboard-killring-yank-pop-stack))
+        (should (equal text-expected (buffer-string)))
+        (should (equal '(3 . 0) (meep-test-mark-line-column)))
+        (should (equal mark-ring-init mark-ring))))))
 
 (ert-deftest clipboard-rectangle-cut-paste ()
   "Cut a rectangle (removes block), paste elsewhere.
@@ -4325,6 +4382,219 @@ rectangle's upper-left corner."
         (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-yank))
       (should (equal 'normal (bray-state)))
       (should (equal text-expected (buffer-string))))))
+
+(ert-deftest clipboard-register-yank-rectangle-list ()
+  "Register yank of a rectangle stored as a list of lines.
+
+Workflow: copy a rectangle into register z with `copy-rectangle-to-register',
+then yank it through the register map at the start of line 3.
+Verifies: the block is inserted, the mark is on its upper-left corner and the
+`mark-ring' is unchanged."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "CD\n"
+          "xy\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "CD\n"
+          "ABxy\n"
+          "CD")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Copy rectangle AB/CD into register z.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command copy-rectangle-to-register)
+        "z")
+      (should (equal '("AB" "CD") (get-register ?z)))
+      ;; Leave the region, move to line 3, column 0.
+      (simulate-input-for-meep
+        '(:state visual :command meep-region-toggle)
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-beginning))
+      (should (equal '(3 . 0) (meep-test-point-line-column)))
+      (let ((mark-ring-init (copy-sequence mark-ring)))
+        (simulate-input-for-meep
+          '(:state normal :command meep-clipboard-register-actions)
+          "z"
+          (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-yank))
+        (should (equal text-expected (buffer-string)))
+        (should (equal '(3 . 0) (meep-test-mark-line-column)))
+        (should (equal mark-ring-init mark-ring))))))
+
+(ert-deftest clipboard-register-yank-rectangle ()
+  "Register yank of a rectangle.
+
+Workflow: copy a rectangle into register z, then yank it through the register
+map at the start of line 3.
+Verifies: the block is inserted, the mark is on its upper-left corner and the
+`mark-ring' is unchanged."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "CD\n"
+          "xy\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "CD\n"
+          "ABxy\n"
+          "CD")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Copy rectangle AB/CD into register z.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-clipboard-register-actions)
+        "z"
+        (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-copy))
+      (should (equal 'normal (bray-state)))
+      ;; Move to line 3, column 0.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-beginning))
+      (should (equal '(3 . 0) (meep-test-point-line-column)))
+      (let ((mark-ring-init (copy-sequence mark-ring)))
+        (simulate-input-for-meep
+          '(:state normal :command meep-clipboard-register-actions)
+          "z"
+          (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-yank))
+        (should (equal text-expected (buffer-string)))
+        (should (equal '(3 . 0) (meep-test-mark-line-column)))
+        (should (equal mark-ring-init mark-ring))))))
+
+(ert-deftest clipboard-register-yank-rectangle-appended ()
+  "Register yank of a rectangle with text appended to the register.
+
+Workflow: copy a rectangle into register z, append text to it with
+`append-to-register', then yank it through the register map at the start of
+line 3.
+Verifies: the block is inserted followed by the appended text, the mark is on
+its upper-left corner and the `mark-ring' is unchanged."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "CD\n"
+          "xy\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "CD\n"
+          "ABxy\n"
+          "CDxy")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Copy rectangle AB/CD into register z.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-clipboard-register-actions)
+        "z"
+        (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-copy))
+      ;; Append "xy" from line 3 to register z.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-region-toggle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command append-to-register)
+        "z")
+      (should (equal "AB\nCDxy" (substring-no-properties (get-register ?z))))
+      ;; The region is de-activated, move to line 3, column 0.
+      (should (equal 'normal (bray-state)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-beginning))
+      (should (equal '(3 . 0) (meep-test-point-line-column)))
+      (let ((mark-ring-init (copy-sequence mark-ring)))
+        (simulate-input-for-meep
+          '(:state normal :command meep-clipboard-register-actions)
+          "z"
+          (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-yank))
+        (should (equal text-expected (buffer-string)))
+        (should (equal '(3 . 0) (meep-test-mark-line-column)))
+        (should (equal mark-ring-init mark-ring)))
+      ;; The register keeps its own yank-handler.
+      (should
+       (eq
+        'rectangle--insert-for-yank
+        (car (get-text-property 0 'yank-handler (get-register ?z))))))))
+
+(ert-deftest clipboard-register-yank-rectangle-prepended ()
+  "Register yank of a rectangle with text prepended to the register.
+
+Workflow: copy a rectangle into register z, prepend text to it with
+`prepend-to-register', then yank it through the register map at the start of
+line 3.
+Verifies: the prepended text is inserted followed by the block, the mark is on
+the start of the text and the `mark-ring' is unchanged."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "CD\n"
+          "xy\n"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "AB\n"
+          "CD\n"
+          "xyABxy\n"
+          "  CD")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Copy rectangle AB/CD into register z.
+      (simulate-input-for-meep
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-clipboard-register-actions)
+        "z"
+        (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-copy))
+      ;; Prepend "xy" from line 3 to register z.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-region-toggle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command prepend-to-register)
+        "z")
+      (should (equal "xyAB\nCD" (substring-no-properties (get-register ?z))))
+      ;; The region is de-activated, move to line 3, column 0.
+      (should (equal 'normal (bray-state)))
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-beginning))
+      (should (equal '(3 . 0) (meep-test-point-line-column)))
+      (let ((mark-ring-init (copy-sequence mark-ring)))
+        (simulate-input-for-meep
+          '(:state normal :command meep-clipboard-register-actions)
+          "z"
+          (meep-test-key-in-map meep-clipboard-register-map 'meep-clipboard-register-yank))
+        (should (equal text-expected (buffer-string)))
+        (should (equal '(3 . 0) (meep-test-mark-line-column)))
+        (should (equal mark-ring-init mark-ring))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Delete Char Ring
