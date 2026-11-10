@@ -595,6 +595,13 @@ boundary between them."
   (declare (important-return-value t))
   (extract-rectangle-bounds beg end))
 
+(defun meep--region-delete-for-yank ()
+  "Delete the active region, leaving point where yanked text replaces it."
+  (let ((beg (region-beginning))
+        (end (region-end)))
+    (deactivate-mark t)
+    (delete-region beg end)))
+
 (defun meep--columns-from-point-range (beg end)
   "Calculate the column offset between points BEG and END.
 
@@ -9897,9 +9904,7 @@ When DO-CUT is non-nil, cut instead of copying."
       (user-error "No text in clipboard"))
 
     (when (region-active-p)
-      (let ((bounds (cons (region-beginning) (region-end))))
-        (deactivate-mark t)
-        (delete-region (car bounds) (cdr bounds))))
+      (meep--region-delete-for-yank))
 
     (let ((pos-init (point)))
       (when yank-transform-functions
@@ -10068,9 +10073,7 @@ The `kill-ring' and its pointer are left untouched."
       ;; region is implicitly line-wise.
       (cond
        ((region-active-p)
-        (let ((bounds (cons (region-beginning) (region-end))))
-          (deactivate-mark t)
-          (delete-region (car bounds) (cdr bounds))))
+        (meep--region-delete-for-yank))
        ;; Only use line-wise when there is no active-region.
        ((eq region-type 'line-wise)
         (goto-char (pos-bol))))
@@ -10660,10 +10663,7 @@ then pastes as usual)."
 When LINE-WISE is non-nil and there is no region, insert at the line start."
   (cond
    ((region-active-p)
-    (let ((beg (region-beginning))
-          (end (region-end)))
-      (deactivate-mark t)
-      (delete-region beg end)))
+    (meep--region-delete-for-yank))
    (line-wise
     (goto-char (pos-bol))))
 
