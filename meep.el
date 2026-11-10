@@ -248,16 +248,21 @@ Stop at the first detected overlap."
 ;;
 ;; Not specific to MEEP.
 
+(defun meep--interactive-arg-from-repeat (cmd n)
+  "Return argument N of CMD's last call, when CMD is repeated, otherwise nil.
+CMD is repeated when another command runs it (a numeric repeat).  N counts
+from one, it must be read by CMD's interactive spec so the call is recorded
+in the variable `command-history'."
+  (declare (important-return-value t))
+  (unless (eq this-command cmd)
+    (nth n (assq cmd command-history))))
+
 (defun meep--interactive-char-or-repeat (cmd n prompt)
   "Read a character for CMD with PROMPT, matching the `c' interactive code.
 The character is CMD's argument number N, counting from one.
-
-When another command runs CMD (a numeric repeat) the character is taken
-from the last call recorded in the variable `command-history',
-instead of prompting again."
+A numeric repeat re-uses it, see `meep--interactive-arg-from-repeat'."
   (declare (important-return-value t))
-  (or (unless (eq this-command cmd)
-        (nth n (assq cmd command-history)))
+  (or (meep--interactive-arg-from-repeat cmd n)
       (let ((ch (read-char (propertize prompt 'face 'minibuffer-prompt))))
         ;; Clear the prompt, `read-char' leaves it shown.
         (message nil)
@@ -6127,13 +6132,8 @@ see `meep-clipboard-killring-yank-pop-stack', which cycles the paste."
 A numeric repeat re-uses the register instead of prompting for it again."
   (interactive (list
                 (prefix-numeric-value current-prefix-arg)
-                (or
-                 ;; Another command running this one (a numeric repeat) takes the register
-                 ;; from the recorded call, `command-history' holds it because this spec
-                 ;; is a form, not a string.
-                 (unless (eq this-command 'meep-register-jump-to)
-                   (nth 2 (assq 'meep-register-jump-to command-history)))
-                 (register-read-with-preview "Use register: "))))
+                (or (meep--interactive-arg-from-repeat 'meep-register-jump-to 2)
+                    (register-read-with-preview "Use register: "))))
   (let ((val (get-register reg)))
     (cond
      ;; Keyboard macro.
