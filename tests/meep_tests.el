@@ -17657,6 +17657,600 @@ Verifies: moves selected text to last insert location, deleting original."
       (should (equal '(1 . 6) (meep-test-point-line-column)))
       (should (equal ?\s (char-after))))))
 
+(ert-deftest insert-into-last-copy-rectangle ()
+  "Copy a rectangle to the last insert point.
+
+Workflow: set the last insert point below, select a rectangle, then copy it.
+Verifies: only the rectangle's columns are inserted, as a block, the source is
+unchanged."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "mnopqr\n"
+          "XX\n"
+          "YY\n"
+          "ZZ"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "mnopqr\n"
+          "bcdXX\n"
+          "hijYY\n"
+          "nopZZ")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      ;; Select columns 1..4 over lines 1-3.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?3]
+        '(:state visual :command meep-move-char-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-line-next))
+      (let ((mark-ring-init (copy-sequence mark-ring)))
+        (simulate-input-for-meep
+          '(:state visual :command meep-insert-into-last-copy))
+        (should (equal 'insert (bray-state)))
+        (should (equal text-expected (buffer-string)))
+        ;; The mark is on the block's upper-left corner, the `mark-ring' is unchanged.
+        (should (equal '(4 . 0) (meep-test-mark-line-column)))
+        (should (equal mark-ring-init mark-ring))))))
+
+(ert-deftest insert-into-last-move-rectangle ()
+  "Move a rectangle to the last insert point.
+
+Workflow: set the last insert point below, select a rectangle, then move it.
+Verifies: the source loses only the rectangle's columns, which are inserted as
+a block at the insert point, tracked through the deletion."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "mnopqr\n"
+          "XX\n"
+          "YY\n"
+          "ZZ"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "aef\n"
+          "gkl\n"
+          "mqr\n"
+          "bcdXX\n"
+          "hijYY\n"
+          "nopZZ")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      ;; Select columns 1..4 over lines 1-3.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?3]
+        '(:state visual :command meep-move-char-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-insert-into-last-move))
+      (should (equal 'insert (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest insert-into-last-move-rectangle-yank-transform ()
+  "Move a rectangle to the last insert point with a yank transform.
+
+Workflow: set a `yank-transform-functions' that upcases, set the last insert
+point below, select a rectangle, then move it.
+Verifies: the rectangle is moved as-is (as a char-wise move is), untransformed."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "XX\n"
+          "YY"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "aef\n"
+          "gkl\n"
+          "bcdXX\n"
+          "hijYY")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      (setq-local yank-transform-functions (list #'upcase))
+      ;; Set the last insert point.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      ;; Select columns 1..4 over lines 1-2.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?3]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-insert-into-last-move))
+      (should (equal 'insert (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest insert-into-last-copy-rectangle-primary-selection ()
+  "Copy a rectangle to the last insert point, setting PRIMARY to the rectangle.
+
+Workflow: set the last insert point below, select a rectangle, then copy it.
+Verifies: the PRIMARY selection is the whole rectangle, not the span between
+the mark & the point moved to the insert point."
+  (let ((primary nil))
+    (with-meep-test "abcdef\nghijkl\nmnopqr\nXX"
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      (meep-test--with-primary-selection primary
+        ;; Select columns 1..4 over lines 1-3.
+        (simulate-input-for-meep
+          [?\C-u ?3]
+          '(:state normal :command meep-move-line-prev)
+          '(:state normal :command meep-move-char-next)
+          '(:state normal :command meep-region-toggle-rectangle)
+          [?\C-u ?3]
+          '(:state visual :command meep-move-char-next)
+          [?\C-u ?2]
+          '(:state visual :command meep-move-line-next))
+        (should-not primary)
+        (simulate-input-for-meep
+          '(:state visual :command meep-insert-into-last-copy))
+        (should (equal '("bcd\nhij\nnop") primary))))))
+
+(ert-deftest insert-into-last-move-rectangle-primary-selection ()
+  "Move a rectangle to the last insert point, setting PRIMARY to the rectangle.
+
+Workflow: set the last insert point below, select a rectangle, then move it.
+Verifies: the PRIMARY selection is the whole rectangle, not the span between
+the mark & the point moved to the insert point."
+  (let ((primary nil))
+    (with-meep-test "abcdef\nghijkl\nmnopqr\nXX"
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point.
+      (simulate-input-for-meep
+        [?\C-u ?3]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      (meep-test--with-primary-selection primary
+        ;; Select columns 1..4 over lines 1-3.
+        (simulate-input-for-meep
+          [?\C-u ?3]
+          '(:state normal :command meep-move-line-prev)
+          '(:state normal :command meep-move-char-next)
+          '(:state normal :command meep-region-toggle-rectangle)
+          [?\C-u ?3]
+          '(:state visual :command meep-move-char-next)
+          [?\C-u ?2]
+          '(:state visual :command meep-move-line-next))
+        (should-not primary)
+        (simulate-input-for-meep
+          '(:state visual :command meep-insert-into-last-move))
+        (should (equal '("bcd\nhij\nnop") primary))))))
+
+(ert-deftest insert-into-last-move-rectangle-same-line ()
+  "Move a rectangle to the last insert point on its own first line.
+
+Workflow: set the last insert point at the end of line 1, select a rectangle
+starting on that line, then move it.
+Verifies: the insert point tracks the deletion on its own line, the block lands
+at the new line end."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "mnopqr"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "aefbcd\n"
+          "gklhij\n"
+          "mqrnop")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-end)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      ;; Select columns 1..4 over lines 1-3.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?3]
+        '(:state visual :command meep-move-char-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-insert-into-last-move))
+      (should (equal 'insert (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest insert-into-last-move-rectangle-into-itself ()
+  "Move a rectangle to a last insert point inside it.
+
+Workflow: set the last insert point on line 2 inside the rectangle's columns,
+select the rectangle, then move it.
+Verifies: the move is a no-op, the text is unchanged and insert state is entered
+at the last insert point."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "mnopqr")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point on line 2 column 2.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      ;; Select columns 1..4 over lines 1-3.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?3]
+        '(:state visual :command meep-move-char-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-insert-into-last-move))
+      (should (equal 'insert (bray-state)))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(2 . 2) (meep-test-point-line-column))))))
+
+(ert-deftest insert-into-last-move-rectangle-into-itself-right-to-left ()
+  "Move a rectangle selected right to left to a last insert point inside it.
+
+Workflow: set the last insert point on line 2 inside the rectangle's columns,
+select the rectangle from its right column to its left, then move it.
+Verifies: the move is a no-op, the text is unchanged and insert state is entered
+at the last insert point."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "mnopqr")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point on line 2 column 2.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      ;; Select columns 4..1 over lines 1-3.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-move-line-beginning)
+        [?\C-u ?4]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?3]
+        '(:state visual :command meep-move-char-prev)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-line-next))
+      (should (equal '(1 . 4) (meep-test-mark-line-column)))
+      (should (equal '(3 . 1) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-insert-into-last-move))
+      (should (equal 'insert (bray-state)))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(2 . 2) (meep-test-point-line-column))))))
+
+(ert-deftest insert-into-last-move-rectangle-into-itself-over-short-line ()
+  "Move a rectangle spanning a short line to a last insert point inside it.
+
+Workflow: set the last insert point on line 3 inside the rectangle's columns,
+select the rectangle over a short middle line, then move it.
+Verifies: the text is unchanged (the short line gains no trailing spaces)."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefgh\n"
+          "ab\n"
+          "abcdefgh")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point on line 3 column 4.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-line-next)
+        [?\C-u ?4]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      ;; Select columns 2..6 over lines 1-3.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-move-line-beginning)
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?4]
+        '(:state visual :command meep-move-char-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-line-next))
+      (should (equal '(3 . 6) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-insert-into-last-move))
+      (should (equal 'insert (bray-state)))
+      (should (equal text-initial (buffer-string)))
+      (should (equal '(3 . 4) (meep-test-point-line-column))))))
+
+(ert-deftest insert-into-last-move-rectangle-to-own-edge ()
+  "Move a rectangle to a last insert point on the edge of its last line.
+
+Workflow: set the last insert point on line 3 just after the rectangle's
+columns, select the rectangle, then move it.
+Verifies: the edge is outside the rectangle, the block moves down to it."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdef\n"
+          "ghijkl\n"
+          "mnopqr"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "aef\n"
+          "gkl\n"
+          "mbcdqr\n"
+          " hij\n"
+          " nop")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point on line 3 column 4.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-line-next)
+        [?\C-u ?4]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      ;; Select columns 1..4 over lines 1-3.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?3]
+        '(:state visual :command meep-move-char-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-line-next)
+        '(:state visual :command meep-insert-into-last-move))
+      (should (equal 'insert (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest insert-into-last-move-rectangle-insert-after-split-tab ()
+  "Move a rectangle to a last insert point after a TAB its edge splits.
+
+Workflow: set the last insert point after a TAB spanning the rectangle's right
+edge, select the rectangle, then move it.
+Verifies: the TAB is split into spaces, the block lands at the insert
+point (before the text after the TAB), not before the spaces."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "a\tbc\n"
+          "abcdefghij"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "efghij\n"
+          "    abcdbc\n"
+          "efgha   ij\n"
+          "    abcd")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point on line 2 after the TAB.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        [?\C-u ?2]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      (should (equal '(2 . 8) (meep-test-point-line-column)))
+      ;; Select columns 0..4 over lines 1-3.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-move-line-beginning)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?4]
+        '(:state visual :command meep-move-char-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-line-next))
+      (should (equal '(3 . 4) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-insert-into-last-move))
+      (should (equal 'insert (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest insert-into-last-move-rectangle-insert-after-wide-char ()
+  "Move a rectangle to a last insert point after a wide char its edge splits.
+
+Workflow: set the last insert point on a line where a wide char spans the
+rectangle's left edge, select the rectangle, then move it.
+Verifies: only the columns after the wide char are deleted from its line, the
+block lands at the insert point, not the rectangle's width before it."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "ab" (string #x4e2d) "cdefgh\n"
+          "0123456789"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "ab" (string #x4e2d) "decfgh\n"
+          "0125673489")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point on line 1 before "f".
+      (simulate-input-for-meep
+        [?\C-u ?6]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      (should (equal '(1 . 7) (meep-test-point-line-column)))
+      ;; Select columns 3..5 over lines 1-2, the wide char spans columns 2..4.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-beginning)
+        [?\C-u ?4]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        '(:state visual :command meep-move-line-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-prev))
+      (should (equal '(1 . 5) (meep-test-mark-line-column)))
+      (should (equal '(2 . 3) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-insert-into-last-move))
+      (should (equal 'insert (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest insert-into-last-move-rectangle-into-short-line ()
+  "Move a rectangle to the end of a line too short to reach it.
+
+Workflow: set the last insert point at the end of a short line, select a
+rectangle spanning it (to the right of its end), then move it.
+Verifies: the insert point is outside the rectangle, the block is moved there."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "abcdefghij\n"
+          "kl\n"
+          "abcdefghij"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "abcdefgj\n"
+          "klhi\n"
+          "ab  cdefgj\n"
+          "  hi")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point at the end of line 2.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-move-line-end)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      ;; Select columns 7..9 over lines 1-3.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-move-line-beginning)
+        [?\C-u ?7]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-line-next))
+      (should (equal '(3 . 9) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-insert-into-last-move))
+      (should (equal 'insert (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
+(ert-deftest insert-into-last-move-rectangle-crutch-past-short-first-line ()
+  "Move a rectangle whose first line is too short to reach its column.
+
+Workflow: set the last insert point below, mark columns 7..9 on a long line,
+then move up with `previous-line', which `rectangle-mark-mode' remaps to keep
+the column past the end of the short line, then move it.
+Verifies: the short first line is left as it was (not padded with spaces)."
+  (let ((text-initial
+         ;; format-next-line: off
+         (concat
+          "kl\n"
+          "abcdefghij\n"
+          "XX"))
+        (text-expected
+         ;; format-next-line: off
+         (concat
+          "kl\n"
+          "abcdefgj\n"
+          "  XX\n"
+          "hi")))
+    (with-meep-test text-initial
+      (text-mode)
+      (bray-mode 1)
+      ;; Set the last insert point at the start of line 3.
+      (simulate-input-for-meep
+        [?\C-u ?2]
+        '(:state normal :command meep-move-line-next)
+        '(:state normal :command meep-insert)
+        '(:state insert :command bray-state-stack-pop))
+      ;; Select columns 7..9 over lines 1-2.
+      (simulate-input-for-meep
+        '(:state normal :command meep-move-line-prev)
+        '(:state normal :command meep-move-line-beginning)
+        [?\C-u ?7]
+        '(:state normal :command meep-move-char-next)
+        '(:state normal :command meep-region-toggle-rectangle)
+        [?\C-u ?2]
+        '(:state visual :command meep-move-char-next)
+        '(:state visual :command previous-line))
+      ;; The point clamps to the end of the short line, the crutch keeps column 9.
+      (should (equal '(1 . 2) (meep-test-point-line-column)))
+      (simulate-input-for-meep
+        '(:state visual :command meep-insert-into-last-move))
+      (should (equal 'insert (bray-state)))
+      (should (equal text-expected (buffer-string))))))
+
 (ert-deftest insert-overwrite-basic ()
   "Toggle overwrite mode.
 

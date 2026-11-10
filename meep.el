@@ -41,6 +41,7 @@
 (declare-function kmacro-p "kmacro")
 (declare-function kmacro-ring-head "kmacro")
 (declare-function rectangle--crutches "rect")
+(declare-function rectangle--pos-cols "rect")
 
 ;; For `meep-repeat-fu-replay'.
 (declare-function repeat-fu-listener-register "repeat-fu")
@@ -597,6 +598,17 @@ boundary between them."
              (move-to-column col-end)
              (point))))
       (cons beg end))))
+
+(defun meep--rectangle-columns (beg end)
+  "Return the columns of the rectangle from BEG to END as (COL-BEG . COL-END)."
+  (declare (important-return-value t))
+  ;; Read the columns as `apply-on-rectangle' does, honoring the crutches.
+  (let ((cols (rectangle--pos-cols beg end)))
+    (cond
+     ((< (cdr cols) (car cols))
+      (cons (cdr cols) (car cols)))
+     (t
+      cols))))
 
 (defun meep--rectangle-range-list-from-rectangle (beg end)
   "Return a list of ranges from a rectangle from BEG and END."
@@ -9826,6 +9838,51 @@ When MOVE is non-nil, delete the original text."
      ((null (mark t))
       (message "No mark found!")
       nil)
+     ((bound-and-true-p rectangle-mark-mode)
+      (meep--region-save-selection)
+      (let* ((beg (meep--region-point-mark-beg))
+             (end (meep--region-point-mark-end))
+             ;; The insert point's column, when the move deletes from its line.
+             (col-insert
+              (and move
+                   (<= (save-excursion
+                         (goto-char beg)
+                         (pos-bol))
+                       pos-last-insert
+                       (save-excursion
+                         (goto-char end)
+                         (pos-eol)))
+                   (save-excursion
+                     (goto-char pos-last-insert)
+                     (current-column))))
+             (cols (and col-insert (meep--rectangle-columns beg end))))
+        (cond
+         ;; Moving into the rectangle's interior is a NOP, insert at the last insert point.
+         ((and col-insert (< (car cols) col-insert (cdr cols)))
+          (goto-char pos-last-insert)
+          (meep-insert))
+         (t
+          ;; Track the insert point through the deletion. When it follows the
+          ;; rectangle, advance past the spaces a TAB split by the deletion becomes.
+          (let* ((pos-insert
+                  (copy-marker pos-last-insert (and col-insert (<= (cdr cols) col-insert))))
+                 (lines
+                  (mapcar
+                   #'substring-no-properties
+                   (cond
+                    (move
+                     ;; Split a TAB into spaces, as `delete-rectangle' does.
+                     (let ((indent-tabs-mode nil))
+                       (delete-extract-rectangle beg end)))
+                    (t
+                     (extract-rectangle beg end))))))
+            (goto-char pos-insert)
+            (set-marker pos-insert nil)
+            (meep-insert)
+            ;; Insert as-is, as the char-wise branch does (no yank transforms).
+            (let ((yank-transform-functions nil))
+              (meep--rectangle-insert-lines lines))))))
+      t)
      (t
       ;; Intentionally use the region even if it's not active.
       (let* ((beg (region-beginning))
